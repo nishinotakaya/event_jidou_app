@@ -59,6 +59,45 @@
         <label class="site-check"><input type="checkbox" value="techplay" checked /><span>techplay</span></label>
       </div>
 
+      <details class="event-details" id="event-details-section">
+        <summary>📅 イベント詳細 <span class="details-hint">（こくチーズ用・受付期間は開催7日前〜1日前で自動計算）</span></summary>
+        <div class="event-fields">
+          <div class="field-group">
+            <p class="field-group-label">開催日時</p>
+            <div class="field-row">
+              <label>開催日
+                <input type="date" id="field-start-date" required />
+              </label>
+              <label>開始時刻
+                <input type="time" id="field-start-time" value="10:00" />
+              </label>
+            </div>
+          </div>
+          <div class="field-group">
+            <p class="field-group-label">終了日時</p>
+            <div class="field-row">
+              <label>終了日
+                <input type="date" id="field-end-date" required />
+              </label>
+              <label>終了時刻
+                <input type="time" id="field-end-time" value="12:00" />
+              </label>
+            </div>
+          </div>
+          <div class="field-row">
+            <label>会場名
+              <input type="text" id="field-place" value="オンライン" placeholder="例: オンライン / 東京都〇〇区..." />
+            </label>
+            <label>定員
+              <input type="number" id="field-capacity" value="50" min="1" placeholder="50" />
+            </label>
+          </div>
+          <label>連絡先TEL
+            <input type="tel" id="field-tel" value="000-0000-0000" placeholder="000-0000-0000" />
+          </label>
+        </div>
+      </details>
+
       <div class="post-results" id="post-results" hidden>
         <p class="results-title">投稿結果</p>
         <ul class="results-list" id="results-list"></ul>

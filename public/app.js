@@ -122,6 +122,13 @@ function openPostModal(item) {
   runBtn.disabled = false;
   runBtn.textContent = '投稿する →';
   document.getElementById('btn-post-cancel').textContent = 'キャンセル';
+
+  // デフォルト日付を30日後に設定
+  const d30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const ymd = d30.toISOString().slice(0, 10);
+  document.getElementById('field-start-date').value = ymd;
+  document.getElementById('field-end-date').value = ymd;
+
   postModal.hidden = false;
 }
 
@@ -171,7 +178,19 @@ async function runPost() {
     const response = await fetch('/api/post', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: postingItem.content, sites: checked }),
+      body: JSON.stringify({
+        content: postingItem.content,
+        sites: checked,
+        eventFields: {
+          startDate: document.getElementById('field-start-date').value,
+          startTime: document.getElementById('field-start-time').value || '10:00',
+          endDate:   document.getElementById('field-end-date').value,
+          endTime:   document.getElementById('field-end-time').value || '12:00',
+          place:     document.getElementById('field-place').value || 'オンライン',
+          capacity:  document.getElementById('field-capacity').value || '50',
+          tel:       document.getElementById('field-tel').value || '000-0000-0000',
+        },
+      }),
     });
 
     const reader = response.body.getReader();
