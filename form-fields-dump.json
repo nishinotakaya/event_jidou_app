@@ -1,0 +1,1384 @@
+[
+  {
+    "name": "q",
+    "tag": "input",
+    "type": "search",
+    "id": "event_search_txt",
+    "visible": true
+  },
+  {
+    "name": "_method",
+    "tag": "input",
+    "type": "hidden",
+    "id": "",
+    "visible": false
+  },
+  {
+    "name": "data[Event][event_type]",
+    "tag": "input",
+    "type": "hidden",
+    "id": "EventEventType",
+    "visible": false
+  },
+  {
+    "name": "data[Event][charge]",
+    "tag": "input",
+    "type": "hidden",
+    "id": "EventCharge",
+    "visible": false
+  },
+  {
+    "name": "data[step]",
+    "tag": "input",
+    "type": "hidden",
+    "id": "",
+    "visible": false
+  },
+  {
+    "name": "data[Event][name]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventName",
+    "visible": true
+  },
+  {
+    "name": "data[Event][description]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDescription",
+    "visible": true
+  },
+  {
+    "name": "data[Event][genre]",
+    "tag": "select",
+    "type": "select-one",
+    "id": "EventGenre",
+    "visible": true,
+    "options": [
+      {
+        "value": "",
+        "text": ""
+      },
+      {
+        "value": "1",
+        "text": "テクノロジー／開発"
+      },
+      {
+        "value": "2",
+        "text": "IT／インターネット"
+      },
+      {
+        "value": "3",
+        "text": "デザイン／アート"
+      },
+      {
+        "value": "4",
+        "text": "営業／販売"
+      },
+      {
+        "value": "5",
+        "text": "マーケティング／広告"
+      },
+      {
+        "value": "6",
+        "text": "コーチング／カウンセリング"
+      },
+      {
+        "value": "7",
+        "text": "ビジネススキル／自己啓発"
+      },
+      {
+        "value": "8",
+        "text": "人脈／交流会"
+      },
+      {
+        "value": "9",
+        "text": "経営／起業"
+      },
+      {
+        "value": "10",
+        "text": "ファイナンス／お金"
+      },
+      {
+        "value": "11",
+        "text": "財務／会計"
+      },
+      {
+        "value": "12",
+        "text": "法務／契約書"
+      },
+      {
+        "value": "13",
+        "text": "知的財産／特許"
+      },
+      {
+        "value": "14",
+        "text": "総務／人事"
+      },
+      {
+        "value": "15",
+        "text": "社会／コミュニティ"
+      },
+      {
+        "value": "16",
+        "text": "就職／求人"
+      },
+      {
+        "value": "17",
+        "text": "キャリア／副業"
+      },
+      {
+        "value": "18",
+        "text": "趣味／ライフスタイル"
+      },
+      {
+        "value": "19",
+        "text": "家事／暮らし"
+      },
+      {
+        "value": "20",
+        "text": "福祉／医療／介護"
+      },
+      {
+        "value": "22",
+        "text": "展示会／シンポジウム"
+      },
+      {
+        "value": "23",
+        "text": "音楽／舞台"
+      },
+      {
+        "value": "24",
+        "text": "文化芸能／芸術"
+      },
+      {
+        "value": "25",
+        "text": "スポーツ／格闘技"
+      },
+      {
+        "value": "26",
+        "text": "ファッション／美容健康"
+      },
+      {
+        "value": "27",
+        "text": "英語／語学"
+      },
+      {
+        "value": "28",
+        "text": "料理／グルメ"
+      },
+      {
+        "value": "29",
+        "text": "心理学／スピリチュアル"
+      },
+      {
+        "value": "30",
+        "text": "育児／キッズ"
+      },
+      {
+        "value": "31",
+        "text": "ヨガ／フィットネス"
+      },
+      {
+        "value": "32",
+        "text": "ゲーム／eスポーツ"
+      },
+      {
+        "value": "33",
+        "text": "プログラミング／言語"
+      },
+      {
+        "value": "34",
+        "text": "モバイル／OS"
+      },
+      {
+        "value": "35",
+        "text": "SNS／ブログマーケティング"
+      },
+      {
+        "value": "36",
+        "text": "先端技術"
+      },
+      {
+        "value": "37",
+        "text": "教育／授業づくり"
+      },
+      {
+        "value": "21",
+        "text": "その他"
+      }
+    ]
+  },
+  {
+    "name": "data[Event][genre_sub]",
+    "tag": "select",
+    "type": "select-one",
+    "id": "EventGenreSub",
+    "visible": true,
+    "options": [
+      {
+        "value": "",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "name": "data[EventDate][start_date_date]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDateStartDateDate",
+    "visible": true
+  },
+  {
+    "name": "data[EventDate][start_date_time]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDateStartDateTime",
+    "visible": true
+  },
+  {
+    "name": "data[EventDate][end_date_date]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDateEndDateDate",
+    "visible": true
+  },
+  {
+    "name": "data[EventDate][end_date_time]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDateEndDateTime",
+    "visible": true
+  },
+  {
+    "name": "data[EventDate][total_capacity]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDateTotalCapacity",
+    "visible": true
+  },
+  {
+    "name": "data[EventDate][entry_start_date_date]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDateEntryStartDateDate",
+    "visible": true
+  },
+  {
+    "name": "data[EventDate][entry_start_date_time]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDateEntryStartDateTime",
+    "visible": true
+  },
+  {
+    "name": "data[EventDate][entry_end_date_date]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDateEntryEndDateDate",
+    "visible": true
+  },
+  {
+    "name": "data[EventDate][entry_end_date_time]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventDateEntryEndDateTime",
+    "visible": true
+  },
+  {
+    "name": "data[Event][photo]",
+    "tag": "input",
+    "type": "file",
+    "id": "EventPhoto",
+    "visible": true
+  },
+  {
+    "name": "data[EventPage][body_html]",
+    "tag": "textarea",
+    "type": "textarea",
+    "id": "EventPageBodyHtml",
+    "visible": false
+  },
+  {
+    "name": "data[Event][place]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventPlace",
+    "visible": true
+  },
+  {
+    "name": "data[Event][place_url]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventPlaceUrl",
+    "visible": true
+  },
+  {
+    "name": "data[Event][country]",
+    "tag": "select",
+    "type": "select-one",
+    "id": "EventCountry",
+    "visible": true,
+    "options": [
+      {
+        "value": "ISL",
+        "text": "アイスランド"
+      },
+      {
+        "value": "IRL",
+        "text": "アイルランド"
+      },
+      {
+        "value": "AZE",
+        "text": "アゼルバイジャン"
+      },
+      {
+        "value": "AFG",
+        "text": "アフガニスタン"
+      },
+      {
+        "value": "USA",
+        "text": "アメリカ合衆国"
+      },
+      {
+        "value": "ARE",
+        "text": "アラブ首長国連邦"
+      },
+      {
+        "value": "DZA",
+        "text": "アルジェリア"
+      },
+      {
+        "value": "ARG",
+        "text": "アルゼンチン"
+      },
+      {
+        "value": "ALB",
+        "text": "アルバニア"
+      },
+      {
+        "value": "ARM",
+        "text": "アルメニア"
+      },
+      {
+        "value": "AGO",
+        "text": "アンゴラ"
+      },
+      {
+        "value": "ATG",
+        "text": "アンティグア・バーブーダ"
+      },
+      {
+        "value": "AND",
+        "text": "アンドラ"
+      },
+      {
+        "value": "YEM",
+        "text": "イエメン"
+      },
+      {
+        "value": "GBR",
+        "text": "イギリス"
+      },
+      {
+        "value": "ISR",
+        "text": "イスラエル"
+      },
+      {
+        "value": "ITA",
+        "text": "イタリア"
+      },
+      {
+        "value": "IRQ",
+        "text": "イラク"
+      },
+      {
+        "value": "IRN",
+        "text": "イラン"
+      },
+      {
+        "value": "IND",
+        "text": "インド"
+      },
+      {
+        "value": "IDN",
+        "text": "インドネシア"
+      },
+      {
+        "value": "UGA",
+        "text": "ウガンダ"
+      },
+      {
+        "value": "UKR",
+        "text": "ウクライナ"
+      },
+      {
+        "value": "UZB",
+        "text": "ウズベキスタン"
+      },
+      {
+        "value": "URY",
+        "text": "ウルグアイ"
+      },
+      {
+        "value": "ECU",
+        "text": "エクアドル"
+      },
+      {
+        "value": "EGY",
+        "text": "エジプト"
+      },
+      {
+        "value": "EST",
+        "text": "エストニア"
+      },
+      {
+        "value": "ETH",
+        "text": "エチオピア"
+      },
+      {
+        "value": "ERI",
+        "text": "エリトリア"
+      },
+      {
+        "value": "SLV",
+        "text": "エルサルバドル"
+      },
+      {
+        "value": "AUS",
+        "text": "オーストラリア"
+      },
+      {
+        "value": "AUT",
+        "text": "オーストリア"
+      },
+      {
+        "value": "OMN",
+        "text": "オマーン"
+      },
+      {
+        "value": "NLD",
+        "text": "オランダ"
+      },
+      {
+        "value": "ANT",
+        "text": "オランダ領アンティル"
+      },
+      {
+        "value": "GHA",
+        "text": "ガーナ"
+      },
+      {
+        "value": "CPV",
+        "text": "カーボベルデ"
+      },
+      {
+        "value": "GUY",
+        "text": "ガイアナ"
+      },
+      {
+        "value": "KAZ",
+        "text": "カザフスタン"
+      },
+      {
+        "value": "QAT",
+        "text": "カタール"
+      },
+      {
+        "value": "CAN",
+        "text": "カナダ"
+      },
+      {
+        "value": "GAB",
+        "text": "ガボン"
+      },
+      {
+        "value": "CMR",
+        "text": "カメルーン"
+      },
+      {
+        "value": "GMB",
+        "text": "ガンビア"
+      },
+      {
+        "value": "KHM",
+        "text": "カンボジア"
+      },
+      {
+        "value": "GIN",
+        "text": "ギニア"
+      },
+      {
+        "value": "GNB",
+        "text": "ギニアビサウ"
+      },
+      {
+        "value": "CYP",
+        "text": "キプロス"
+      },
+      {
+        "value": "CUB",
+        "text": "キューバ"
+      },
+      {
+        "value": "GRC",
+        "text": "ギリシャ"
+      },
+      {
+        "value": "KIR",
+        "text": "キリバス"
+      },
+      {
+        "value": "KGZ",
+        "text": "キルギス"
+      },
+      {
+        "value": "GTM",
+        "text": "グアテマラ"
+      },
+      {
+        "value": "KWT",
+        "text": "クウェート"
+      },
+      {
+        "value": "GRL",
+        "text": "グリーンランド"
+      },
+      {
+        "value": "GEO",
+        "text": "グルジア"
+      },
+      {
+        "value": "GRD",
+        "text": "グレナダ"
+      },
+      {
+        "value": "HRV",
+        "text": "クロアチア"
+      },
+      {
+        "value": "KEN",
+        "text": "ケニア"
+      },
+      {
+        "value": "CIV",
+        "text": "コートジボワール"
+      },
+      {
+        "value": "CRI",
+        "text": "コスタリカ"
+      },
+      {
+        "value": "COM",
+        "text": "コモロ"
+      },
+      {
+        "value": "COL",
+        "text": "コロンビア"
+      },
+      {
+        "value": "COG",
+        "text": "コンゴ共和国"
+      },
+      {
+        "value": "SAU",
+        "text": "サウジアラビア"
+      },
+      {
+        "value": "WSM",
+        "text": "サモア"
+      },
+      {
+        "value": "STP",
+        "text": "サントメ・プリンシペ"
+      },
+      {
+        "value": "ZMB",
+        "text": "ザンビア"
+      },
+      {
+        "value": "SMR",
+        "text": "サンマリノ"
+      },
+      {
+        "value": "SLE",
+        "text": "シエラレオネ"
+      },
+      {
+        "value": "DJI",
+        "text": "ジブチ"
+      },
+      {
+        "value": "JAM",
+        "text": "ジャマイカ"
+      },
+      {
+        "value": "SYR",
+        "text": "シリア"
+      },
+      {
+        "value": "SGP",
+        "text": "シンガポール"
+      },
+      {
+        "value": "ZWE",
+        "text": "ジンバブエ"
+      },
+      {
+        "value": "CHE",
+        "text": "スイス"
+      },
+      {
+        "value": "SWE",
+        "text": "スウェーデン"
+      },
+      {
+        "value": "SDN",
+        "text": "スーダン"
+      },
+      {
+        "value": "ESP",
+        "text": "スペイン"
+      },
+      {
+        "value": "SUR",
+        "text": "スリナム"
+      },
+      {
+        "value": "LKA",
+        "text": "スリランカ"
+      },
+      {
+        "value": "SVK",
+        "text": "スロバキア"
+      },
+      {
+        "value": "SVN",
+        "text": "スロベニア"
+      },
+      {
+        "value": "SWZ",
+        "text": "スワジランド"
+      },
+      {
+        "value": "SYC",
+        "text": "セーシェル"
+      },
+      {
+        "value": "GNQ",
+        "text": "赤道ギニア"
+      },
+      {
+        "value": "SEN",
+        "text": "セネガル"
+      },
+      {
+        "value": "KNA",
+        "text": "セントクリストファー・ネイビス"
+      },
+      {
+        "value": "VCT",
+        "text": "セントビンセントおよびグレナディーン諸島"
+      },
+      {
+        "value": "LCA",
+        "text": "セントルシア"
+      },
+      {
+        "value": "SOM",
+        "text": "ソマリア"
+      },
+      {
+        "value": "SLB",
+        "text": "ソロモン諸島"
+      },
+      {
+        "value": "THA",
+        "text": "タイ"
+      },
+      {
+        "value": "KOR",
+        "text": "大韓民国"
+      },
+      {
+        "value": "TWN",
+        "text": "台湾"
+      },
+      {
+        "value": "TJK",
+        "text": "タジキスタン"
+      },
+      {
+        "value": "TZA",
+        "text": "タンザニア"
+      },
+      {
+        "value": "CZE",
+        "text": "チェコ"
+      },
+      {
+        "value": "TCD",
+        "text": "チャド"
+      },
+      {
+        "value": "CAF",
+        "text": "中央アフリカ"
+      },
+      {
+        "value": "CHN",
+        "text": "中華人民共和国"
+      },
+      {
+        "value": "TUN",
+        "text": "チュニジア"
+      },
+      {
+        "value": "PRK",
+        "text": "朝鮮民主主義人民共和国"
+      },
+      {
+        "value": "CHL",
+        "text": "チリ"
+      },
+      {
+        "value": "TUV",
+        "text": "ツバル"
+      },
+      {
+        "value": "DNK",
+        "text": "デンマーク"
+      },
+      {
+        "value": "DEU",
+        "text": "ドイツ"
+      },
+      {
+        "value": "TGO",
+        "text": "トーゴ"
+      },
+      {
+        "value": "DOM",
+        "text": "ドミニカ共和国"
+      },
+      {
+        "value": "DMA",
+        "text": "ドミニカ国"
+      },
+      {
+        "value": "TTO",
+        "text": "トリニダード・トバゴ"
+      },
+      {
+        "value": "TKM",
+        "text": "トルクメニスタン"
+      },
+      {
+        "value": "TUR",
+        "text": "トルコ"
+      },
+      {
+        "value": "TON",
+        "text": "トンガ"
+      },
+      {
+        "value": "NGA",
+        "text": "ナイジェリア"
+      },
+      {
+        "value": "NRU",
+        "text": "ナウル"
+      },
+      {
+        "value": "NAM",
+        "text": "ナミビア"
+      },
+      {
+        "value": "NIC",
+        "text": "ニカラグア"
+      },
+      {
+        "value": "NER",
+        "text": "ニジェール"
+      },
+      {
+        "value": "JPN",
+        "text": "日本"
+      },
+      {
+        "value": "NZL",
+        "text": "ニュージーランド"
+      },
+      {
+        "value": "NPL",
+        "text": "ネパール"
+      },
+      {
+        "value": "NOR",
+        "text": "ノルウェー"
+      },
+      {
+        "value": "BHR",
+        "text": "バーレーン"
+      },
+      {
+        "value": "HTI",
+        "text": "ハイチ"
+      },
+      {
+        "value": "PAK",
+        "text": "パキスタン"
+      },
+      {
+        "value": "VAT",
+        "text": "バチカン市国"
+      },
+      {
+        "value": "PAN",
+        "text": "パナマ"
+      },
+      {
+        "value": "VUT",
+        "text": "バヌアツ"
+      },
+      {
+        "value": "BHS",
+        "text": "バハマ"
+      },
+      {
+        "value": "PNG",
+        "text": "パプアニューギニア"
+      },
+      {
+        "value": "PLW",
+        "text": "パラオ"
+      },
+      {
+        "value": "PRY",
+        "text": "パラグアイ"
+      },
+      {
+        "value": "BRB",
+        "text": "バルバドス"
+      },
+      {
+        "value": "HUN",
+        "text": "ハンガリー"
+      },
+      {
+        "value": "BGD",
+        "text": "バングラデシュ"
+      },
+      {
+        "value": "FJI",
+        "text": "フィジー"
+      },
+      {
+        "value": "PHL",
+        "text": "フィリピン"
+      },
+      {
+        "value": "FIN",
+        "text": "フィンランド"
+      },
+      {
+        "value": "BTN",
+        "text": "ブータン"
+      },
+      {
+        "value": "BRA",
+        "text": "ブラジル"
+      },
+      {
+        "value": "FRA",
+        "text": "フランス"
+      },
+      {
+        "value": "BGR",
+        "text": "ブルガリア"
+      },
+      {
+        "value": "BFA",
+        "text": "ブルキナファソ"
+      },
+      {
+        "value": "BRN",
+        "text": "ブルネイ"
+      },
+      {
+        "value": "BDI",
+        "text": "ブルンジ"
+      },
+      {
+        "value": "VNM",
+        "text": "ベトナム"
+      },
+      {
+        "value": "BEN",
+        "text": "ベナン"
+      },
+      {
+        "value": "VEN",
+        "text": "ベネズエラ"
+      },
+      {
+        "value": "BLR",
+        "text": "ベラルーシ"
+      },
+      {
+        "value": "BLZ",
+        "text": "ベリーズ"
+      },
+      {
+        "value": "PER",
+        "text": "ペルー"
+      },
+      {
+        "value": "BEL",
+        "text": "ベルギー"
+      },
+      {
+        "value": "POL",
+        "text": "ポーランド"
+      },
+      {
+        "value": "BIH",
+        "text": "ボスニア・ヘルツェゴビナ"
+      },
+      {
+        "value": "BWA",
+        "text": "ボツワナ"
+      },
+      {
+        "value": "BOL",
+        "text": "ボリビア"
+      },
+      {
+        "value": "PRT",
+        "text": "ポルトガル"
+      },
+      {
+        "value": "HND",
+        "text": "ホンジュラス"
+      },
+      {
+        "value": "MHL",
+        "text": "マーシャル諸島"
+      },
+      {
+        "value": "MKD",
+        "text": "マケドニア"
+      },
+      {
+        "value": "MDG",
+        "text": "マダガスカル"
+      },
+      {
+        "value": "MWI",
+        "text": "マラウイ"
+      },
+      {
+        "value": "MLI",
+        "text": "マリ"
+      },
+      {
+        "value": "MLT",
+        "text": "マルタ"
+      },
+      {
+        "value": "MYS",
+        "text": "マレーシア"
+      },
+      {
+        "value": "FSM",
+        "text": "ミクロネシア連邦"
+      },
+      {
+        "value": "ZAF",
+        "text": "南アフリカ"
+      },
+      {
+        "value": "MMR",
+        "text": "ミャンマー"
+      },
+      {
+        "value": "MEX",
+        "text": "メキシコ"
+      },
+      {
+        "value": "MUS",
+        "text": "モーリシャス"
+      },
+      {
+        "value": "MRT",
+        "text": "モーリタニア"
+      },
+      {
+        "value": "MOZ",
+        "text": "モザンビーク"
+      },
+      {
+        "value": "MCO",
+        "text": "モナコ"
+      },
+      {
+        "value": "MDV",
+        "text": "モルディブ"
+      },
+      {
+        "value": "MDA",
+        "text": "モルドバ"
+      },
+      {
+        "value": "MAR",
+        "text": "モロッコ"
+      },
+      {
+        "value": "MNG",
+        "text": "モンゴル"
+      },
+      {
+        "value": "JOR",
+        "text": "ヨルダン"
+      },
+      {
+        "value": "LAO",
+        "text": "ラオス"
+      },
+      {
+        "value": "LVA",
+        "text": "ラトビア"
+      },
+      {
+        "value": "LTU",
+        "text": "リトアニア"
+      },
+      {
+        "value": "LBY",
+        "text": "リビア"
+      },
+      {
+        "value": "LIE",
+        "text": "リヒテンシュタイン"
+      },
+      {
+        "value": "LBR",
+        "text": "リベリア"
+      },
+      {
+        "value": "ROU",
+        "text": "ルーマニア"
+      },
+      {
+        "value": "LUX",
+        "text": "ルクセンブルク"
+      },
+      {
+        "value": "RWA",
+        "text": "ルワンダ"
+      },
+      {
+        "value": "LSO",
+        "text": "レソト"
+      },
+      {
+        "value": "LBN",
+        "text": "レバノン"
+      },
+      {
+        "value": "RUS",
+        "text": "ロシア"
+      }
+    ]
+  },
+  {
+    "name": "data[Event][prefecture]",
+    "tag": "select",
+    "type": "select-one",
+    "id": "EventPrefecture",
+    "visible": false,
+    "options": [
+      {
+        "value": "",
+        "text": ""
+      },
+      {
+        "value": "北海道",
+        "text": "北海道"
+      },
+      {
+        "value": "青森県",
+        "text": "青森県"
+      },
+      {
+        "value": "岩手県",
+        "text": "岩手県"
+      },
+      {
+        "value": "宮城県",
+        "text": "宮城県"
+      },
+      {
+        "value": "秋田県",
+        "text": "秋田県"
+      },
+      {
+        "value": "山形県",
+        "text": "山形県"
+      },
+      {
+        "value": "福島県",
+        "text": "福島県"
+      },
+      {
+        "value": "茨城県",
+        "text": "茨城県"
+      },
+      {
+        "value": "栃木県",
+        "text": "栃木県"
+      },
+      {
+        "value": "群馬県",
+        "text": "群馬県"
+      },
+      {
+        "value": "埼玉県",
+        "text": "埼玉県"
+      },
+      {
+        "value": "千葉県",
+        "text": "千葉県"
+      },
+      {
+        "value": "東京都",
+        "text": "東京都"
+      },
+      {
+        "value": "神奈川県",
+        "text": "神奈川県"
+      },
+      {
+        "value": "新潟県",
+        "text": "新潟県"
+      },
+      {
+        "value": "富山県",
+        "text": "富山県"
+      },
+      {
+        "value": "石川県",
+        "text": "石川県"
+      },
+      {
+        "value": "福井県",
+        "text": "福井県"
+      },
+      {
+        "value": "山梨県",
+        "text": "山梨県"
+      },
+      {
+        "value": "長野県",
+        "text": "長野県"
+      },
+      {
+        "value": "岐阜県",
+        "text": "岐阜県"
+      },
+      {
+        "value": "静岡県",
+        "text": "静岡県"
+      },
+      {
+        "value": "愛知県",
+        "text": "愛知県"
+      },
+      {
+        "value": "三重県",
+        "text": "三重県"
+      },
+      {
+        "value": "滋賀県",
+        "text": "滋賀県"
+      },
+      {
+        "value": "京都府",
+        "text": "京都府"
+      },
+      {
+        "value": "大阪府",
+        "text": "大阪府"
+      },
+      {
+        "value": "兵庫県",
+        "text": "兵庫県"
+      },
+      {
+        "value": "奈良県",
+        "text": "奈良県"
+      },
+      {
+        "value": "和歌山県",
+        "text": "和歌山県"
+      },
+      {
+        "value": "鳥取県",
+        "text": "鳥取県"
+      },
+      {
+        "value": "島根県",
+        "text": "島根県"
+      },
+      {
+        "value": "岡山県",
+        "text": "岡山県"
+      },
+      {
+        "value": "広島県",
+        "text": "広島県"
+      },
+      {
+        "value": "山口県",
+        "text": "山口県"
+      },
+      {
+        "value": "徳島県",
+        "text": "徳島県"
+      },
+      {
+        "value": "香川県",
+        "text": "香川県"
+      },
+      {
+        "value": "愛媛県",
+        "text": "愛媛県"
+      },
+      {
+        "value": "高知県",
+        "text": "高知県"
+      },
+      {
+        "value": "福岡県",
+        "text": "福岡県"
+      },
+      {
+        "value": "佐賀県",
+        "text": "佐賀県"
+      },
+      {
+        "value": "長崎県",
+        "text": "長崎県"
+      },
+      {
+        "value": "熊本県",
+        "text": "熊本県"
+      },
+      {
+        "value": "大分県",
+        "text": "大分県"
+      },
+      {
+        "value": "宮崎県",
+        "text": "宮崎県"
+      },
+      {
+        "value": "鹿児島県",
+        "text": "鹿児島県"
+      },
+      {
+        "value": "沖縄県",
+        "text": "沖縄県"
+      }
+    ]
+  },
+  {
+    "name": "data[Event][address]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventAddress",
+    "visible": true
+  },
+  {
+    "name": "data[Event][address2]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventAddress2",
+    "visible": true
+  },
+  {
+    "name": "data[Event][map]",
+    "tag": "input",
+    "type": "hidden",
+    "id": "EventMap_",
+    "visible": false
+  },
+  {
+    "name": "data[Event][map]",
+    "tag": "input",
+    "type": "checkbox",
+    "id": "EventMap",
+    "visible": true
+  },
+  {
+    "name": "data[Event][lat]",
+    "tag": "input",
+    "type": "hidden",
+    "id": "EventLat",
+    "visible": false
+  },
+  {
+    "name": "data[Event][lon]",
+    "tag": "input",
+    "type": "hidden",
+    "id": "EventLon",
+    "visible": false
+  },
+  {
+    "name": "data[Event][office]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventOffice",
+    "visible": true
+  },
+  {
+    "name": "data[Event][tel]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventTel",
+    "visible": true
+  },
+  {
+    "name": "data[Event][email]",
+    "tag": "input",
+    "type": "text",
+    "id": "EventEmail",
+    "visible": true
+  },
+  {
+    "name": "data[Event][group_id]",
+    "tag": "select",
+    "type": "select-one",
+    "id": "EventGroupId",
+    "visible": true,
+    "options": [
+      {
+        "value": "",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "name": "data[EventDate][party]",
+    "tag": "input",
+    "type": "hidden",
+    "id": "EventDateParty_",
+    "visible": false
+  },
+  {
+    "name": "data[EventDate][party]",
+    "tag": "input",
+    "type": "checkbox",
+    "id": "EventDateParty",
+    "visible": true
+  }
+]

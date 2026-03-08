@@ -33,15 +33,47 @@
   <div class="modal-overlay" id="modal" hidden>
     <div class="modal">
       <h2 id="modal-title">テキストを作成</h2>
+
+      <details class="ai-settings" id="ai-settings">
+        <summary>🔑 OpenAI API キー</summary>
+        <div class="key-input-wrap">
+          <input type="password" id="field-openai-key" placeholder="sk-..." autocomplete="off" />
+          <button type="button" class="btn btn-ghost btn-icon" id="btn-toggle-key" title="表示/非表示">👁️</button>
+        </div>
+        <p class="key-hint">文章自動生成・添削・AIエージェントで使用。音声入力はキー不要。</p>
+      </details>
+
       <label>名前
-        <input type="text" id="field-name" placeholder="例: 標準告知文" />
+        <div class="name-row">
+          <input type="text" id="field-name" placeholder="例: 標準告知文" />
+          <button type="button" class="btn btn-primary" id="btn-generate" title="タイトルに沿って文章を自動生成">✨ 文章自動生成</button>
+        </div>
       </label>
       <label>内容
-        <textarea id="field-content" rows="12" placeholder="テキスト内容を入力..."></textarea>
+        <div class="content-toolbar">
+          <button type="button" class="btn btn-ghost btn-icon" id="btn-voice" title="音声入力">🎤</button>
+          <button type="button" class="btn btn-ghost btn-icon" id="btn-correct" title="AI添削">✨ 添削</button>
+          <button type="button" class="btn btn-ghost btn-icon" id="btn-agent" title="AIエージェント">🤖 相談</button>
+        </div>
+        <textarea id="field-content" rows="12" placeholder="テキスト内容を入力... マイクボタンで音声入力"></textarea>
       </label>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="btn-cancel">キャンセル</button>
         <button class="btn btn-primary" id="btn-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AIエージェントモーダル -->
+  <div class="modal-overlay" id="agent-modal" hidden>
+    <div class="modal">
+      <h2>🤖 AIエージェント</h2>
+      <p class="agent-desc">テキストの改善やアイデアを相談できます。</p>
+      <textarea id="agent-prompt" rows="4" placeholder="例: もっと簡潔にして / 箇条書きに変えて / フォーマルな表現にして"></textarea>
+      <div class="agent-response" id="agent-response"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btn-agent-close">閉じる</button>
+        <button class="btn btn-primary" id="btn-agent-send">送信</button>
       </div>
     </div>
   </div>
@@ -59,7 +91,7 @@
         <label class="site-check"><input type="checkbox" value="techplay" checked /><span>techplay</span></label>
       </div>
 
-      <details class="event-details" id="event-details-section">
+      <details class="event-details" id="event-details-section" open>
         <summary>📅 イベント詳細 <span class="details-hint">（こくチーズ用・受付期間は開催7日前〜1日前で自動計算）</span></summary>
         <div class="event-fields">
           <div class="field-group">
@@ -93,7 +125,7 @@
             </label>
           </div>
           <label>連絡先TEL
-            <input type="tel" id="field-tel" value="000-0000-0000" placeholder="000-0000-0000" />
+            <input type="tel" id="field-tel" value="03-1234-5678" placeholder="03-1234-5678（ハイフン必須）" />
           </label>
         </div>
       </details>

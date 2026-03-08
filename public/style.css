@@ -178,7 +178,8 @@ header h1 {
   align-items: center;
   justify-content: center;
   z-index: 100;
-  padding: 16px;
+  padding: 24px;
+  overflow-y: auto;
 }
 
 .modal-overlay[hidden] { display: none; }
@@ -188,11 +189,14 @@ header h1 {
   border-radius: 16px;
   padding: 28px;
   width: 100%;
-  max-width: 540px;
+  max-width: 680px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  margin: auto;
 }
 
-.modal-sm { max-width: 360px; }
+.modal-sm { max-width: 400px; }
 
 .modal h2 {
   font-size: 17px;
@@ -205,6 +209,68 @@ header h1 {
   color: #4a5072;
   margin-bottom: 24px;
   line-height: 1.6;
+}
+
+/* ===== AI設定・ツールバー ===== */
+.ai-settings {
+  border: 1.5px solid #e2e4ed;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.ai-settings summary {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a5072;
+  cursor: pointer;
+  list-style: none;
+  background: #f8f9fc;
+}
+.ai-settings summary::-webkit-details-marker { display: none; }
+.ai-settings[open] summary { border-bottom: 1.5px solid #e2e4ed; }
+.key-input-wrap {
+  display: flex;
+  gap: 8px;
+  padding: 16px;
+  align-items: center;
+}
+.key-input-wrap input {
+  flex: 1;
+  font-family: monospace;
+  font-size: 13px;
+}
+.key-hint {
+  font-size: 11px;
+  color: #8890a6;
+  padding: 0 16px 16px;
+  margin: 0;
+  line-height: 1.5;
+}
+.name-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.name-row input { flex: 1; }
+.name-row .btn { flex-shrink: 0; white-space: nowrap; }
+.content-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.content-toolbar .btn-icon { padding: 6px 10px; font-size: 12px; }
+#btn-voice.recording { background: #e63946; color: #fff; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.8; } }
+.agent-desc { font-size: 13px; color: #6b7394; margin-bottom: 16px; }
+.agent-response {
+  min-height: 80px;
+  padding: 12px;
+  margin: 12px 0;
+  background: #f8f9fc;
+  border-radius: 8px;
+  font-size: 14px;
+  white-space: pre-wrap;
 }
 
 .modal label {

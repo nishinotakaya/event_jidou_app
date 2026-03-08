@@ -20,6 +20,39 @@ const api = {
     fetch(`/api/texts/${type}/${id}`, { method: 'DELETE' }).then((r) => r.json()),
   post: (body) =>
     fetch('/api/post', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()),
+  aiCorrect: async (text, apiKey) => {
+    const r = await fetch('/api/ai/correct', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, apiKey }) });
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      const t = await r.text();
+      throw new Error(t.startsWith('<') ? `サーバーエラー: APIが応答していません。サーバーを再起動してください。(status: ${r.status})` : t.slice(0, 100));
+    }
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `エラー ${r.status}`);
+    return j;
+  },
+  aiGenerate: async (title, type, apiKey) => {
+    const r = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, type, apiKey }) });
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      const t = await r.text();
+      throw new Error(t.startsWith('<') ? `サーバーエラー: APIが応答していません。(status: ${r.status})` : t.slice(0, 100));
+    }
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `エラー ${r.status}`);
+    return j;
+  },
+  aiAgent: async (text, prompt, apiKey) => {
+    const r = await fetch('/api/ai/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, prompt, apiKey }) });
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      const t = await r.text();
+      throw new Error(t.startsWith('<') ? `サーバーエラー: APIが応答していません。サーバーを再起動してください。(status: ${r.status})` : t.slice(0, 100));
+    }
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `エラー ${r.status}`);
+    return j;
+  },
 };
 
 // ===== 一覧描画 =====
@@ -86,6 +119,10 @@ function openModal(mode, item = null) {
   document.getElementById('modal-title').textContent = mode === 'edit' ? 'テキストを編集' : 'テキストを作成';
   document.getElementById('field-name').value = item?.name ?? '';
   document.getElementById('field-content').value = item?.content ?? '';
+  const keyInput = document.getElementById('field-openai-key');
+  keyInput.value = localStorage.getItem('openai_api_key') || '';
+  keyInput.type = 'password';
+  document.getElementById('btn-toggle-key').textContent = '👁️';
   modal.hidden = false;
   document.getElementById('field-name').focus();
 }
@@ -188,7 +225,7 @@ async function runPost() {
           endTime:   document.getElementById('field-end-time').value || '12:00',
           place:     document.getElementById('field-place').value || 'オンライン',
           capacity:  document.getElementById('field-capacity').value || '50',
-          tel:       document.getElementById('field-tel').value || '000-0000-0000',
+          tel:       document.getElementById('field-tel').value || '03-1234-5678',
         },
       }),
     });
@@ -255,6 +292,133 @@ document.getElementById('btn-save').addEventListener('click', async () => {
 });
 
 document.getElementById('btn-cancel').addEventListener('click', closeModal);
+
+// ===== OpenAI APIキー：保存・表示切替 =====
+document.getElementById('field-openai-key').addEventListener('blur', (e) => {
+  const v = e.target.value.trim();
+  if (v) localStorage.setItem('openai_api_key', v);
+});
+// ===== 文章自動生成 =====
+document.getElementById('btn-generate').addEventListener('click', async () => {
+  const nameInput = document.getElementById('field-name');
+  const title = nameInput.value.trim();
+  if (!title) { alert('名前（タイトル）を入力してください。'); return; }
+  const apiKey = document.getElementById('field-openai-key').value.trim() || localStorage.getItem('openai_api_key');
+  if (!apiKey) { alert('OpenAI APIキーを入力してください。'); return; }
+  const btn = document.getElementById('btn-generate');
+  const textarea = document.getElementById('field-content');
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+  try {
+    const res = await api.aiGenerate(title, currentType, apiKey);
+    if (res.error) throw new Error(res.error);
+    textarea.value = res.content;
+  } catch (err) {
+    alert('生成に失敗しました: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ 文章自動生成';
+  }
+});
+
+document.getElementById('btn-toggle-key').addEventListener('click', () => {
+  const input = document.getElementById('field-openai-key');
+  const btn = document.getElementById('btn-toggle-key');
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁️';
+  }
+});
+
+// ===== 音声入力（Web Speech API） =====
+let recognition = null;
+let isRecording = false;
+document.getElementById('btn-voice').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-voice');
+  const textarea = document.getElementById('field-content');
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert('お使いのブラウザは音声入力に対応していません。Chromeをご利用ください。');
+    return;
+  }
+  if (isRecording) {
+    recognition.stop();
+    isRecording = false;
+    btn.classList.remove('recording');
+    return;
+  }
+  recognition = new SpeechRecognition();
+  isRecording = true;
+  recognition.lang = 'ja-JP';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        textarea.value += e.results[i][0].transcript;
+      }
+    }
+  };
+  recognition.onend = () => { isRecording = false; btn.classList.remove('recording'); };
+  recognition.start();
+  btn.classList.add('recording');
+});
+
+// ===== 添削 =====
+document.getElementById('btn-correct').addEventListener('click', async () => {
+  const textarea = document.getElementById('field-content');
+  const text = textarea.value.trim();
+  if (!text) { alert('添削するテキストを入力してください。'); return; }
+  const apiKey = document.getElementById('field-openai-key').value.trim() || localStorage.getItem('openai_api_key');
+  if (!apiKey) { alert('OpenAI APIキーを入力してください。'); return; }
+  const btn = document.getElementById('btn-correct');
+  btn.disabled = true;
+  btn.textContent = '添削中...';
+  try {
+    const res = await api.aiCorrect(text, apiKey);
+    if (res.error) throw new Error(res.error);
+    textarea.value = res.corrected;
+  } catch (err) {
+    alert('添削に失敗しました: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ 添削';
+  }
+});
+
+// ===== AIエージェント =====
+const agentModal = document.getElementById('agent-modal');
+document.getElementById('btn-agent').addEventListener('click', () => {
+  document.getElementById('agent-prompt').value = '';
+  document.getElementById('agent-response').textContent = '';
+  agentModal.hidden = false;
+});
+document.getElementById('btn-agent-close').addEventListener('click', () => { agentModal.hidden = true; });
+document.getElementById('btn-agent-send').addEventListener('click', async () => {
+  const prompt = document.getElementById('agent-prompt').value.trim();
+  if (!prompt) { alert('指示を入力してください。'); return; }
+  const apiKey = document.getElementById('field-openai-key').value.trim() || localStorage.getItem('openai_api_key');
+  if (!apiKey) { alert('OpenAI APIキーを入力してください。'); return; }
+  const text = document.getElementById('field-content').value;
+  const respEl = document.getElementById('agent-response');
+  const btn = document.getElementById('btn-agent-send');
+  btn.disabled = true;
+  respEl.textContent = '処理中...';
+  try {
+    const res = await api.aiAgent(text, prompt, apiKey);
+    if (res.error) throw new Error(res.error);
+    respEl.textContent = res.result;
+    document.getElementById('field-content').value = res.result;
+  } catch (err) {
+    respEl.textContent = 'エラー: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+agentModal.addEventListener('click', (e) => { if (e.target === agentModal) agentModal.hidden = true; });
 document.getElementById('btn-delete-cancel').addEventListener('click', closeDeleteModal);
 document.getElementById('btn-post-cancel').addEventListener('click', closePostModal);
 document.getElementById('btn-post-run').addEventListener('click', runPost);

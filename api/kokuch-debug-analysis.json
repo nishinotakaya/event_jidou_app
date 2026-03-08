@@ -1,0 +1,773 @@
+{
+  "url": "https://www.kokuchpro.com/regist/",
+  "title": "イベント登録 - こくちーずプロ",
+  "jquery": true,
+  "jqueryVersion": "1.8.3",
+  "tinymce": [
+    {
+      "id": "EventPageBodyHtml",
+      "targetId": "EventPageBodyHtml"
+    }
+  ],
+  "forms": [
+    {
+      "index": 0,
+      "action": "https://www.kokuchpro.com/s/",
+      "method": "get",
+      "fieldCount": 1,
+      "fields": [
+        {
+          "tag": "INPUT",
+          "type": "search",
+          "name": "q",
+          "id": "event_search_txt",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "action": "https://www.kokuchpro.com/regist/",
+      "method": "post",
+      "fieldCount": 35,
+      "fields": [
+        {
+          "tag": "INPUT",
+          "type": "hidden",
+          "name": "_method",
+          "id": "",
+          "value": "POST",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": false,
+          "classes": ""
+        },
+        {
+          "tag": "INPUT",
+          "type": "hidden",
+          "name": "data[Event][event_type]",
+          "id": "EventEventType",
+          "value": "0",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": false,
+          "classes": ""
+        },
+        {
+          "tag": "INPUT",
+          "type": "hidden",
+          "name": "data[Event][charge]",
+          "id": "EventCharge",
+          "value": "0",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": false,
+          "classes": ""
+        },
+        {
+          "tag": "INPUT",
+          "type": "hidden",
+          "name": "data[step]",
+          "id": "",
+          "value": "2",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": false,
+          "classes": ""
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[Event][name]",
+          "id": "EventName",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[Event][description]",
+          "id": "EventDescription",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus"
+        },
+        {
+          "tag": "SELECT",
+          "type": "select-one",
+          "name": "data[Event][genre]",
+          "id": "EventGenre",
+          "value": "",
+          "required": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "select-control"
+        },
+        {
+          "tag": "SELECT",
+          "type": "select-one",
+          "name": "data[Event][genre_sub]",
+          "id": "EventGenreSub",
+          "value": "",
+          "required": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "select-control"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[EventDate][start_date_date]",
+          "id": "EventDateStartDateDate",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus inputdatepicker hasDatepicker"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[EventDate][start_date_time]",
+          "id": "EventDateStartDateTime",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus inputtimepicker"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[EventDate][end_date_date]",
+          "id": "EventDateEndDateDate",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus inputdatepicker hasDatepicker"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[EventDate][end_date_time]",
+          "id": "EventDateEndDateTime",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus inputtimepicker"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[EventDate][total_capacity]",
+          "id": "EventDateTotalCapacity",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus spinner ui-spinner-input"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[EventDate][entry_start_date_date]",
+          "id": "EventDateEntryStartDateDate",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus inputdatepicker hasDatepicker"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[EventDate][entry_start_date_time]",
+          "id": "EventDateEntryStartDateTime",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus inputtimepicker"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[EventDate][entry_end_date_date]",
+          "id": "EventDateEntryEndDateDate",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus inputdatepicker hasDatepicker"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[EventDate][entry_end_date_time]",
+          "id": "EventDateEntryEndDateTime",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus inputtimepicker"
+        },
+        {
+          "tag": "INPUT",
+          "type": "file",
+          "name": "data[Event][photo]",
+          "id": "EventPhoto",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": ""
+        },
+        {
+          "tag": "TEXTAREA",
+          "type": "textarea",
+          "name": "data[EventPage][body_html]",
+          "id": "EventPageBodyHtml",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": false,
+          "classes": "texteditor"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[Event][place]",
+          "id": "EventPlace",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[Event][place_url]",
+          "id": "EventPlaceUrl",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus"
+        },
+        {
+          "tag": "SELECT",
+          "type": "select-one",
+          "name": "data[Event][country]",
+          "id": "EventCountry",
+          "value": "ISL",
+          "required": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "select-control input-width-medium"
+        },
+        {
+          "tag": "SELECT",
+          "type": "select-one",
+          "name": "data[Event][prefecture]",
+          "id": "EventPrefecture",
+          "value": "",
+          "required": false,
+          "disabled": false,
+          "visible": false,
+          "classes": "select-control input-width-small"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[Event][address]",
+          "id": "EventAddress",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[Event][address2]",
+          "id": "EventAddress2",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus"
+        },
+        {
+          "tag": "INPUT",
+          "type": "hidden",
+          "name": "data[Event][map]",
+          "id": "EventMap_",
+          "value": "0",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": false,
+          "classes": ""
+        },
+        {
+          "tag": "INPUT",
+          "type": "checkbox",
+          "name": "data[Event][map]",
+          "id": "EventMap",
+          "value": "1",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "custom-checkbox"
+        },
+        {
+          "tag": "INPUT",
+          "type": "hidden",
+          "name": "data[Event][lat]",
+          "id": "EventLat",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": false,
+          "classes": ""
+        },
+        {
+          "tag": "INPUT",
+          "type": "hidden",
+          "name": "data[Event][lon]",
+          "id": "EventLon",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": false,
+          "classes": ""
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[Event][office]",
+          "id": "EventOffice",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[Event][tel]",
+          "id": "EventTel",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus input-width-medium"
+        },
+        {
+          "tag": "INPUT",
+          "type": "text",
+          "name": "data[Event][email]",
+          "id": "EventEmail",
+          "value": "",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "form-control auto-focus"
+        },
+        {
+          "tag": "SELECT",
+          "type": "select-one",
+          "name": "data[Event][group_id]",
+          "id": "EventGroupId",
+          "value": "",
+          "required": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "select-control"
+        },
+        {
+          "tag": "INPUT",
+          "type": "hidden",
+          "name": "data[EventDate][party]",
+          "id": "EventDateParty_",
+          "value": "0",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": false,
+          "classes": ""
+        },
+        {
+          "tag": "INPUT",
+          "type": "checkbox",
+          "name": "data[EventDate][party]",
+          "id": "EventDateParty",
+          "value": "1",
+          "required": false,
+          "readonly": false,
+          "disabled": false,
+          "visible": true,
+          "classes": "custom-checkbox"
+        }
+      ]
+    }
+  ],
+  "hasDatepickerFields": [
+    {
+      "id": "EventDateStartDateDate",
+      "name": "data[EventDate][start_date_date]",
+      "value": "",
+      "type": "text"
+    },
+    {
+      "id": "EventDateEndDateDate",
+      "name": "data[EventDate][end_date_date]",
+      "value": "",
+      "type": "text"
+    },
+    {
+      "id": "EventDateEntryStartDateDate",
+      "name": "data[EventDate][entry_start_date_date]",
+      "value": "",
+      "type": "text"
+    },
+    {
+      "id": "EventDateEntryEndDateDate",
+      "name": "data[EventDate][entry_end_date_date]",
+      "value": "",
+      "type": "text"
+    }
+  ],
+  "allFields": [
+    {
+      "tag": "INPUT",
+      "type": "search",
+      "name": "q",
+      "id": "event_search_txt",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "hidden",
+      "name": "_method",
+      "id": "",
+      "value": "POST",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "hidden",
+      "name": "data[Event][event_type]",
+      "id": "EventEventType",
+      "value": "0",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "hidden",
+      "name": "data[Event][charge]",
+      "id": "EventCharge",
+      "value": "0",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "hidden",
+      "name": "data[step]",
+      "id": "",
+      "value": "2",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[Event][name]",
+      "id": "EventName",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[Event][description]",
+      "id": "EventDescription",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "SELECT",
+      "type": "select-one",
+      "name": "data[Event][genre]",
+      "id": "EventGenre",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "SELECT",
+      "type": "select-one",
+      "name": "data[Event][genre_sub]",
+      "id": "EventGenreSub",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[EventDate][start_date_date]",
+      "id": "EventDateStartDateDate",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[EventDate][start_date_time]",
+      "id": "EventDateStartDateTime",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[EventDate][end_date_date]",
+      "id": "EventDateEndDateDate",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[EventDate][end_date_time]",
+      "id": "EventDateEndDateTime",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[EventDate][total_capacity]",
+      "id": "EventDateTotalCapacity",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[EventDate][entry_start_date_date]",
+      "id": "EventDateEntryStartDateDate",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[EventDate][entry_start_date_time]",
+      "id": "EventDateEntryStartDateTime",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[EventDate][entry_end_date_date]",
+      "id": "EventDateEntryEndDateDate",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[EventDate][entry_end_date_time]",
+      "id": "EventDateEntryEndDateTime",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "file",
+      "name": "data[Event][photo]",
+      "id": "EventPhoto",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "TEXTAREA",
+      "type": "textarea",
+      "name": "data[EventPage][body_html]",
+      "id": "EventPageBodyHtml",
+      "value": "",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[Event][place]",
+      "id": "EventPlace",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[Event][place_url]",
+      "id": "EventPlaceUrl",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "SELECT",
+      "type": "select-one",
+      "name": "data[Event][country]",
+      "id": "EventCountry",
+      "value": "ISL",
+      "visible": true
+    },
+    {
+      "tag": "SELECT",
+      "type": "select-one",
+      "name": "data[Event][prefecture]",
+      "id": "EventPrefecture",
+      "value": "",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[Event][address]",
+      "id": "EventAddress",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[Event][address2]",
+      "id": "EventAddress2",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "hidden",
+      "name": "data[Event][map]",
+      "id": "EventMap_",
+      "value": "0",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "checkbox",
+      "name": "data[Event][map]",
+      "id": "EventMap",
+      "value": "1",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "hidden",
+      "name": "data[Event][lat]",
+      "id": "EventLat",
+      "value": "",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "hidden",
+      "name": "data[Event][lon]",
+      "id": "EventLon",
+      "value": "",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[Event][office]",
+      "id": "EventOffice",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[Event][tel]",
+      "id": "EventTel",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "name": "data[Event][email]",
+      "id": "EventEmail",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "SELECT",
+      "type": "select-one",
+      "name": "data[Event][group_id]",
+      "id": "EventGroupId",
+      "value": "",
+      "visible": true
+    },
+    {
+      "tag": "INPUT",
+      "type": "hidden",
+      "name": "data[EventDate][party]",
+      "id": "EventDateParty_",
+      "value": "0",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "checkbox",
+      "name": "data[EventDate][party]",
+      "id": "EventDateParty",
+      "value": "1",
+      "visible": true
+    }
+  ]
+}

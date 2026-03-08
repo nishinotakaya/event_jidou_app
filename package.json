@@ -4,16 +4,19 @@
   "description": "イベント告知自動投稿 & 受講生サポート自動送信アプリ",
   "type": "module",
   "scripts": {
-    "event": "node event-post.js",
+    "event": "node scripts/event-post.js",
     "student": "node student-support.js",
     "texts": "node text-manager.js",
-    "web": "node server.js"
+    "web": "node api/server.js",
+    "dump-kokuchpro": "node scripts/dump-kokuchpro-fields.js",
+    "capture-kokuchpro": "node scripts/capture-kokuchpro-form.js"
   },
   "dependencies": {
     "@playwright/test": "^1.40.0",
     "dotenv": "^16.3.1",
     "express": "^5.2.1",
     "inquirer": "^9.2.12",
+    "openai": "^6.27.0",
     "playwright": "^1.40.0"
   }
 }
