@@ -4,23 +4,71 @@
 
 イベント告知文のテキスト管理・AI添削・画像生成・複数サイトへの自動投稿を一元管理するWebアプリ。
 
-| 項目 | 内容 |
-|------|------|
-| アプリ名 | イベント告知アプリ |
-| 起動 | `npm run web` → http://localhost:3000 |
+| 項目         | 内容                                                                |
+| ------------ | ------------------------------------------------------------------- |
+| アプリ名     | イベント告知アプリ                                                  |
+| 起動         | `npm run web` → http://localhost:3000                               |
 | 技術スタック | Node.js ESModules / Express / Playwright / Claude API / 画像生成API |
-| データ保存 | JSONファイル（`texts/event.json` / `texts/student.json`） |
+| データ保存   | JSONファイル（`texts/event.json` / `texts/student.json`）           |
 
 ---
 
 ## 2. 機能一覧
 
-| # | 機能 | 状態 |
-|---|------|------|
-| 1 | テキスト管理（CRUD） | ✅ 実装済み |
-| 2 | 複数サイトへの自動投稿 | ✅ 実装中 |
-| 3 | **AI添削機能** | 🔲 未実装 |
-| 4 | **AI画像生成機能** | 🔲 未実装 |
+| #   | 機能                   | 状態        |
+| --- | ---------------------- | ----------- |
+| 1   | テキスト管理（CRUD）   | ✅ 実装済み |
+| 2   | 複数サイトへの自動投稿 | ✅ 実装中   |
+| 3   | **AI添削機能**         | 🔲 未実装   |
+| 4   | **AI画像生成機能**     | 🔲 未実装   |
+
+---
+
+## 2-1. 自動投稿対象サイト
+
+| # | サービス名 | URL | 投稿方式 | 認証情報（.env） |
+|---|-----------|-----|---------|----------------|
+| 1 | **こくちーずプロ** | https://www.kokuchpro.com | Playwright（TinyMCE対応・2段階フォーム） | `CONPASS__KOKUCIZE_MAIL` / `CONPASS_KOKUCIZE_PASSWORD` |
+| 2 | **Peatix** | https://peatix.com | Playwright（フォーム自動入力） | `PEATIX_EMAIL` / `PEATIX_PASSWORD` |
+| 3 | **connpass** | https://connpass.com | 内部REST API（`page.evaluate` + cookie） | `CONPASS__KOKUCIZE_MAIL` / `CONPASS_KOKUCIZE_PASSWORD` |
+| 4 | **TECHPLAY** | https://techplay.jp | Playwright（フォーム自動入力） | `TECHPLAY_EMAIL` / `TECHPLAY_PASSWORD` |
+
+### 各サイトの投稿フロー
+
+#### こくちーずプロ
+```
+1. /regist/ へアクセス → ログインリダイレクト → その場で認証
+2. Step1: イベント種別・参加費をラジオボタンで選択 → フォームsubmit
+3. Step2: TinyMCE エディタに本文を入力（tinymce.editors[].setContent()）
+4. タイトル入力 → 送信
+```
+
+#### Peatix
+```
+1. mypage へアクセスしてログイン状態を確認
+2. 未ログインなら /signin へ移動して自動ログイン
+3. グループイベント作成ページへ移動
+4. フォーム構造を動的スキャン → textarea / contenteditable に本文入力
+5. タイトル入力 → 送信ボタンをクリック
+```
+
+#### connpass
+```
+1. mypage へアクセスしてログイン確認・認証
+2. /editmanage/ の cookie から csrftoken を取得
+3. POST /api/event/ → イベント作成（タイトルのみ）
+4. PUT  /api/event/{id} → description_input に本文を更新（下書き保存）
+※ すべて page.evaluate() 内のブラウザ fetch で実行（cookie 自動付与）
+```
+
+#### TECHPLAY
+```
+1. mypage へアクセスしてログイン状態を確認
+2. 未ログインなら /signin へ移動して自動ログイン
+3. イベント作成ページへ移動
+4. フォーム構造を動的スキャン → textarea / contenteditable に本文入力
+5. タイトル入力 → 送信ボタンをクリック
+```
 
 ---
 
@@ -69,6 +117,7 @@
 #### POST /api/ai/correct
 
 リクエスト:
+
 ```json
 {
   "content": "添削対象のテキスト",
@@ -77,6 +126,7 @@
 ```
 
 レスポンス:
+
 ```json
 {
   "corrected": "添削後のテキスト",
@@ -87,19 +137,20 @@
 ### 実装仕様（server.js）
 
 ```javascript
-import Anthropic from '@anthropic-ai/sdk';
+import Anthropic from "@anthropic-ai/sdk";
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-app.post('/api/ai/correct', async (req, res) => {
+app.post("/api/ai/correct", async (req, res) => {
   const { content, instruction } = req.body;
 
   const message = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
+    model: "claude-opus-4-6",
     max_tokens: 2048,
-    messages: [{
-      role: 'user',
-      content: `以下のイベント告知文を添削してください。
-${instruction ? `方針: ${instruction}` : ''}
+    messages: [
+      {
+        role: "user",
+        content: `以下のイベント告知文を添削してください。
+${instruction ? `方針: ${instruction}` : ""}
 
 【添削対象】
 ${content}
@@ -108,8 +159,9 @@ ${content}
 {
   "corrected": "添削後のテキスト",
   "points": ["改善ポイント1", "改善ポイント2"]
-}`
-    }]
+}`,
+      },
+    ],
   });
 
   const result = JSON.parse(message.content[0].text);
@@ -125,13 +177,13 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
 
 ### 添削の方針プリセット
 
-| プリセット | 指示内容 |
-|-----------|---------|
-| 簡潔に | 読みやすく要点を絞って短くまとめる |
-| 参加意欲を高める | 参加者のベネフィットを前面に出し、行動を促す |
-| 初心者向けに | 専門用語を避け、誰でも参加できる雰囲気にする |
-| プロフェッショナルに | ビジネス向けの丁寧な文体に整える |
-| SNS向けに | ハッシュタグを追加し短くキャッチーに |
+| プリセット           | 指示内容                                     |
+| -------------------- | -------------------------------------------- |
+| 簡潔に               | 読みやすく要点を絞って短くまとめる           |
+| 参加意欲を高める     | 参加者のベネフィットを前面に出し、行動を促す |
+| 初心者向けに         | 専門用語を避け、誰でも参加できる雰囲気にする |
+| プロフェッショナルに | ビジネス向けの丁寧な文体に整える             |
+| SNS向けに            | ハッシュタグを追加し短くキャッチーに         |
 
 ---
 
@@ -179,6 +231,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
 #### POST /api/ai/image
 
 リクエスト:
+
 ```json
 {
   "content": "バナー生成の元テキスト",
@@ -189,6 +242,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
 ```
 
 レスポンス:
+
 ```json
 {
   "url": "生成された画像のURL",
@@ -199,29 +253,32 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
 ### 実装仕様（server.js）
 
 ```javascript
-import OpenAI from 'openai';
+import OpenAI from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-app.post('/api/ai/image', async (req, res) => {
+app.post("/api/ai/image", async (req, res) => {
   const { content, style, color, extra } = req.body;
 
   // イベントタイトルを抽出
-  const title = content.split('\n')[0].replace(/^[#【\s]+/, '').slice(0, 60);
+  const title = content
+    .split("\n")[0]
+    .replace(/^[#【\s]+/, "")
+    .slice(0, 60);
 
   const prompt = `
     Event announcement banner image for: "${title}".
-    Style: ${style || 'professional and modern'}.
-    Color scheme: ${color || 'blue and white'}.
-    ${extra || ''}
+    Style: ${style || "professional and modern"}.
+    Color scheme: ${color || "blue and white"}.
+    ${extra || ""}
     Text-free design. 1200x630px. High quality.
   `.trim();
 
   const response = await openai.images.generate({
-    model: 'dall-e-3',
+    model: "dall-e-3",
     prompt,
     n: 1,
-    size: '1792x1024',
-    quality: 'standard',
+    size: "1792x1024",
+    quality: "standard",
   });
 
   res.json({
@@ -239,12 +296,12 @@ OPENAI_API_KEY=sk-xxxxxxxxxxxxx
 
 ### スタイルプリセット
 
-| スタイル | 説明 |
-|---------|------|
-| プロフェッショナル | ビジネス向けのクリーンなデザイン |
-| カジュアル | 親しみやすいポップなデザイン |
-| テック系 | デジタル・IT感のある近未来的デザイン |
-| ミニマル | シンプルで余白の多いデザイン |
+| スタイル           | 説明                                 |
+| ------------------ | ------------------------------------ |
+| プロフェッショナル | ビジネス向けのクリーンなデザイン     |
+| カジュアル         | 親しみやすいポップなデザイン         |
+| テック系           | デジタル・IT感のある近未来的デザイン |
+| ミニマル           | シンプルで余白の多いデザイン         |
 
 ---
 
@@ -277,10 +334,10 @@ npm install @anthropic-ai/sdk openai
 
 ## 7. 実装の優先順位
 
-| 優先度 | 機能 | 理由 |
-|-------|------|------|
-| 高 | AI添削 | テキストの質向上に直結・APIコストが低い |
-| 中 | 画像生成 | 告知の訴求力向上・DALL-E APIコスト要注意 |
+| 優先度 | 機能     | 理由                                     |
+| ------ | -------- | ---------------------------------------- |
+| 高     | AI添削   | テキストの質向上に直結・APIコストが低い  |
+| 中     | 画像生成 | 告知の訴求力向上・DALL-E APIコスト要注意 |
 
 ---
 
