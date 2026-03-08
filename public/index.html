@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>テキスト管理アプリ</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <header>
+      <h1>📋 テキスト管理</h1>
+      <div class="tab-group">
+        <button class="tab active" data-type="event">イベント告知</button>
+        <button class="tab" data-type="student">受講生サポート</button>
+      </div>
+    </header>
+
+    <main>
+      <div class="toolbar">
+        <button class="btn btn-primary" id="btn-new">＋ 新規作成</button>
+      </div>
+
+      <ul class="text-list" id="text-list"></ul>
+
+      <p class="empty" id="empty-msg" hidden>テキストがまだありません。</p>
+    </main>
+
+  </div>
+
+  <!-- モーダル -->
+  <div class="modal-overlay" id="modal" hidden>
+    <div class="modal">
+      <h2 id="modal-title">テキストを作成</h2>
+      <label>名前
+        <input type="text" id="field-name" placeholder="例: 標準告知文" />
+      </label>
+      <label>内容
+        <textarea id="field-content" rows="12" placeholder="テキスト内容を入力..."></textarea>
+      </label>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btn-cancel">キャンセル</button>
+        <button class="btn btn-primary" id="btn-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 投稿モーダル -->
+  <div class="modal-overlay" id="post-modal" hidden>
+    <div class="modal">
+      <h2>📣 投稿先を選択</h2>
+      <p class="post-text-name" id="post-text-name"></p>
+
+      <div class="site-checks">
+        <label class="site-check"><input type="checkbox" value="こくチーズ" checked /><span>こくチーズ</span></label>
+        <label class="site-check"><input type="checkbox" value="Peatix" checked /><span>Peatix</span></label>
+        <label class="site-check"><input type="checkbox" value="connpass" checked /><span>connpass</span></label>
+        <label class="site-check"><input type="checkbox" value="techplay" checked /><span>techplay</span></label>
+      </div>
+
+      <div class="post-results" id="post-results" hidden>
+        <p class="results-title">投稿結果</p>
+        <ul class="results-list" id="results-list"></ul>
+      </div>
+
+      <div class="log-area" id="log-area" hidden>
+        <p class="results-title">実行ログ</p>
+        <div class="log-box" id="log-box"></div>
+      </div>
+
+      <div class="modal-actions" id="post-actions">
+        <button class="btn btn-ghost" id="btn-post-cancel">キャンセル</button>
+        <button class="btn btn-post" id="btn-post-run">投稿する →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 削除確認モーダル -->
+  <div class="modal-overlay" id="delete-modal" hidden>
+    <div class="modal modal-sm">
+      <h2>削除の確認</h2>
+      <p id="delete-msg"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="btn-delete-cancel">キャンセル</button>
+        <button class="btn btn-danger" id="btn-delete-ok">削除する</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

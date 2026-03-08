@@ -1,0 +1,47 @@
+[
+  {
+    "id": "student_001",
+    "name": "未提出フォロー",
+    "type": "student",
+    "pattern": "未提出フォロー",
+    "content": "{name}さん、こんにちは！\n課題がまだ届いていないのですが、進捗いかがですか？\nもし詰まっているところがあれば気軽に教えてください😊",
+    "createdAt": "2026-03-08",
+    "updatedAt": "2026-03-08"
+  },
+  {
+    "id": "student_002",
+    "name": "学習停滞フォロー",
+    "type": "student",
+    "pattern": "学習停滞フォロー",
+    "content": "{name}さん、最近どうですか？\nしばらくログインが確認できていないのが気になって連絡しました。\n忙しいですか？それとも何か詰まっていますか？",
+    "createdAt": "2026-03-08",
+    "updatedAt": "2026-03-08"
+  },
+  {
+    "id": "student_003",
+    "name": "提出確認",
+    "type": "student",
+    "pattern": "提出確認",
+    "content": "{name}さん、提出ありがとうございます！\n内容確認しました。フィードバックをお送りします。",
+    "createdAt": "2026-03-08",
+    "updatedAt": "2026-03-08"
+  },
+  {
+    "id": "student_004",
+    "name": "面談前案内",
+    "type": "student",
+    "pattern": "面談前案内",
+    "content": "{name}さん、{datetime}の面談よろしくお願いします。\n当日は{agenda}についてお話しする予定です。\n事前に確認しておきたいことがあればぜひ教えてください。",
+    "createdAt": "2026-03-08",
+    "updatedAt": "2026-03-08"
+  },
+  {
+    "id": "student_005",
+    "name": "面談後フォロー",
+    "type": "student",
+    "pattern": "面談後フォロー",
+    "content": "{name}さん、今日はお時間ありがとうございました！\n次のステップは「{nextAction}」です。\n何か不明点があればいつでも聞いてください。",
+    "createdAt": "2026-03-08",
+    "updatedAt": "2026-03-08"
+  }
+]
