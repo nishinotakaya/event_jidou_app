@@ -150,6 +150,7 @@ const SITES = ['こくチーズ', 'Peatix', 'connpass', 'techplay'];
 function openPostModal(item) {
   postingItem = item;
   document.getElementById('post-text-name').textContent = `テキスト: ${item.name}`;
+  document.getElementById('field-event-title').value = item.name || '';
   postModal.querySelectorAll('input[type="checkbox"]').forEach((cb) => { cb.checked = true; });
   document.getElementById('post-results').hidden = true;
   document.getElementById('results-list').innerHTML = '';
@@ -219,6 +220,7 @@ async function runPost() {
         content: postingItem.content,
         sites: checked,
         eventFields: {
+          title:     document.getElementById('field-event-title').value.trim() || postingItem.name,
           startDate: document.getElementById('field-start-date').value,
           startTime: document.getElementById('field-start-time').value || '10:00',
           endDate:   document.getElementById('field-end-date').value,

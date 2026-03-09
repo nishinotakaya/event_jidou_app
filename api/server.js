@@ -223,4 +223,7 @@ app.post('/api/ai/agent', async (req, res) => {
   }
 });
 
-app.listen(3000, () => console.log('✅ サーバー起動: http://localhost:3000'));
+if (!process.env.VERCEL) {
+  app.listen(3000, () => console.log('✅ サーバー起動: http://localhost:3000'));
+}
+export default app;

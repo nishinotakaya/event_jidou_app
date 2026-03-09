@@ -22,7 +22,7 @@ export const config = {
 
 export async function post(page, content, eventFields = {}, log) {
   const cfg = config;
-  const title = content.split('\n')[0].replace(/^[#【\s「『]+/, '').replace(/[】』」\s]+$/, '').slice(0, 80) || 'イベント';
+  const title = (eventFields.title || eventFields.name || content.split('\n')[0].replace(/^[#【\s「『]+/, '').replace(/[】』」\s]+$/, '')).toString().slice(0, 80) || 'イベント';
 
   // ===== 1. ログイン =====
   log(`[こくチーズ] /regist/ にアクセス中...`);

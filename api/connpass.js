@@ -40,7 +40,7 @@ async function ensureLogin(page, log) {
 
 export async function post(page, content, eventFields = {}, log) {
   const csrftoken = await ensureLogin(page, log);
-  const title = content.split('\n')[0].replace(/^[#【\s「『]+/, '').replace(/[】』」\s]+$/, '').slice(0, 80) || 'イベント';
+  const title = (eventFields.title || content.split('\n')[0].replace(/^[#【\s「『]+/, '').replace(/[】』」\s]+$/, '')).slice(0, 80) || 'イベント';
 
   const ef = eventFields;
   const place = ef.place || 'オンライン';
@@ -87,10 +87,17 @@ export async function post(page, content, eventFields = {}, log) {
   const eventId = created.id;
   log(`[connpass] ✅ イベント作成 ID: ${eventId}`);
 
+  // 本文の先頭行がタイトルと同じ内容（# 見出しや【】など）なら除去
+  const lines = content.split('\n');
+  const firstLine = lines[0].replace(/^[#\s「『【]+/, '').replace(/[】』」\s]+$/, '').trim();
+  const body = firstLine && title.includes(firstLine)
+    ? lines.slice(1).join('\n').replace(/^\n+/, '')
+    : content;
+
   const putBody = {
     ...created,
-    description_input: content,
-    description: content,
+    description_input: body,
+    description: body,
     status: 'draft',
     place: null,  // placeはnull（会場名は description に含める）
     start_datetime: startDatetime,
