@@ -120,7 +120,7 @@ export async function post(page, content, eventFields = {}, log) {
   // ===== 6. 全フィールドをpage.evaluate で一括入力 =====
   const fillResult = await page.evaluate(({
     title, summary80, ymdDash, ymdEndDash, entry7, entry1,
-    tStart, tEnd, cap, place, tel, email
+    tStart, tEnd, cap, place, zoomUrl, tel, email
   }) => {
     const logs = [];
     // jQuery参照（window.jQuery / window.$ 両方試す）
@@ -266,6 +266,7 @@ export async function post(page, content, eventFields = {}, log) {
     // === 定員・会場・国・連絡先 ===
     setVal(find('#EventDateTotalCapacity', '[name="data[EventDate][total_capacity]"]'), cap);
     setVal(find('#EventPlace',             '[name="data[Event][place]"]'),              place);
+    if (zoomUrl) setVal(find('#EventPlaceUrl', '[name="data[Event][place_url]"]'), zoomUrl);
     const countryEl = find('[name="data[Event][country]"]');
     if (countryEl) setSelectOpt(countryEl, 'JPN');
     setVal(find('#EventTel',   '[name="data[Event][tel]"]'),   tel);
@@ -286,7 +287,7 @@ export async function post(page, content, eventFields = {}, log) {
     logs.push(`検証: ${verifyLines.join(' | ')}`);
 
     return logs;
-  }, { title, summary80, ymdDash, ymdEndDash, entry7, entry1, tStart, tEnd, cap, place, tel, email: cfg.email });
+  }, { title, summary80, ymdDash, ymdEndDash, entry7, entry1, tStart, tEnd, cap, place, zoomUrl: ef.zoomUrl || '', tel, email: cfg.email });
 
   for (const l of fillResult) log(`[こくチーズ] ${l}`);
 
@@ -334,6 +335,24 @@ export async function post(page, content, eventFields = {}, log) {
     try {
       writeFileSync(join(__dirname, 'kokuchpro-pre-submit.json'), JSON.stringify(preSubmit, null, 2), 'utf-8');
     } catch (_) {}
+  }
+
+  // ===== 8.5. 画像アップロード =====
+  if (eventFields.imagePath) {
+    log(`[こくチーズ] 📸 画像アップロード中...`);
+    try {
+      const fileInputs = page.locator('input[type="file"]');
+      const count = await fileInputs.count();
+      if (count > 0) {
+        await fileInputs.first().setInputFiles(eventFields.imagePath);
+        await page.waitForTimeout(1000);
+        log(`[こくチーズ] ✅ 画像アップロード完了`);
+      } else {
+        log(`[こくチーズ] ⚠️ 画像アップロードフィールドが見つかりません`);
+      }
+    } catch (e) {
+      log(`[こくチーズ] ⚠️ 画像アップロード失敗: ${e.message}`);
+    }
   }
 
   // ===== 9. 送信 =====

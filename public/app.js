@@ -31,8 +31,19 @@ const api = {
     if (!r.ok) throw new Error(j.error || `エラー ${r.status}`);
     return j;
   },
-  aiGenerate: async (title, type, apiKey) => {
-    const r = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, type, apiKey }) });
+  aiGenerate: async (title, type, apiKey, eventDate, eventTime, eventEndTime) => {
+    const r = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, type, apiKey, eventDate, eventTime, eventEndTime }) });
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      const t = await r.text();
+      throw new Error(t.startsWith('<') ? `サーバーエラー: APIが応答していません。(status: ${r.status})` : t.slice(0, 100));
+    }
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `エラー ${r.status}`);
+    return j;
+  },
+  aiAlignDatetime: async (text, eventDate, eventTime, eventEndTime, apiKey) => {
+    const r = await fetch('/api/ai/align-datetime', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, eventDate, eventTime, eventEndTime, apiKey }) });
     const ct = r.headers.get('content-type') || '';
     if (!ct.includes('application/json')) {
       const t = await r.text();
@@ -54,6 +65,30 @@ const api = {
     return j;
   },
 };
+
+// ===== 開催日時の localStorage 同期 =====
+function syncEventDatetime() {
+  const date    = document.getElementById('field-gen-date')?.value;
+  const time    = document.getElementById('field-gen-time')?.value;
+  const endTime = document.getElementById('field-gen-end-time')?.value;
+  if (date)    localStorage.setItem('event_gen_date', date);
+  if (time)    localStorage.setItem('event_gen_time', time);
+  if (endTime) localStorage.setItem('event_gen_end_time', endTime);
+}
+
+// ===== APIキー取得・バリデーション =====
+function getApiKey(fieldId = 'field-openai-key') {
+  const fromField = document.getElementById(fieldId)?.value.trim() || '';
+  const fromStorage = localStorage.getItem('openai_api_key') || '';
+  const key = fromField || fromStorage;
+  // ブラウザ自動入力などで明らかに無効な値が入っている場合は除外
+  if (!key.startsWith('sk-')) {
+    // 無効な値がlocalStorageに残っていれば消す
+    if (fromStorage && !fromStorage.startsWith('sk-')) localStorage.removeItem('openai_api_key');
+    return null;
+  }
+  return key;
+}
 
 // ===== 一覧描画 =====
 async function renderList() {
@@ -123,6 +158,21 @@ function openModal(mode, item = null) {
   keyInput.value = localStorage.getItem('openai_api_key') || '';
   keyInput.type = 'password';
   document.getElementById('btn-toggle-key').textContent = '👁️';
+
+  // 開催日時フィールドの表示制御（イベント告知のみ表示）
+  const dtRow = document.getElementById('gen-datetime-row');
+  if (currentType === 'event') {
+    dtRow.hidden = false;
+    // 保存済みの日時を復元、なければ30日後をデフォルトに
+    const savedDate = localStorage.getItem('event_gen_date');
+    const d30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    document.getElementById('field-gen-date').value = savedDate || d30;
+    document.getElementById('field-gen-time').value = localStorage.getItem('event_gen_time') || '10:00';
+    document.getElementById('field-gen-end-time').value = localStorage.getItem('event_gen_end_time') || '12:00';
+  } else {
+    dtRow.hidden = true;
+  }
+
   modal.hidden = false;
   document.getElementById('field-name').focus();
 }
@@ -151,7 +201,11 @@ function openPostModal(item) {
   postingItem = item;
   document.getElementById('post-text-name').textContent = `テキスト: ${item.name}`;
   document.getElementById('field-event-title').value = item.name || '';
-  postModal.querySelectorAll('input[type="checkbox"]').forEach((cb) => { cb.checked = true; });
+  postModal.querySelectorAll('.site-checks input[type="checkbox"]').forEach((cb) => { cb.checked = true; });
+  document.getElementById('check-generate-image').checked = false;
+  const savedKey = getApiKey() || '';
+  const postKeyField = document.getElementById('field-post-openai-key');
+  if (postKeyField) postKeyField.value = savedKey;
   document.getElementById('post-results').hidden = true;
   document.getElementById('results-list').innerHTML = '';
   document.getElementById('log-area').hidden = true;
@@ -161,11 +215,14 @@ function openPostModal(item) {
   runBtn.textContent = '投稿する →';
   document.getElementById('btn-post-cancel').textContent = 'キャンセル';
 
-  // デフォルト日付を30日後に設定
-  const d30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  const ymd = d30.toISOString().slice(0, 10);
+  // 開催日時：保存済みの日時を使う、なければ30日後をデフォルトに
+  const savedDate = localStorage.getItem('event_gen_date');
+  const ymd = savedDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   document.getElementById('field-start-date').value = ymd;
   document.getElementById('field-end-date').value = ymd;
+  document.getElementById('field-start-time').value = localStorage.getItem('event_gen_time') || '10:00';
+  document.getElementById('field-end-time').value = localStorage.getItem('event_gen_end_time') || '12:00';
+  document.getElementById('field-peatix-event-id').value = '';
 
   postModal.hidden = false;
 }
@@ -184,7 +241,7 @@ function setResultStatus(site, statusClass, text) {
 }
 
 async function runPost() {
-  const checked = [...postModal.querySelectorAll('input[type="checkbox"]:checked')].map((cb) => cb.value);
+  const checked = [...postModal.querySelectorAll('.site-checks input[type="checkbox"]:checked')].map((cb) => cb.value);
   if (checked.length === 0) { alert('投稿先を1つ以上選択してください。'); return; }
 
   const runBtn = document.getElementById('btn-post-run');
@@ -213,21 +270,35 @@ async function runPost() {
 
   // fetchでSSEストリームを受信
   try {
+    const generateImage = document.getElementById('check-generate-image').checked;
+    const imageStyle = document.querySelector('input[name="image-style"]:checked')?.value || 'cute';
+    const postApiKey = getApiKey('field-post-openai-key') || getApiKey();
+    if (generateImage && !postApiKey) {
+      alert('画像自動生成にはOpenAI APIキーが必要です。\n画像生成セクションのキー入力欄に入力してください。');
+      runBtn.disabled = false;
+      runBtn.textContent = '投稿する →';
+      return;
+    }
     const response = await fetch('/api/post', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         content: postingItem.content,
         sites: checked,
+        generateImage,
+        imageStyle,
+        openaiApiKey: generateImage ? postApiKey : null,
         eventFields: {
-          title:     document.getElementById('field-event-title').value.trim() || postingItem.name,
-          startDate: document.getElementById('field-start-date').value,
-          startTime: document.getElementById('field-start-time').value || '10:00',
-          endDate:   document.getElementById('field-end-date').value,
-          endTime:   document.getElementById('field-end-time').value || '12:00',
-          place:     document.getElementById('field-place').value || 'オンライン',
-          capacity:  document.getElementById('field-capacity').value || '50',
-          tel:       document.getElementById('field-tel').value || '03-1234-5678',
+          title:          document.getElementById('field-event-title').value.trim() || postingItem.name,
+          startDate:      document.getElementById('field-start-date').value,
+          startTime:      document.getElementById('field-start-time').value || '10:00',
+          endDate:        document.getElementById('field-end-date').value,
+          endTime:        document.getElementById('field-end-time').value || '12:00',
+          place:          document.getElementById('field-place').value || 'オンライン',
+          zoomUrl:        document.getElementById('field-zoom-url').value.trim(),
+          capacity:       document.getElementById('field-capacity').value || '50',
+          tel:            document.getElementById('field-tel').value || '03-1234-5678',
+          peatixEventId:  document.getElementById('field-peatix-event-id').value.trim(),
         },
       }),
     });
@@ -282,8 +353,31 @@ document.getElementById('btn-new').addEventListener('click', () => openModal('cr
 
 document.getElementById('btn-save').addEventListener('click', async () => {
   const name = document.getElementById('field-name').value.trim();
-  const content = document.getElementById('field-content').value.trim();
+  let content = document.getElementById('field-content').value.trim();
   if (!name || !content) return alert('名前と内容を入力してください。');
+
+  // イベント告知かつ日付が入力されている場合、AIで日時を揃える
+  const eventDate    = document.getElementById('field-gen-date')?.value || '';
+  const eventTime    = document.getElementById('field-gen-time')?.value || '';
+  const eventEndTime = document.getElementById('field-gen-end-time')?.value || '';
+  if (currentType === 'event' && eventDate) {
+    const apiKey = getApiKey();
+    if (apiKey) {
+      const saveBtn = document.getElementById('btn-save');
+      saveBtn.disabled = true;
+      saveBtn.textContent = '日時を調整中...';
+      try {
+        const res = await api.aiAlignDatetime(content, eventDate, eventTime, eventEndTime, apiKey);
+        if (res.content) content = res.content;
+      } catch (e) {
+        // 失敗しても保存は続行
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = '保存';
+      }
+    }
+  }
+
   if (editingId) {
     await api.update(currentType, editingId, { name, content });
   } else {
@@ -298,21 +392,45 @@ document.getElementById('btn-cancel').addEventListener('click', closeModal);
 // ===== OpenAI APIキー：保存・表示切替 =====
 document.getElementById('field-openai-key').addEventListener('blur', (e) => {
   const v = e.target.value.trim();
-  if (v) localStorage.setItem('openai_api_key', v);
+  if (v.startsWith('sk-')) localStorage.setItem('openai_api_key', v);
+});
+
+// ===== 投稿モーダルのAPIキー表示切替 =====
+document.getElementById('btn-toggle-post-key').addEventListener('click', () => {
+  const input = document.getElementById('field-post-openai-key');
+  const btn = document.getElementById('btn-toggle-post-key');
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+  else { input.type = 'password'; btn.textContent = '👁️'; }
+});
+document.getElementById('field-post-openai-key').addEventListener('blur', (e) => {
+  const v = e.target.value.trim();
+  if (v.startsWith('sk-')) localStorage.setItem('openai_api_key', v);
 });
 // ===== 文章自動生成 =====
 document.getElementById('btn-generate').addEventListener('click', async () => {
   const nameInput = document.getElementById('field-name');
   const title = nameInput.value.trim();
   if (!title) { alert('名前（タイトル）を入力してください。'); return; }
-  const apiKey = document.getElementById('field-openai-key').value.trim() || localStorage.getItem('openai_api_key');
-  if (!apiKey) { alert('OpenAI APIキーを入力してください。'); return; }
+  const apiKey = getApiKey();
+  if (!apiKey) { alert('有効なOpenAI APIキー（sk-...）を入力してください。'); return; }
   const btn = document.getElementById('btn-generate');
   const textarea = document.getElementById('field-content');
   btn.disabled = true;
   btn.textContent = '生成中...';
+  const eventDate    = document.getElementById('field-gen-date')?.value
+                    || localStorage.getItem('event_gen_date') || '';
+  const eventTime    = document.getElementById('field-gen-time')?.value
+                    || localStorage.getItem('event_gen_time') || '10:00';
+  const eventEndTime = document.getElementById('field-gen-end-time')?.value
+                    || localStorage.getItem('event_gen_end_time') || '12:00';
+  if (!eventDate) {
+    alert('開催日時（文章生成用）の日付を入力してください。');
+    btn.disabled = false;
+    btn.textContent = '✨ 文章自動生成';
+    return;
+  }
   try {
-    const res = await api.aiGenerate(title, currentType, apiKey);
+    const res = await api.aiGenerate(title, currentType, apiKey, eventDate, eventTime, eventEndTime);
     if (res.error) throw new Error(res.error);
     textarea.value = res.content;
   } catch (err) {
@@ -374,8 +492,8 @@ document.getElementById('btn-correct').addEventListener('click', async () => {
   const textarea = document.getElementById('field-content');
   const text = textarea.value.trim();
   if (!text) { alert('添削するテキストを入力してください。'); return; }
-  const apiKey = document.getElementById('field-openai-key').value.trim() || localStorage.getItem('openai_api_key');
-  if (!apiKey) { alert('OpenAI APIキーを入力してください。'); return; }
+  const apiKey = getApiKey();
+  if (!apiKey) { alert('有効なOpenAI APIキー（sk-...）を入力してください。'); return; }
   const btn = document.getElementById('btn-correct');
   btn.disabled = true;
   btn.textContent = '添削中...';
@@ -402,8 +520,8 @@ document.getElementById('btn-agent-close').addEventListener('click', () => { age
 document.getElementById('btn-agent-send').addEventListener('click', async () => {
   const prompt = document.getElementById('agent-prompt').value.trim();
   if (!prompt) { alert('指示を入力してください。'); return; }
-  const apiKey = document.getElementById('field-openai-key').value.trim() || localStorage.getItem('openai_api_key');
-  if (!apiKey) { alert('OpenAI APIキーを入力してください。'); return; }
+  const apiKey = getApiKey();
+  if (!apiKey) { alert('有効なOpenAI APIキー（sk-...）を入力してください。'); return; }
   const text = document.getElementById('field-content').value;
   const respEl = document.getElementById('agent-response');
   const btn = document.getElementById('btn-agent-send');
@@ -429,6 +547,22 @@ document.getElementById('btn-delete-ok').addEventListener('click', async () => {
   await api.delete(currentType, deletingId);
   closeDeleteModal();
   renderList();
+});
+
+// ===== 開催日時フィールドの変更を localStorage に保存 =====
+['field-gen-date', 'field-gen-time', 'field-gen-end-time'].forEach((id) => {
+  document.getElementById(id)?.addEventListener('change', syncEventDatetime);
+});
+// 投稿モーダルの日時変更も同期
+document.getElementById('field-start-date')?.addEventListener('change', (e) => {
+  localStorage.setItem('event_gen_date', e.target.value);
+  document.getElementById('field-end-date').value = e.target.value;
+});
+document.getElementById('field-start-time')?.addEventListener('change', (e) => {
+  localStorage.setItem('event_gen_time', e.target.value);
+});
+document.getElementById('field-end-time')?.addEventListener('change', (e) => {
+  localStorage.setItem('event_gen_end_time', e.target.value);
 });
 
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });

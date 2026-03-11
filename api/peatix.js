@@ -1,7 +1,5 @@
 /** Peatix 専用（Bearer トークンを使ったAPI投稿） */
 
-import { loginWithPlaywright } from './utils.js';
-
 export const SITE_NAME = 'Peatix';
 
 // PEATIX_CREATE_URL から groupId を取得
@@ -11,54 +9,45 @@ const GROUP_ID = (() => {
   return m ? m[1] : '16510066';
 })();
 
-export const config = {
-  loginUrl:  process.env.PEATIX_LOGIN_URL || 'https://peatix.com/signin',
-  mypage:    'https://peatix.com/account/edit',  // 要認証ページ → 未ログイン時はsigninにリダイレクト
-  get email()    { return process.env.PEATIX_EMAIL; },
-  get password() { return process.env.PEATIX_PASSWORD; },
-  emailSel:  'input[name="email"]',
-  passSel:   'input[name="password"]',
-};
+/** Peatix 2ステップログイン + Bearer token 取得 */
+async function loginAndGetBearer(page, log) {
+  log(`[Peatix] ログイン中...`);
+  await page.goto('https://peatix.com/signin', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-/** Bearer トークンを取得（リクエスト傍受 → localStorage フォールバック） */
-async function getBearer(page, log) {
-  let token = null;
+  // すでにログイン済み（signinページにいない）ならスキップ
+  if (!page.url().includes('signin') && !page.url().includes('login')) {
+    log(`[Peatix] ✅ ログイン済み → ${page.url()}`);
+  } else {
+    // Step1: メールアドレス入力 → 次に進む
+    await page.fill('input[name="username"]', process.env.PEATIX_EMAIL);
+    await Promise.all([
+      page.waitForURL('**/user/signin', { timeout: 15000 }),
+      page.click('#next-button'),
+    ]);
 
-  const onRequest = req => {
-    const auth = req.headers()['authorization'];
-    if (auth?.startsWith('Bearer ') && req.url().includes('peatix-api.com')) {
-      token = auth.slice(7).trim();
+    // Step2: パスワード入力 → ログイン
+    await page.waitForSelector('input[type="password"]', { timeout: 10000 });
+    await page.fill('input[type="password"]', process.env.PEATIX_PASSWORD);
+    await Promise.all([
+      page.waitForNavigation({ timeout: 20000 }).catch(() => {}),
+      page.click('#signin-button'),
+    ]);
+
+    const afterUrl = page.url();
+    if (afterUrl.includes('signin') || afterUrl.includes('login')) {
+      throw new Error('Peatix ログインに失敗しました（メール/パスワードを確認してください）');
     }
-  };
-  page.on('request', onRequest);
-
-  // イベント作成ページ（React SPA）はAPIコールを発生させる
-  const createUrl = process.env.PEATIX_CREATE_URL || `https://peatix.com/group/${GROUP_ID}/event/create`;
-  await page.goto(createUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForTimeout(4000);
-  page.off('request', onRequest);
-
-  // リクエスト傍受で取れなければ localStorage を確認
-  if (!token) {
-    token = await page.evaluate(() => {
-      for (const key of Object.keys(localStorage)) {
-        try {
-          const raw = localStorage.getItem(key) || '';
-          // 直接トークン文字列
-          if (/^[A-Za-z0-9_\-]{20,60}$/.test(raw)) return raw;
-          // JSON形式
-          const obj = JSON.parse(raw);
-          if (obj?.token && typeof obj.token === 'string') return obj.token;
-          if (obj?.access_token && typeof obj.access_token === 'string') return obj.access_token;
-          if (obj?.accessToken && typeof obj.accessToken === 'string') return obj.accessToken;
-        } catch {}
-      }
-      return null;
-    });
-    if (token) log(`[Peatix] Bearer取得(localStorage): ${token.slice(0, 8)}...`);
+    log(`[Peatix] ✅ ログイン完了 → ${afterUrl}`);
   }
 
-  if (!token) throw new Error('Bearer トークンが取得できませんでした（Peatixへのログインを確認してください）');
+  // イベント作成ページへ移動してBearer tokenを取得
+  const createUrl = process.env.PEATIX_CREATE_URL || `https://peatix.com/group/${GROUP_ID}/event/create`;
+  await page.goto(createUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForTimeout(3000); // SPA描画待ち
+  await page.waitForTimeout(2000);
+
+  const token = await page.evaluate(() => localStorage.getItem('peatix_frontend_access_token'));
+  if (!token) throw new Error('Bearer トークンが取得できませんでした（localStorage に peatix_frontend_access_token が見つかりません）');
   log(`[Peatix] Bearer取得: ${token.slice(0, 8)}...`);
   return token;
 }
@@ -72,14 +61,21 @@ function toUtc(dateStr, timeStr) {
 }
 
 export async function post(page, content, eventFields = {}, log) {
-  await loginWithPlaywright(page, config, SITE_NAME, log);
-  const bearer = await getBearer(page, log);
+  const bearer = await loginAndGetBearer(page, log);
 
   const ef = eventFields;
   const title = (ef.title || content.split('\n')[0].replace(/^[#【\s「『]+/, '').replace(/[】』」\s]+$/, '')).slice(0, 100) || 'イベント';
 
+  // content の先頭行がタイトルと同じ場合は除去
+  const lines = content.split('\n');
+  const firstLine = lines[0].replace(/^[#\s「『【]+/, '').replace(/[】』」\s]+$/, '').trim();
+  const bodyText = firstLine && title.includes(firstLine)
+    ? lines.slice(1).join('\n').replace(/^\n+/, '')
+    : content;
+
   const startUtc = toUtc(ef.startDate, ef.startTime);
   const endUtc   = toUtc(ef.endDate || ef.startDate, ef.endTime || ef.startTime);
+  const zoomLine = ef.zoomUrl ? `\n\n■ Zoom URL\n${ef.zoomUrl}` : '';
 
   // ===== Step1: イベント作成 =====
   const createBody = {
@@ -100,7 +96,7 @@ export async function post(page, content, eventFields = {}, log) {
         'content-type': 'application/json',
         'authorization': `Bearer ${bearer}`,
         'origin': 'https://peatix.com',
-        'referer': `https://peatix.com/group/${groupId}/view`,
+        'referer': `https://peatix.com/group/${groupId}/event/create`,
         'x-requested-with': 'XMLHttpRequest',
       },
       body: JSON.stringify(body),
@@ -117,13 +113,6 @@ export async function post(page, content, eventFields = {}, log) {
   log(`[Peatix] ✅ イベント作成 ID: ${eventId}`);
 
   // ===== Step2: 説明文を更新 =====
-  // content の先頭行がタイトルと同じ場合は除去
-  const lines = content.split('\n');
-  const firstLine = lines[0].replace(/^[#\s「『【]+/, '').replace(/[】』」\s]+$/, '').trim();
-  const bodyText = firstLine && title.includes(firstLine)
-    ? lines.slice(1).join('\n').replace(/^\n+/, '')
-    : content;
-
   if (eventId && bodyText) {
     log(`[Peatix] PATCH /v4/events/${eventId} 説明文更新中...`);
     const patchResult = await page.evaluate(async ({ eventId, bearer, description }) => {
@@ -136,7 +125,7 @@ export async function post(page, content, eventFields = {}, log) {
           'referer': `https://peatix.com/event/${eventId}/edit`,
           'x-requested-with': 'XMLHttpRequest',
         },
-        body: JSON.stringify({ description }),
+        body: JSON.stringify({ details: { description: description + zoomLine } }),
       });
       return { ok: res.ok, status: res.status, text: await res.text() };
     }, { eventId, bearer, description: bodyText });
@@ -148,6 +137,31 @@ export async function post(page, content, eventFields = {}, log) {
     }
   }
 
-  const eventUrl = created.url || `https://peatix.com/event/${eventId}`;
+  // ===== Step3: 画像アップロード =====
+  if (eventFields.imagePath && eventId) {
+    log(`[Peatix] 📸 画像アップロード中...`);
+    try {
+      await page.goto(`https://peatix.com/event/${eventId}/edit`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(2000);
+      const fileInput = page.locator('input[type="file"]').first();
+      const visible = await fileInput.isVisible({ timeout: 5000 }).catch(() => false);
+      if (visible) {
+        await fileInput.setInputFiles(eventFields.imagePath);
+        await page.waitForTimeout(2000);
+        const saveBtn = page.locator('button[type="submit"]').first();
+        if (await saveBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await saveBtn.click();
+          await page.waitForTimeout(2000);
+        }
+        log(`[Peatix] ✅ 画像アップロード完了`);
+      } else {
+        log(`[Peatix] ⚠️ 画像アップロードフィールドが見つかりません`);
+      }
+    } catch (e) {
+      log(`[Peatix] ⚠️ 画像アップロード失敗: ${e.message}`);
+    }
+  }
+
+  const eventUrl = created.details?.longUrl || `https://peatix.com/event/${eventId}`;
   log(`[Peatix] ✅ 投稿完了 → ${eventUrl}`);
 }

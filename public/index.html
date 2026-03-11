@@ -3,33 +3,75 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>テキスト管理アプリ</title>
+  <title>🌸 イベント告知アプリ</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app">
 
-    <header>
-      <h1>📋 テキスト管理</h1>
-      <div class="tab-group">
-        <button class="tab active" data-type="event">イベント告知</button>
-        <button class="tab" data-type="student">受講生サポート</button>
+  <div class="layout">
+
+    <!-- グローバルヘッダー -->
+    <header class="global-header">
+      <div class="header-inner">
+        <div class="header-logo">
+          <span class="logo-icon">🌸</span>
+          <span class="logo-title">イベント告知アプリ</span>
+          <span class="logo-sub">自動投稿 &amp; AI文章生成</span>
+        </div>
+        <div class="header-deco">
+          <span class="deco-item">✨</span>
+          <span class="deco-item">🎀</span>
+          <span class="deco-item">💫</span>
+          <span class="deco-item">🌟</span>
+        </div>
       </div>
     </header>
 
-    <main>
-      <div class="toolbar">
-        <button class="btn btn-primary" id="btn-new">＋ 新規作成</button>
-      </div>
+    <div class="layout-body">
 
-      <ul class="text-list" id="text-list"></ul>
+      <!-- サイドバー -->
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <p class="sidebar-label">📂 カテゴリ</p>
+          <div class="tab-group">
+            <button class="tab active" data-type="event">📣 イベント告知</button>
+            <button class="tab" data-type="student">💌 受講生サポート</button>
+          </div>
+        </div>
 
-      <p class="empty" id="empty-msg" hidden>テキストがまだありません。</p>
-    </main>
+        <div class="sidebar-section">
+          <button class="btn btn-primary sidebar-new-btn" id="btn-new">＋ 新規作成</button>
+        </div>
 
+        <div class="sidebar-features">
+          <p class="sidebar-label">✨ 機能一覧</p>
+          <ul class="feature-list">
+            <li>🤖 AI文章自動生成</li>
+            <li>✍️ AI添削・相談</li>
+            <li>🎤 音声入力</li>
+            <li>📣 こくチーズ投稿</li>
+            <li>📣 Peatix投稿</li>
+            <li>📣 connpass投稿</li>
+            <li>📣 techplay投稿</li>
+            <li>🖼️ DALL-E 画像生成</li>
+          </ul>
+        </div>
+      </aside>
+
+      <!-- メインコンテンツ -->
+      <main class="main-content">
+        <ul class="text-list" id="text-list"></ul>
+        <p class="empty" id="empty-msg" hidden>
+          <span class="empty-icon">🌸</span><br>
+          テキストがまだありません。<br>
+          左の「＋ 新規作成」で追加しましょう！
+        </p>
+      </main>
+
+    </div>
   </div>
 
-  <!-- モーダル -->
+  <!-- 編集モーダル -->
   <div class="modal-overlay" id="modal" hidden>
     <div class="modal">
       <h2 id="modal-title">テキストを作成</h2>
@@ -49,6 +91,15 @@
           <button type="button" class="btn btn-primary" id="btn-generate" title="タイトルに沿って文章を自動生成">✨ 文章自動生成</button>
         </div>
       </label>
+      <div class="gen-datetime-row" id="gen-datetime-row">
+        <label class="gen-datetime-label">開催日時（文章生成用）</label>
+        <div class="gen-datetime-inputs">
+          <input type="date" id="field-gen-date" class="gen-date" />
+          <input type="time" id="field-gen-time" class="gen-time" value="10:00" />
+          <span class="gen-time-sep">〜</span>
+          <input type="time" id="field-gen-end-time" class="gen-time" value="12:00" />
+        </div>
+      </div>
       <label>内容
         <div class="content-toolbar">
           <button type="button" class="btn btn-ghost btn-icon" id="btn-voice" title="音声入力">🎤</button>
@@ -88,7 +139,29 @@
         <label class="site-check"><input type="checkbox" value="こくチーズ" checked /><span>こくチーズ</span></label>
         <label class="site-check"><input type="checkbox" value="Peatix" checked /><span>Peatix</span></label>
         <label class="site-check"><input type="checkbox" value="connpass" checked /><span>connpass</span></label>
-        <label class="site-check"><input type="checkbox" value="techplay" checked /><span>techplay</span></label>
+        <!-- <label class="site-check"><input type="checkbox" value="techplay" checked /><span>techplay</span></label> -->
+      </div>
+
+      <div class="image-gen-section">
+        <label class="image-gen-check">
+          <input type="checkbox" id="check-generate-image" />
+          <span class="image-gen-label">🖼️ 画像自動生成（DALL-E 3）</span>
+        </label>
+        <div class="image-style-row">
+          <label class="image-style-option">
+            <input type="radio" name="image-style" value="cute" checked />
+            <span>🌸 可愛い系</span>
+          </label>
+          <label class="image-style-option">
+            <input type="radio" name="image-style" value="cool" />
+            <span>⚡ かっこいい系</span>
+          </label>
+        </div>
+        <div class="image-gen-key-row">
+          <input type="password" id="field-post-openai-key" placeholder="OpenAI APIキー (sk-...)" autocomplete="off" />
+          <button type="button" class="btn btn-ghost btn-icon" id="btn-toggle-post-key" title="表示/非表示">👁️</button>
+        </div>
+        <p class="image-gen-hint">タイトルに沿ったイベントバナー画像を生成し、各サイトにアップロードします。</p>
       </div>
 
       <details class="event-details" id="event-details-section" open>
@@ -127,8 +200,14 @@
               <input type="number" id="field-capacity" value="50" min="1" placeholder="50" />
             </label>
           </div>
+          <label>Zoom URL <span class="field-optional">（オンライン開催の場合）</span>
+            <input type="url" id="field-zoom-url" placeholder="https://us06web.zoom.us/j/..." />
+          </label>
           <label>連絡先TEL
             <input type="tel" id="field-tel" value="03-1234-5678" placeholder="03-1234-5678（ハイフン必須）" />
+          </label>
+          <label>Peatix イベントID <span class="field-optional">（入力時は新規作成せず既存イベントを更新）</span>
+            <input type="text" id="field-peatix-event-id" placeholder="例: 12345678（URLの /event/12345678 の数字）" />
           </label>
         </div>
       </details>

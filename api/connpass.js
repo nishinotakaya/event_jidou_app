@@ -94,10 +94,14 @@ export async function post(page, content, eventFields = {}, log) {
     ? lines.slice(1).join('\n').replace(/^\n+/, '')
     : content;
 
+  // Zoom URLがあれば本文末尾に追記
+  const zoomLine = ef.zoomUrl ? `\n\n■ Zoom URL\n${ef.zoomUrl}` : '';
+  const bodyWithZoom = body + zoomLine;
+
   const putBody = {
     ...created,
-    description_input: body,
-    description: body,
+    description_input: bodyWithZoom,
+    description: bodyWithZoom,
     status: 'draft',
     place: null,  // placeはnull（会場名は description に含める）
     start_datetime: startDatetime,
@@ -130,5 +134,54 @@ export async function post(page, content, eventFields = {}, log) {
     throw new Error(`本文更新失敗: ${putResult.status} ${putResult.text}`);
   }
   const updated = JSON.parse(putResult.text);
+
+  // ===== 画像アップロード =====
+  if (eventFields.imagePath && eventId) {
+    log(`[connpass] 📸 画像アップロード中...`);
+    try {
+      await page.goto(`https://connpass.com/event/${eventId}/edit/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(4000); // React描画待ち
+
+      // ネットワークリクエストをキャプチャして画像アップロードAPIを特定
+      const capturedRequests = [];
+      const networkListener = (req) => {
+        const url = req.url();
+        if (url.includes('connpass.com') && (req.method() === 'POST' || req.method() === 'PUT' || req.method() === 'PATCH')) {
+          capturedRequests.push(`${req.method()} ${url}`);
+        }
+      };
+      page.on('request', networkListener);
+
+      // .ImageUpload スパンをクリックして filechooser イベントをキャッチ
+      const imageUpload = page.locator('.ImageUpload').first();
+      if (await imageUpload.count() > 0) {
+        const [fileChooser] = await Promise.all([
+          page.waitForEvent('filechooser', { timeout: 10000 }),
+          imageUpload.click(),
+        ]);
+        await fileChooser.setFiles(eventFields.imagePath);
+        await page.waitForTimeout(3000);
+        page.off('request', networkListener);
+        if (capturedRequests.length > 0) {
+          log(`[connpass] 📡 画像アップロード後のAPIリクエスト: ${capturedRequests.join(' | ')}`);
+        }
+        log(`[connpass] ✅ 画像セット完了`);
+
+        // 保存ボタンをクリック
+        const saveBtn = page.locator('button[type="submit"], button:has-text("保存"), button:has-text("更新")').first();
+        if (await saveBtn.count() > 0) {
+          await saveBtn.click();
+          await page.waitForTimeout(2000);
+        }
+        log(`[connpass] ✅ 画像アップロード完了`);
+      } else {
+        page.off('request', networkListener);
+        log(`[connpass] ⚠️ .ImageUpload が見つかりません`);
+      }
+    } catch (e) {
+      log(`[connpass] ⚠️ 画像アップロード失敗: ${e.message}`);
+    }
+  }
+
   log(`[connpass] ✅ 投稿完了 → ${updated.public_url}`);
 }
