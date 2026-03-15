@@ -8,6 +8,8 @@
     "student": "node student-support.js",
     "texts": "node text-manager.js",
     "web": "node api/server.js",
+    "rails": "cd rails-backend && ~/.rbenv/versions/3.1.2/bin/ruby ~/.rbenv/versions/3.1.2/bin/rails server -p 3001",
+    "react": "cd react-frontend && npm run dev",
     "dump-kokuchpro": "node scripts/dump-kokuchpro-fields.js",
     "capture-kokuchpro": "node scripts/capture-kokuchpro-form.js"
   },

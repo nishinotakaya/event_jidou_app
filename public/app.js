@@ -43,8 +43,8 @@ const api = {
     if (!r.ok) throw new Error(j.error || `エラー ${r.status}`);
     return j;
   },
-  aiGenerate: async (title, type, apiKey, eventDate, eventTime, eventEndTime) => {
-    const r = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, type, apiKey, eventDate, eventTime, eventEndTime }) });
+  aiGenerate: async (title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType) => {
+    const r = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType }) });
     const ct = r.headers.get('content-type') || '';
     if (!ct.includes('application/json')) {
       const t = await r.text();
@@ -355,9 +355,18 @@ function openModal(mode, item = null) {
     dtRow.hidden = false;
     const savedDate = localStorage.getItem('event_gen_date');
     const d30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    document.getElementById('field-gen-date').value = savedDate || d30;
-    document.getElementById('field-gen-time').value = localStorage.getItem('event_gen_time') || '10:00';
-    document.getElementById('field-gen-end-time').value = localStorage.getItem('event_gen_end_time') || '12:00';
+    const genDate    = savedDate || d30;
+    const genTime    = localStorage.getItem('event_gen_time') || '10:00';
+    const genEndTime = localStorage.getItem('event_gen_end_time') || '12:00';
+    document.getElementById('field-gen-date').value    = genDate;
+    document.getElementById('field-gen-time').value    = genTime;
+    document.getElementById('field-gen-end-time').value = genEndTime;
+    // 編集モーダルを開いた時点で localStorage に確定保存（デフォルト値でも反映）
+    localStorage.setItem('event_gen_date',     genDate);
+    localStorage.setItem('event_gen_time',     genTime);
+    localStorage.setItem('event_gen_end_time', genEndTime);
+    document.getElementById('check-gen-lme').checked = false;
+    document.getElementById('gen-subtype-row').hidden = true;
   } else {
     dtRow.hidden = true;
   }
@@ -409,6 +418,8 @@ function openPostModal(item) {
   document.getElementById('field-start-time').value = localStorage.getItem('event_gen_time') || '10:00';
   document.getElementById('field-end-time').value = localStorage.getItem('event_gen_end_time') || '12:00';
   document.getElementById('field-peatix-event-id').value = '';
+  document.getElementById('field-lme-send-date').value = ymd;
+  document.getElementById('field-lme-send-time').value = localStorage.getItem('event_gen_time') || '10:00';
 
   postModal.hidden = false;
 }
@@ -483,6 +494,8 @@ async function runPost() {
           tel:            document.getElementById('field-tel').value || '03-1234-5678',
           peatixEventId:  document.getElementById('field-peatix-event-id').value.trim(),
           lmeAccount:     document.querySelector('input[name="lme-account"]:checked')?.value || 'taiken',
+          lmeSendDate:    document.getElementById('field-lme-send-date').value || document.getElementById('field-start-date').value,
+          lmeSendTime:    document.getElementById('field-lme-send-time').value || document.getElementById('field-start-time').value || '10:00',
         },
       }),
     });
@@ -622,6 +635,8 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
   const eventDate    = document.getElementById('field-gen-date')?.value || localStorage.getItem('event_gen_date') || '';
   const eventTime    = document.getElementById('field-gen-time')?.value || localStorage.getItem('event_gen_time') || '10:00';
   const eventEndTime = document.getElementById('field-gen-end-time')?.value || localStorage.getItem('event_gen_end_time') || '12:00';
+  const lmeChecked = document.getElementById('check-gen-lme')?.checked;
+  const eventSubType = lmeChecked ? (document.querySelector('input[name="event-subtype"]:checked')?.value || 'benkyokai') : null;
   if (!eventDate) {
     alert('開催日時（文章生成用）の日付を入力してください。');
     btn.disabled = false;
@@ -629,7 +644,7 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
     return;
   }
   try {
-    const res = await api.aiGenerate(title, currentType, apiKey, eventDate, eventTime, eventEndTime);
+    const res = await api.aiGenerate(title, currentType, apiKey, eventDate, eventTime, eventEndTime, eventSubType);
     if (res.error) throw new Error(res.error);
     textarea.value = res.content;
   } catch (err) {
@@ -741,19 +756,18 @@ document.getElementById('btn-delete-ok').addEventListener('click', async () => {
   await loadData();
 });
 
+// ===== LMEチェックでイベント種別を表示/非表示 =====
+document.getElementById('check-gen-lme').addEventListener('change', (e) => {
+  document.getElementById('gen-subtype-row').hidden = !e.target.checked;
+});
+
 // ===== 開催日時フィールドの変更を localStorage に保存 =====
 ['field-gen-date', 'field-gen-time', 'field-gen-end-time'].forEach((id) => {
   document.getElementById(id)?.addEventListener('change', syncEventDatetime);
 });
+// 投稿モーダルの開催日時は localStorage に保存しない（編集モーダルの日時と独立させる）
 document.getElementById('field-start-date')?.addEventListener('change', (e) => {
-  localStorage.setItem('event_gen_date', e.target.value);
   document.getElementById('field-end-date').value = e.target.value;
-});
-document.getElementById('field-start-time')?.addEventListener('change', (e) => {
-  localStorage.setItem('event_gen_time', e.target.value);
-});
-document.getElementById('field-end-time')?.addEventListener('change', (e) => {
-  localStorage.setItem('event_gen_end_time', e.target.value);
 });
 
 modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });

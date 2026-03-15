@@ -116,6 +116,16 @@
           <span class="gen-time-sep">〜</span>
           <input type="time" id="field-gen-end-time" class="gen-time" value="12:00" />
         </div>
+        <div class="gen-lme-card" id="gen-lme-card">
+          <label class="gen-lme-label">
+            <input type="checkbox" id="check-gen-lme" />
+            <span>LME（LINE配信）向けに生成</span>
+          </label>
+          <div class="gen-subtype-opts" id="gen-subtype-row" hidden>
+            <label class="gen-subtype-opt"><input type="radio" name="event-subtype" value="benkyokai" checked /><span>受講生勉強会</span></label>
+            <label class="gen-subtype-opt"><input type="radio" name="event-subtype" value="taiken" /><span>体験会（セミナー）</span></label>
+          </div>
+        </div>
       </div>
       <label id="folder-select-row">フォルダ
         <select id="field-folder" class="folder-select">
@@ -167,6 +177,11 @@
           <div class="lme-account-row" id="lme-account-row">
             <label class="lme-account-opt"><input type="radio" name="lme-account" value="taiken" checked /><span>体験会（セミナー）</span></label>
             <label class="lme-account-opt"><input type="radio" name="lme-account" value="benkyokai" /><span>受講生勉強会</span></label>
+          </div>
+          <div class="lme-senddate-row" id="lme-senddate-row">
+            <span class="lme-senddate-label">配信日時</span>
+            <input type="date" id="field-lme-send-date" class="lme-send-date" />
+            <input type="time" id="field-lme-send-time" class="lme-send-time" value="10:00" />
           </div>
         </div>
       </div>

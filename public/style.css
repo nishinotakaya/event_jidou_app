@@ -649,6 +649,97 @@ body {
   flex-shrink: 0;
   padding: 0 !important;
 }
+.lme-senddate-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 26px;
+  margin-top: 4px;
+}
+.lme-senddate-label {
+  font-size: 11px;
+  color: #6b7280;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.lme-send-date {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex: 1 1 120px;
+  min-width: 110px;
+}
+.lme-send-time {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex: 0 0 80px;
+  width: 80px;
+}
+
+/* ===== 編集モーダル LMEカード（投稿モーダルの site-check-lme と同スタイル） ===== */
+.gen-lme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  transition: border-color 0.15s, background 0.15s;
+}
+.gen-lme-card:has(input[type="checkbox"]:checked) {
+  border-color: var(--purple);
+  background: linear-gradient(135deg, #fce7f3, #ede9fe);
+}
+.gen-lme-label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 0 !important;
+}
+.gen-lme-label input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  accent-color: var(--purple);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0 !important;
+  border: none !important;
+}
+.gen-subtype-opts {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-left: 26px;
+  margin-top: 2px;
+}
+.gen-subtype-opt {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 5px;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+  margin-bottom: 0 !important;
+}
+.gen-subtype-opt input[type="radio"] {
+  accent-color: var(--purple);
+  cursor: pointer;
+  width: 13px !important;
+  height: 13px !important;
+  flex-shrink: 0;
+  padding: 0 !important;
+}
 
 /* ===== 画像生成セクション ===== */
 .image-gen-section {

@@ -224,8 +224,9 @@ export async function post(page, content, eventFields = {}, log) {
 
   // 6. 配信パラメータ設定
   const name = (eventFields.title || content.split('\n')[0].replace(/^[#【\s]+/, '').replace(/[】\s]+$/, '')).slice(0, 50) || 'イベントお知らせ';
-  const sendDay  = eventFields.startDate || todayStr;
-  const sendTime = eventFields.startTime || '10:00';
+  const sendDay  = eventFields.lmeSendDate || eventFields.startDate || todayStr;
+  const sendTime = eventFields.lmeSendTime || eventFields.startTime || '10:00';
+  log(`[LME] 配信日時: ${sendDay} ${sendTime}`);
 
   // 7. 新規broadcast作成（下書き）
   log(`[LME] 下書き配信を作成中... name="${name}"`);

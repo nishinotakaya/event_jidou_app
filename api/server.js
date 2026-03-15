@@ -313,8 +313,8 @@ app.post('/api/ai/correct', async (req, res) => {
 
 app.post('/api/ai/generate', async (req, res) => {
   try {
-    const { title, type, apiKey, eventDate, eventTime, eventEndTime } = req.body;
-    console.log(`[generate] eventDate="${eventDate}" eventTime="${eventTime}" eventEndTime="${eventEndTime}"`);
+    const { title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType } = req.body;
+    console.log(`[generate] eventDate="${eventDate}" eventTime="${eventTime}" eventEndTime="${eventEndTime}" eventSubType="${eventSubType}"`);
     const key = apiKey || process.env.OPENAI_API_KEY;
     if (!key) return res.status(400).json({ error: 'OpenAI APIキーを入力してください' });
     if (!title?.trim()) return res.status(400).json({ error: '名前（タイトル）を入力してください' });
@@ -337,20 +337,114 @@ app.post('/api/ai/generate', async (req, res) => {
       dateStr = `${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日（${dow}） 10:00〜12:00`;
     }
 
-    const systemPrompt = isEvent
-      ? `あなたはイベント告知文の作成プロです。タイトルに沿って、魅力的で読みやすいイベント告知文を生成してください。構成: 開催日時、開催形式、参加費、内容、得られること、参加スタイル、注意事項など。プレーンテキストで、改行を適切に使い、見出しは■で区切ってください。【重要】開催日時は必ず「${dateStr}」をそのまま使用してください。それ以外の日付・時刻を記載しないでください。`
-      : 'あなたは受講生サポートのメッセージ作成プロです。タイトルに沿って、受講生に寄り添う温かみのあるサポートメッセージを生成してください。押し付けがましくなく、励ましや次のステップを示す内容にしてください。';
+    let systemPrompt, userPrompt;
 
-    const userPrompt = isEvent
-      ? `【開催日時】${dateStr}\n\n上記の開催日時を文章中に必ず記載してください。日付・時刻を変えないでください。\n\nタイトル：${title}`
-      : `以下のタイトルに沿った文章を生成してください：\n\n${title}`;
+    if (!isEvent) {
+      systemPrompt = 'あなたは受講生サポートのメッセージ作成プロです。タイトルに沿って、受講生に寄り添う温かみのあるサポートメッセージを生成してください。押し付けがましくなく、励ましや次のステップを示す内容にしてください。';
+      userPrompt = `以下のタイトルに沿った文章を生成してください：\n\n${title}`;
+    } else if (!eventSubType) {
+      // LME未チェック：汎用イベント告知プロンプト
+      systemPrompt = `あなたはイベント告知文の作成プロです。タイトルに沿って、魅力的で読みやすいイベント告知文を生成してください。構成: 開催日時、開催形式、参加費、内容、得られること。プレーンテキストで、改行を適切に使い、見出しは■で区切ってください。【重要】開催日時は必ず「${dateStr}」をそのまま使用してください。それ以外の日付・時刻を記載しないでください。`;
+      userPrompt = `【開催日時】${dateStr}\n\n上記の開催日時を文章中に必ず記載してください。日付・時刻を変えないでください。\n\nタイトル：${title}`;
+    } else if (eventSubType === 'taiken') {
+      // 体験会（セミナー）テンプレート
+      systemPrompt = `あなたはLINE配信用のイベント告知文の作成プロです。「体験会（セミナー）」の告知文を以下の構成・形式で生成してください。告知文本文のみを返し、余計な説明は不要です。マークダウン記法は使わないでください。
+
+【LINE向け文章ルール】
+- スマホのLINEで読まれる文章です。1行は短く端的に（目安：全角20〜25文字以内）
+- 長い一文は途中で改行せず、最初から短い文に分けて書く
+- リスト項目（・✅📌）は1行で収まる長さにする。収まらない場合は内容を絞って短くする
+- 読者がスクロールせず一目で把握できる密度を意識する
+- 各セクションの間は必ず1行の空行を入れること（空行とは空の1行のこと。「（空行）」という文字を出力しないこと）
+
+【出力フォーマット（この通りの改行・空行で出力すること）】
+{タイトル}
+
+こんな悩みはありませんか？
+
+・{悩み1}
+・{悩み2}
+・{悩み3}
+・{悩み4}
+・{悩み5}
+
+放置するとこんなリスクが…
+✅ {リスク1}
+✅ {リスク2}
+✅ {リスク3}
+✅ {リスク4}
+
+今回のセミナーで得られること
+📌 {得られること1}
+📌 {得られること2}
+📌 {得られること3}
+
+{クロージング1〜2文}
+
+開催概要
+日時：${dateStr}
+対象：プログラミングに興味がある方・初学者の方
+参加URL： （後ほど共有）
+
+ミーティング ID: （後ほど共有）
+パスコード: （後ほど共有）
+
+👉 {CTA}`;
+      userPrompt = `タイトル：${title}\n\n開催日時は必ず「${dateStr}」をそのまま使用してください。`;
+    } else {
+      // 受講生勉強会テンプレート（デフォルト）
+      systemPrompt = `あなたはLINE配信用のイベント告知文の作成プロです。「受講生勉強会」の告知文を以下の構成・形式で生成してください。告知文本文のみを返し、余計な説明は不要です。マークダウン記法は使わないでください。
+
+【LINE向け文章ルール】
+- スマホのLINEで読まれる文章です。1行は短く端的に（目安：全角20〜25文字以内）
+- 長い一文は途中で改行せず、最初から短い文に分けて書く
+- リスト項目（・✅📌）は1行で収まる長さにする。収まらない場合は内容を絞って短くする
+- 読者がスクロールせず一目で把握できる密度を意識する
+- 各セクションの間は必ず1行の空行を入れること（空行とは空の1行のこと。「（空行）」という文字を出力しないこと）
+
+【出力フォーマット（この通りの改行・空行で出力すること）】
+{タイトル}
+
+こんな悩みはありませんか？
+
+・{悩み1}
+・{悩み2}
+・{悩み3}
+・{悩み4}
+・{悩み5}
+
+放置するとこんなリスクが…
+✅ {リスク1}
+✅ {リスク2}
+✅ {リスク3}
+✅ {リスク4}
+
+今回の勉強会で得られること
+📌 {得られること1}
+📌 {得られること2}
+📌 {得られること3}
+
+{クロージング1〜2文}
+
+開催概要
+日時：${dateStr}
+対象：プロアカ受講生
+参加URL： （後ほど共有）
+
+ミーティング ID: （後ほど共有）
+パスコード: （後ほど共有）
+
+👉 {CTA}`;
+      userPrompt = `タイトル：${title}\n\n開催日時は必ず「${dateStr}」をそのまま使用してください。`;
+    }
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.3,
+      temperature: 0.7,
     });
     const result = completion.choices[0]?.message?.content?.trim() || '';
     res.json({ content: result });
