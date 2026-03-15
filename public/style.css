@@ -590,6 +590,65 @@ body {
 }
 
 .site-check span { flex: 1; }
+.site-check-lme {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  transition: border-color 0.15s, background 0.15s;
+  grid-column: span 1;
+}
+.site-check-lme:has(input[type="checkbox"]:checked) {
+  border-color: var(--purple);
+  background: linear-gradient(135deg, #fce7f3, #ede9fe);
+}
+.site-check-lme-label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 0 !important;
+}
+.site-check-lme-label input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  accent-color: var(--purple);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0 !important;
+  border: none !important;
+}
+.lme-account-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 26px;
+}
+.lme-account-opt {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 4px;
+  font-size: 11px;
+  color: #6b7280;
+  cursor: pointer;
+  margin-bottom: 0 !important;
+}
+.lme-account-opt input[type="radio"] {
+  accent-color: var(--purple);
+  cursor: pointer;
+  width: 12px !important;
+  height: 12px !important;
+  flex-shrink: 0;
+  padding: 0 !important;
+}
 
 /* ===== 画像生成セクション ===== */
 .image-gen-section {
@@ -880,12 +939,33 @@ body {
   transition: background 0.12s, color 0.12s;
 }
 .folder-delete-btn:hover { background: #fff0f0; color: #e63946; }
+.folder-edit-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #d1d5db;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+.folder-edit-btn:hover { background: #f0f4ff; color: #6366f1; }
 
 .folder-add-row {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.folder-add-row .folder-name-row {
+  display: flex;
   gap: 4px;
   align-items: center;
-  margin-top: 4px;
 }
 .folder-input {
   flex: 1;
@@ -974,3 +1054,38 @@ body {
 }
 .card-folder-select:focus { outline: none; border-color: var(--purple); }
 .card-folder-select:hover { border-color: var(--purple); background: #fdf4ff; }
+
+/* ===== 2階層フォルダ ===== */
+.folder-parent-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.folder-child-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 10px;
+}
+.folder-child-item .folder-btn {
+  font-size: 11px;
+  color: #9ca3af;
+  padding: 5px 8px;
+}
+.folder-child-item .folder-btn:hover { color: var(--purple); }
+.folder-child-item .folder-btn.active { color: var(--purple-d); }
+
+.folder-parent-select {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+.folder-parent-select:focus { outline: none; border-color: var(--purple); }

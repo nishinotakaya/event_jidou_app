@@ -31,15 +31,19 @@ async function save(type, data) {
   await writeFile(FILES[type], JSON.stringify(data, null, 2), 'utf-8');
 }
 
-// ===== フォルダ管理 =====
+// ===== フォルダ管理（2階層） =====
 const FOLDER_FILES = {
   event:   join(rootDir, 'texts/event-folders.json'),
   student: join(rootDir, 'texts/student-folders.json'),
 };
+
 async function loadFolders(type) {
   if (!existsSync(FOLDER_FILES[type])) return [];
-  return JSON.parse(await readFile(FOLDER_FILES[type], 'utf-8'));
+  const raw = JSON.parse(await readFile(FOLDER_FILES[type], 'utf-8'));
+  // migrate flat string[] → [{name, children}]
+  return raw.map(f => typeof f === 'string' ? { name: f, children: [] } : f);
 }
+
 async function saveFolders(type, data) {
   await writeFile(FOLDER_FILES[type], JSON.stringify(data, null, 2), 'utf-8');
 }
@@ -86,30 +90,90 @@ app.delete('/api/texts/:type/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ===== フォルダ CRUD =====
+// ===== フォルダ CRUD（2階層） =====
 app.get('/api/folders/:type', async (req, res) => res.json(await loadFolders(req.params.type)));
 
 app.post('/api/folders/:type', async (req, res) => {
   const { type } = req.params;
-  const { name } = req.body;
+  const { name, parent } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
   const folders = await loadFolders(type);
-  if (folders.includes(name)) return res.status(409).json({ error: 'already exists' });
-  folders.push(name);
+  if (parent) {
+    // 子フォルダを追加
+    const p = folders.find(f => f.name === parent);
+    if (!p) return res.status(404).json({ error: 'parent not found' });
+    if (p.children.includes(name)) return res.status(409).json({ error: 'already exists' });
+    p.children.push(name);
+  } else {
+    // 親フォルダを追加
+    if (folders.some(f => f.name === name)) return res.status(409).json({ error: 'already exists' });
+    folders.push({ name, children: [] });
+  }
   await saveFolders(type, folders);
   res.json({ ok: true, folders });
 });
 
-app.delete('/api/folders/:type/:name', async (req, res) => {
-  const { type, name: rawName } = req.params;
-  const name = decodeURIComponent(rawName);
+app.delete('/api/folders/:type', async (req, res) => {
+  const { type } = req.params;
+  const folderPath = decodeURIComponent(req.query.path || '');
   const folders = await loadFolders(type);
-  await saveFolders(type, folders.filter(f => f !== name));
-  // そのフォルダのアイテムを未分類に戻す
   const items = await load(type);
-  items.forEach(item => { if (item.folder === name) item.folder = ''; });
+
+  if (folderPath.includes('/')) {
+    // 子フォルダ削除
+    const [parentName, childName] = folderPath.split('/');
+    const p = folders.find(f => f.name === parentName);
+    if (p) p.children = p.children.filter(c => c !== childName);
+    items.forEach(item => { if (item.folder === folderPath) item.folder = parentName; });
+  } else {
+    // 親フォルダ削除（子ごと削除、アイテムは未分類に）
+    const p = folders.find(f => f.name === folderPath);
+    const childPaths = p ? p.children.map(c => `${folderPath}/${c}`) : [];
+    items.forEach(item => {
+      if (item.folder === folderPath || childPaths.includes(item.folder)) item.folder = '';
+    });
+    const newFolders = folders.filter(f => f.name !== folderPath);
+    await saveFolders(type, newFolders);
+    await save(type, items);
+    return res.json({ ok: true });
+  }
+  await saveFolders(type, folders);
   await save(type, items);
   res.json({ ok: true });
+});
+
+app.put('/api/folders/:type', async (req, res) => {
+  const { type } = req.params;
+  const { path: folderPath, newName } = req.body;
+  if (!folderPath || !newName) return res.status(400).json({ error: 'path and newName required' });
+  const folders = await loadFolders(type);
+  const items = await load(type);
+
+  if (folderPath.includes('/')) {
+    // 子フォルダのリネーム
+    const [parentName, oldChild] = folderPath.split('/');
+    const p = folders.find(f => f.name === parentName);
+    if (!p || !p.children.includes(oldChild)) return res.status(404).json({ error: 'not found' });
+    if (p.children.includes(newName)) return res.status(409).json({ error: 'already exists' });
+    p.children = p.children.map(c => c === oldChild ? newName : c);
+    const newPath = `${parentName}/${newName}`;
+    items.forEach(item => { if (item.folder === folderPath) item.folder = newPath; });
+  } else {
+    // 親フォルダのリネーム
+    const f = folders.find(f => f.name === folderPath);
+    if (!f) return res.status(404).json({ error: 'not found' });
+    if (folders.some(f2 => f2.name === newName)) return res.status(409).json({ error: 'already exists' });
+    const oldName = f.name;
+    f.name = newName;
+    // アイテムのfolderフィールドを更新（子パスも含む）
+    items.forEach(item => {
+      if (item.folder === oldName) item.folder = newName;
+      else if ((item.folder || '').startsWith(oldName + '/')) item.folder = newName + item.folder.slice(oldName.length);
+    });
+  }
+  await saveFolders(type, folders);
+  await save(type, items);
+  res.json({ ok: true, folders });
 });
 
 // ===== サイトハンドラーマップ（UIのサイト名 → モジュール） =====

@@ -153,16 +153,24 @@ async function findFirst(page, ...selectors) {
 
 // ===== アカウント選択（プロアカ） =====
 
-async function selectAccount(page, log) {
-  log(`[LME] アカウント選択（プロアカ）へ移動`);
+async function selectAccount(page, log, accountType = 'taiken') {
+  // accountType: 'taiken'(体験会) or 'benkyokai'(勉強会)
+  const keyword = accountType === 'benkyokai' ? '勉強会' : '体験会';
+  log(`[LME] アカウント選択（プロアカ${keyword}）へ移動`);
   await page.goto(`${BASE_URL()}/admin/home`, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await sleep(2000);
-  const loaEls = await page.$$(`xpath=//*[contains(normalize-space(text()), 'プロアカ')]`);
-  if (loaEls.length > 0) {
-    await loaEls[0].click().catch(() => {});
-    await sleep(2000);
-    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+
+  // まずキーワードで絞り込んで選択、なければ最初のプロアカを選択
+  const specificEls = await page.$$(`xpath=//*[contains(normalize-space(text()), 'プロアカ') and contains(normalize-space(text()), '${keyword}')]`);
+  if (specificEls.length > 0) {
+    await specificEls[0].click().catch(() => {});
+  } else {
+    // fallback: 最初のプロアカ要素
+    const loaEls = await page.$$(`xpath=//*[contains(normalize-space(text()), 'プロアカ')]`);
+    if (loaEls.length > 0) await loaEls[0].click().catch(() => {});
   }
+  await sleep(2000);
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   log(`[LME] アカウント選択完了 → ${page.url()}`);
 }
 
@@ -190,7 +198,8 @@ export async function post(page, content, eventFields = {}, log) {
   await login(page, log);
 
   // 2. アカウント選択
-  await selectAccount(page, log);
+  const accountType = eventFields.lmeAccount || 'taiken';
+  await selectAccount(page, log, accountType);
 
   // 3. CSRF取得のためメッセージ配信ページへ移動
   await page.goto(`${BASE_URL()}/basic/message-send-all`, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -256,7 +265,97 @@ export async function post(page, content, eventFields = {}, log) {
   if (!broadcastId) throw new Error(`[LME] broadcast_id が取得できませんでした: ${JSON.stringify(broadcastRes)}`);
   log(`[LME] broadcast_id=${broadcastId}`);
 
-  // 8. メッセージ本文テンプレートを保存
+  // 8. フィルター保存（絞り込み条件）
+  log(`[LME] フィルター保存中（${accountType === 'benkyokai' ? '勉強会' : '体験会'}フィルター）...`);
+  const ITEMS_DEFAULT_TAG = [
+    { category_name: '未分類', id: 928568, name: '奥野代理店流入',  line_user: 0,  position: 428860, created_at: '2024.08.30', action_id: null },
+    { category_name: '未分類', id: 906833, name: 'フィリピン不動産', line_user: 10, position: 423227, created_at: '2024.08.17', action_id: null },
+    { category_name: '未分類', id: 450326, name: '体験会参加しない', line_user: 8,  position: 308479, created_at: '2023.11.25', action_id: null },
+    { category_name: '未分類', id: 450325, name: '体験会参加',      line_user: 10, position: 308478, created_at: '2023.11.25', action_id: null },
+  ];
+
+  const itemSearch = accountType === 'benkyokai'
+    // ===== 勉強会フィルター =====
+    ? [
+        {
+          active: true,
+          modal_from_filter: '',
+          modal_to_filter: '',
+          day_filter_type: 0,
+          id: 4050888,
+          type: 'day_add_friend',
+          preview: '',
+          duration_day_start: '',
+          duration_day_end: '',
+          preview_original: '',
+        },
+        {
+          active: true,
+          tags_search: [1092591],
+          tag_condition: 0,
+          default_check_all: false,
+          id: 4050889,
+          type: 'tag',
+          preview: 'タグフロントコース（延長サポート）をタグのいずれか1つ以上を含む人',
+          list_tags: [{ id: 1092591, name: 'フロントコース（延長サポート）' }],
+          items_default_tag: ITEMS_DEFAULT_TAG,
+          group_open_tag: 0,
+          tag_items: [],
+          preview_original: 'フロントコース（延長サポート）',
+        },
+      ]
+    // ===== 体験会フィルター =====
+    : [
+        {
+          active: true,
+          tags_search: [1495570],
+          tag_condition: 0,
+          default_check_all: false,
+          id: 7969280,
+          type: 'tag',
+          preview: 'タグ前回セミナー不参加 & 受講生以外をタグのいずれか1つ以上を含む人',
+          list_tags: [{ id: 1495570, name: '前回セミナー不参加 & 受講生以外' }],
+          items_default_tag: ITEMS_DEFAULT_TAG,
+          group_open_tag: 0,
+          tag_items: [],
+          preview_original: '前回セミナー不参加 & 受講生以外',
+        },
+        {
+          active: true,
+          tags_search: [1478703, 1620158],
+          tag_condition: '2',
+          default_check_all: false,
+          id: 7969281,
+          type: 'tag',
+          preview: 'タグプログラミング無料体験したい・参加希望 2025-8-20をタグを1つ以上含む人を除外',
+          list_tags: [
+            { id: 1478703, name: 'プログラミング無料体験したい' },
+            { id: 1620158, name: '参加希望 2025-8-20' },
+          ],
+          items_default_tag: ITEMS_DEFAULT_TAG,
+          group_open_tag: 0,
+          tag_items: [],
+          preview_original: 'プログラミング無料体験したい・参加希望 2025-8-20',
+        },
+      ];
+
+  const filterBody = new URLSearchParams({
+    item_search:      JSON.stringify(itemSearch),
+    item_search_or:   '[]',
+    parent_id:        String(broadcastId),
+    parent_type:      'broadcast',
+    keyword:          '',
+    richMenuRedirectId: '0',
+    richMenuItemId:   '0',
+  }).toString();
+
+  const filterRes = await lmeFetch(page, '/ajax/filter/save-filter-v2', {
+    body: filterBody,
+    contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+  });
+  log(`[LME] save-filter-v2: ${JSON.stringify(filterRes)}`);
+
+  // 9. メッセージ本文テンプレートを保存
   log(`[LME] メッセージ本文を保存中...`);
   const templateJson = JSON.stringify({
     type: 'text',

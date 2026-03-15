@@ -26,10 +26,12 @@ const api = {
   post: (body) =>
     fetch('/api/post', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()),
   getFolders: (type) => fetch(`/api/folders/${type}`).then((r) => r.json()),
-  createFolder: (type, name) =>
-    fetch(`/api/folders/${type}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).then((r) => r.json()),
-  deleteFolder: (type, name) =>
-    fetch(`/api/folders/${encodeURIComponent(type)}/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => r.json()),
+  createFolder: (type, name, parent = '') =>
+    fetch(`/api/folders/${type}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parent }) }).then((r) => r.json()),
+  deleteFolder: (type, path) =>
+    fetch(`/api/folders/${encodeURIComponent(type)}?path=${encodeURIComponent(path)}`, { method: 'DELETE' }).then((r) => r.json()),
+  renameFolder: (type, path, newName) =>
+    fetch(`/api/folders/${encodeURIComponent(type)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, newName }) }).then((r) => r.json()),
   aiCorrect: async (text, apiKey) => {
     const r = await fetch('/api/ai/correct', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, apiKey }) });
     const ct = r.headers.get('content-type') || '';
@@ -101,15 +103,35 @@ function getApiKey(fieldId = 'field-openai-key') {
 // ===== フォルダ一覧を描画（サイドバー） =====
 function renderFolderList() {
   const container = document.getElementById('folder-list');
-  const allBtn = `<button class="folder-btn${currentFolder === null ? ' active' : ''}" data-folder="__all__">すべて <span class="folder-count">${allItems.length}</span></button>`;
+  const allCount = allItems.length;
+  const allBtn = `<button class="folder-btn${currentFolder === null ? ' active' : ''}" data-folder="__all__">すべて <span class="folder-count">${allCount}</span></button>`;
+
   const folderBtns = allFolders.map(f => {
-    const cnt = allItems.filter(i => i.folder === f).length;
-    const isActive = currentFolder === f;
-    return `<div class="folder-item${isActive ? ' active' : ''}">
-      <button class="folder-btn${isActive ? ' active' : ''}" data-folder="${esc(f)}">${esc(f)} <span class="folder-count">${cnt}</span></button>
-      <button class="folder-delete-btn" data-folder="${esc(f)}" title="削除">×</button>
+    const parentPath = f.name;
+    const parentCount = allItems.filter(i => (i.folder || '') === parentPath || (i.folder || '').startsWith(parentPath + '/')).length;
+    const isParentActive = currentFolder === parentPath;
+
+    const childBtns = f.children.map(c => {
+      const childPath = `${parentPath}/${c}`;
+      const childCount = allItems.filter(i => (i.folder || '') === childPath).length;
+      const isChildActive = currentFolder === childPath;
+      return `<div class="folder-child-item">
+        <button class="folder-btn folder-child-btn${isChildActive ? ' active' : ''}" data-folder="${esc(childPath)}">└ ${esc(c)} <span class="folder-count">${childCount}</span></button>
+        <button class="folder-edit-btn" data-folder="${esc(childPath)}" data-name="${esc(c)}" title="名前変更">✏</button>
+        <button class="folder-delete-btn" data-folder="${esc(childPath)}" title="削除">×</button>
+      </div>`;
+    }).join('');
+
+    return `<div class="folder-parent-group">
+      <div class="folder-item${isParentActive ? ' active' : ''}">
+        <button class="folder-btn${isParentActive ? ' active' : ''}" data-folder="${esc(parentPath)}">${esc(f.name)} <span class="folder-count">${parentCount}</span></button>
+        <button class="folder-edit-btn" data-folder="${esc(parentPath)}" data-name="${esc(f.name)}" title="名前変更">✏</button>
+        <button class="folder-delete-btn" data-folder="${esc(parentPath)}" title="削除">×</button>
+      </div>
+      ${childBtns}
     </div>`;
   }).join('');
+
   container.innerHTML = allBtn + folderBtns;
 
   container.querySelectorAll('.folder-btn').forEach(btn => {
@@ -123,21 +145,58 @@ function renderFolderList() {
 
   container.querySelectorAll('.folder-delete-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const name = btn.dataset.folder;
-      if (!confirm(`フォルダ「${name}」を削除しますか？\n中のアイテムは未分類に移動されます。`)) return;
-      await api.deleteFolder(currentType, name);
-      if (currentFolder === name) { currentFolder = null; currentPage = 1; }
+      const path = btn.dataset.folder;
+      const isChild = path.includes('/');
+      const msg = isChild
+        ? `子フォルダ「${path.split('/')[1]}」を削除しますか？\n中のアイテムは親フォルダに移動されます。`
+        : `フォルダ「${path}」と配下の子フォルダをすべて削除しますか？\n中のアイテムは未分類に移動されます。`;
+      if (!confirm(msg)) return;
+      await fetch(`/api/folders/${encodeURIComponent(currentType)}?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+      if (currentFolder === path || (currentFolder || '').startsWith(path + '/')) { currentFolder = null; currentPage = 1; }
       await loadData();
     });
   });
+
+  container.querySelectorAll('.folder-edit-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const path = btn.dataset.folder;
+      const currentName = btn.dataset.name;
+      const newName = prompt('新しいフォルダ名を入力してください', currentName);
+      if (!newName || newName === currentName) return;
+      const res = await api.renameFolder(currentType, path, newName.trim());
+      if (res.error) { alert(`エラー: ${res.error}`); return; }
+      // currentFolderが変更対象ならパスを更新
+      if (currentFolder === path) {
+        const isChild = path.includes('/');
+        currentFolder = isChild ? `${path.split('/')[0]}/${newName.trim()}` : newName.trim();
+      } else if (!path.includes('/') && (currentFolder || '').startsWith(path + '/')) {
+        currentFolder = newName.trim() + currentFolder.slice(path.length);
+      }
+      await loadData();
+    });
+  });
+
+  // 親選択セレクトを更新
+  const parentSel = document.getElementById('folder-parent-select');
+  if (parentSel) {
+    parentSel.innerHTML = '<option value="">トップレベル</option>' +
+      allFolders.map(f => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join('');
+  }
 }
 
 // ===== モーダルのフォルダ選択肢を更新 =====
 function updateFolderSelect(selectedFolder = '') {
   const sel = document.getElementById('field-folder');
   if (!sel) return;
-  sel.innerHTML = '<option value="">── 未分類 ──</option>' +
-    allFolders.map(f => `<option value="${esc(f)}"${f === selectedFolder ? ' selected' : ''}>${esc(f)}</option>`).join('');
+  let html = '<option value="">── 未分類 ──</option>';
+  allFolders.forEach(f => {
+    html += `<option value="${esc(f.name)}"${f.name === selectedFolder ? ' selected' : ''}>📁 ${esc(f.name)}</option>`;
+    f.children.forEach(c => {
+      const path = `${f.name}/${c}`;
+      html += `<option value="${esc(path)}"${path === selectedFolder ? ' selected' : ''}>　└ ${esc(c)}</option>`;
+    });
+  });
+  sel.innerHTML = html;
 }
 
 // ===== データ読み込み =====
@@ -189,7 +248,9 @@ function renderList() {
   // フォルダフィルタ
   const filtered = currentFolder === null
     ? allItems
-    : allItems.filter(i => (i.folder || '') === currentFolder);
+    : currentFolder.includes('/')
+      ? allItems.filter(i => (i.folder || '') === currentFolder)
+      : allItems.filter(i => (i.folder || '') === currentFolder || (i.folder || '').startsWith(currentFolder + '/'));
 
   if (filtered.length === 0) {
     emptyMsg.hidden = false;
@@ -215,10 +276,14 @@ function renderList() {
       ? `<span class="card-folder-badge">📁 ${esc(item.folder)}</span>`
       : '';
 
-    const folderOptions = [
-      `<option value="">── 未分類 ──</option>`,
-      ...allFolders.map(f => `<option value="${esc(f)}"${f === (item.folder || '') ? ' selected' : ''}>${esc(f)}</option>`),
-    ].join('');
+    let folderOptions = `<option value="">── 未分類 ──</option>`;
+    allFolders.forEach(f => {
+      folderOptions += `<option value="${esc(f.name)}"${f.name === (item.folder||'') ? ' selected':''}>📁 ${esc(f.name)}</option>`;
+      f.children.forEach(c => {
+        const path = `${f.name}/${c}`;
+        folderOptions += `<option value="${esc(path)}"${path === (item.folder||'') ? ' selected':''}>　└ ${esc(c)}</option>`;
+      });
+    });
 
     li.innerHTML = `
       <div class="card-body">
@@ -417,6 +482,7 @@ async function runPost() {
           capacity:       document.getElementById('field-capacity').value || '50',
           tel:            document.getElementById('field-tel').value || '03-1234-5678',
           peatixEventId:  document.getElementById('field-peatix-event-id').value.trim(),
+          lmeAccount:     document.querySelector('input[name="lme-account"]:checked')?.value || 'taiken',
         },
       }),
     });
@@ -474,9 +540,11 @@ document.getElementById('btn-new').addEventListener('click', () => openModal('cr
 // フォルダ追加
 document.getElementById('btn-add-folder').addEventListener('click', async () => {
   const input = document.getElementById('folder-input');
+  const parentSel = document.getElementById('folder-parent-select');
   const name = input.value.trim();
+  const parent = parentSel?.value || '';
   if (!name) return;
-  const res = await api.createFolder(currentType, name);
+  const res = await api.createFolder(currentType, name, parent);
   if (res.error) { alert(res.error === 'already exists' ? 'そのフォルダは既に存在します' : res.error); return; }
   input.value = '';
   await loadData();

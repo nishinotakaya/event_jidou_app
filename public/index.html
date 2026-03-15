@@ -45,8 +45,13 @@
             <!-- JS で描画 -->
           </div>
           <div class="folder-add-row">
-            <input type="text" id="folder-input" class="folder-input" placeholder="フォルダ名" maxlength="20" />
-            <button class="btn btn-icon" id="btn-add-folder" title="追加">＋</button>
+            <select id="folder-parent-select" class="folder-parent-select">
+              <option value="">トップレベル</option>
+            </select>
+            <div class="folder-name-row">
+              <input type="text" id="folder-input" class="folder-input" placeholder="フォルダ名" maxlength="20" />
+              <button class="btn btn-icon" id="btn-add-folder" title="追加">＋</button>
+            </div>
           </div>
         </div>
 
@@ -157,7 +162,13 @@
         <label class="site-check"><input type="checkbox" value="Peatix" checked /><span>Peatix</span></label>
         <label class="site-check"><input type="checkbox" value="connpass" checked /><span>connpass</span></label>
         <!-- <label class="site-check"><input type="checkbox" value="techplay" checked /><span>techplay</span></label> -->
-        <label class="site-check"><input type="checkbox" value="LME" /><span>LME（LINE配信）</span></label>
+        <div class="site-check-lme" id="site-check-lme-wrap">
+          <label class="site-check-lme-label"><input type="checkbox" value="LME" id="check-lme" /><span>LME（LINE配信）</span></label>
+          <div class="lme-account-row" id="lme-account-row">
+            <label class="lme-account-opt"><input type="radio" name="lme-account" value="taiken" checked /><span>体験会（セミナー）</span></label>
+            <label class="lme-account-opt"><input type="radio" name="lme-account" value="benkyokai" /><span>受講生勉強会</span></label>
+          </div>
+        </div>
       </div>
 
       <div class="image-gen-section">
