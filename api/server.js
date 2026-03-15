@@ -10,6 +10,7 @@ import * as kokuchpro from './kokuchpro.js';
 import * as peatix from './peatix.js';
 import * as techplay from './techplay.js';
 import * as connpass from './connpass.js';
+import * as lme from './lme.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '..');
@@ -29,6 +30,20 @@ async function load(type) {
 async function save(type, data) {
   await writeFile(FILES[type], JSON.stringify(data, null, 2), 'utf-8');
 }
+
+// ===== フォルダ管理 =====
+const FOLDER_FILES = {
+  event:   join(rootDir, 'texts/event-folders.json'),
+  student: join(rootDir, 'texts/student-folders.json'),
+};
+async function loadFolders(type) {
+  if (!existsSync(FOLDER_FILES[type])) return [];
+  return JSON.parse(await readFile(FOLDER_FILES[type], 'utf-8'));
+}
+async function saveFolders(type, data) {
+  await writeFile(FOLDER_FILES[type], JSON.stringify(data, null, 2), 'utf-8');
+}
+
 function today() { return new Date().toISOString().slice(0, 10); }
 function nextId(data, type) {
   const prefix = type === 'event' ? 'event_' : 'student_';
@@ -41,10 +56,10 @@ app.get('/api/texts/:type', async (req, res) => res.json(await load(req.params.t
 
 app.post('/api/texts/:type', async (req, res) => {
   const { type } = req.params;
-  const { name, content } = req.body;
+  const { name, content, folder = '' } = req.body;
   const data = await load(type);
   const now = today();
-  const item = { id: nextId(data, type), name, type, content, createdAt: now, updatedAt: now };
+  const item = { id: nextId(data, type), name, type, content, folder, createdAt: now, updatedAt: now };
   data.push(item);
   await save(type, data);
   res.json(item);
@@ -52,11 +67,11 @@ app.post('/api/texts/:type', async (req, res) => {
 
 app.put('/api/texts/:type/:id', async (req, res) => {
   const { type, id } = req.params;
-  const { name, content } = req.body;
+  const { name, content, folder } = req.body;
   const data = await load(type);
   const idx = data.findIndex(d => d.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  data[idx] = { ...data[idx], name, content, updatedAt: today() };
+  data[idx] = { ...data[idx], name, content, ...(folder !== undefined && { folder }), updatedAt: today() };
   await save(type, data);
   res.json(data[idx]);
 });
@@ -71,12 +86,39 @@ app.delete('/api/texts/:type/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ===== フォルダ CRUD =====
+app.get('/api/folders/:type', async (req, res) => res.json(await loadFolders(req.params.type)));
+
+app.post('/api/folders/:type', async (req, res) => {
+  const { type } = req.params;
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const folders = await loadFolders(type);
+  if (folders.includes(name)) return res.status(409).json({ error: 'already exists' });
+  folders.push(name);
+  await saveFolders(type, folders);
+  res.json({ ok: true, folders });
+});
+
+app.delete('/api/folders/:type/:name', async (req, res) => {
+  const { type, name: rawName } = req.params;
+  const name = decodeURIComponent(rawName);
+  const folders = await loadFolders(type);
+  await saveFolders(type, folders.filter(f => f !== name));
+  // そのフォルダのアイテムを未分類に戻す
+  const items = await load(type);
+  items.forEach(item => { if (item.folder === name) item.folder = ''; });
+  await save(type, items);
+  res.json({ ok: true });
+});
+
 // ===== サイトハンドラーマップ（UIのサイト名 → モジュール） =====
 const SITE_HANDLERS = {
   'こくチーズ': kokuchpro,
   'Peatix':     peatix,
   'connpass':   connpass,
   'techplay':   techplay,
+  'LME':        lme,
 };
 
 // ===== SSEで投稿実行（headless・バックグラウンド） =====

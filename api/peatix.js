@@ -125,10 +125,10 @@ export async function post(page, content, eventFields = {}, log) {
           'referer': `https://peatix.com/event/${eventId}/edit`,
           'x-requested-with': 'XMLHttpRequest',
         },
-        body: JSON.stringify({ details: { description: description + zoomLine } }),
+        body: JSON.stringify({ details: { description } }),
       });
       return { ok: res.ok, status: res.status, text: await res.text() };
-    }, { eventId, bearer, description: bodyText });
+    }, { eventId, bearer, description: bodyText + zoomLine });
 
     if (patchResult.ok) {
       log(`[Peatix] ✅ 説明文更新完了`);

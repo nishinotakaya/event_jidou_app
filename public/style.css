@@ -816,3 +816,161 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ===== フォルダ ===== */
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.folder-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.folder-btn:hover { background: #fdf4ff; color: var(--purple); }
+.folder-btn.active { background: linear-gradient(135deg, #fce7f3, #ede9fe); color: var(--purple-d); }
+
+.folder-count {
+  font-size: 10px;
+  background: #e9d5ff;
+  color: var(--purple-d);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.folder-btn.active .folder-count { background: rgba(255,255,255,0.6); }
+
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.folder-item .folder-btn { flex: 1; }
+
+.folder-delete-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #d1d5db;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+.folder-delete-btn:hover { background: #fff0f0; color: #e63946; }
+
+.folder-add-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 4px;
+}
+.folder-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  transition: border-color 0.15s;
+}
+.folder-input:focus { outline: none; border-color: var(--purple); }
+.folder-add-row .btn-icon { padding: 5px 9px; font-size: 14px; }
+
+/* フォルダバッジ（カード内） */
+.card-folder-badge {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #ede9fe;
+  color: var(--purple-d);
+  border-radius: 8px;
+  padding: 1px 7px;
+  vertical-align: middle;
+}
+
+/* フォルダセレクト（モーダル内） */
+.folder-select {
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+  color: var(--text);
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.folder-select:focus { outline: none; border-color: var(--purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.1); }
+
+/* ===== ページネーション ===== */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--purple-d);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.page-btn:hover:not(:disabled) { background: #fdf4ff; border-color: var(--purple); }
+.page-btn.active { background: linear-gradient(135deg, var(--pink-d), var(--purple)); color: #fff; border-color: transparent; }
+.page-btn:disabled { color: #d1d5db; cursor: not-allowed; border-color: #f3f4f6; }
+.page-ellipsis { font-size: 13px; color: #c4b5fd; padding: 0 4px; }
+
+/* カード内フォルダ移動セレクト */
+.card-folder-select {
+  height: 34px;
+  padding: 0 8px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--purple-d);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s;
+  max-width: 120px;
+}
+.card-folder-select:focus { outline: none; border-color: var(--purple); }
+.card-folder-select:hover { border-color: var(--purple); background: #fdf4ff; }

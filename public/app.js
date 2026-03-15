@@ -1,4 +1,9 @@
 let currentType = 'event';
+let currentFolder = null; // null = すべて
+let currentPage = 1;
+const PAGE_SIZE = 10;
+let allItems = [];
+let allFolders = [];
 let editingId = null;
 let deletingId = null;
 let postingItem = null;
@@ -20,6 +25,11 @@ const api = {
     fetch(`/api/texts/${type}/${id}`, { method: 'DELETE' }).then((r) => r.json()),
   post: (body) =>
     fetch('/api/post', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()),
+  getFolders: (type) => fetch(`/api/folders/${type}`).then((r) => r.json()),
+  createFolder: (type, name) =>
+    fetch(`/api/folders/${type}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).then((r) => r.json()),
+  deleteFolder: (type, name) =>
+    fetch(`/api/folders/${encodeURIComponent(type)}/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => r.json()),
   aiCorrect: async (text, apiKey) => {
     const r = await fetch('/api/ai/correct', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, apiKey }) });
     const ct = r.headers.get('content-type') || '';
@@ -81,27 +91,119 @@ function getApiKey(fieldId = 'field-openai-key') {
   const fromField = document.getElementById(fieldId)?.value.trim() || '';
   const fromStorage = localStorage.getItem('openai_api_key') || '';
   const key = fromField || fromStorage;
-  // ブラウザ自動入力などで明らかに無効な値が入っている場合は除外
   if (!key.startsWith('sk-')) {
-    // 無効な値がlocalStorageに残っていれば消す
     if (fromStorage && !fromStorage.startsWith('sk-')) localStorage.removeItem('openai_api_key');
     return null;
   }
   return key;
 }
 
+// ===== フォルダ一覧を描画（サイドバー） =====
+function renderFolderList() {
+  const container = document.getElementById('folder-list');
+  const allBtn = `<button class="folder-btn${currentFolder === null ? ' active' : ''}" data-folder="__all__">すべて <span class="folder-count">${allItems.length}</span></button>`;
+  const folderBtns = allFolders.map(f => {
+    const cnt = allItems.filter(i => i.folder === f).length;
+    const isActive = currentFolder === f;
+    return `<div class="folder-item${isActive ? ' active' : ''}">
+      <button class="folder-btn${isActive ? ' active' : ''}" data-folder="${esc(f)}">${esc(f)} <span class="folder-count">${cnt}</span></button>
+      <button class="folder-delete-btn" data-folder="${esc(f)}" title="削除">×</button>
+    </div>`;
+  }).join('');
+  container.innerHTML = allBtn + folderBtns;
+
+  container.querySelectorAll('.folder-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentFolder = btn.dataset.folder === '__all__' ? null : btn.dataset.folder;
+      currentPage = 1;
+      renderList();
+      renderFolderList();
+    });
+  });
+
+  container.querySelectorAll('.folder-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.dataset.folder;
+      if (!confirm(`フォルダ「${name}」を削除しますか？\n中のアイテムは未分類に移動されます。`)) return;
+      await api.deleteFolder(currentType, name);
+      if (currentFolder === name) { currentFolder = null; currentPage = 1; }
+      await loadData();
+    });
+  });
+}
+
+// ===== モーダルのフォルダ選択肢を更新 =====
+function updateFolderSelect(selectedFolder = '') {
+  const sel = document.getElementById('field-folder');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">── 未分類 ──</option>' +
+    allFolders.map(f => `<option value="${esc(f)}"${f === selectedFolder ? ' selected' : ''}>${esc(f)}</option>`).join('');
+}
+
+// ===== データ読み込み =====
+async function loadData() {
+  [allItems, allFolders] = await Promise.all([
+    api.getAll(currentType),
+    api.getFolders(currentType),
+  ]);
+  renderFolderList();
+  renderList();
+}
+
+// ===== ページネーション描画 =====
+function renderPagination(total, page) {
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const container = document.getElementById('pagination');
+  if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+  const pages = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - page) <= 1) {
+      pages.push(i);
+    } else if (pages[pages.length - 1] !== '...') {
+      pages.push('...');
+    }
+  }
+
+  container.innerHTML = `
+    <button class="page-btn" data-page="${page - 1}" ${page === 1 ? 'disabled' : ''}>← 前</button>
+    ${pages.map(p => p === '...'
+      ? `<span class="page-ellipsis">...</span>`
+      : `<button class="page-btn${p === page ? ' active' : ''}" data-page="${p}">${p}</button>`
+    ).join('')}
+    <button class="page-btn" data-page="${page + 1}" ${page === totalPages ? 'disabled' : ''}>次 →</button>
+  `;
+
+  container.querySelectorAll('.page-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentPage = parseInt(btn.dataset.page);
+      renderList();
+    });
+  });
+}
+
 // ===== 一覧描画 =====
-async function renderList() {
-  const data = await api.getAll(currentType);
+function renderList() {
   list.innerHTML = '';
 
-  if (data.length === 0) {
+  // フォルダフィルタ
+  const filtered = currentFolder === null
+    ? allItems
+    : allItems.filter(i => (i.folder || '') === currentFolder);
+
+  if (filtered.length === 0) {
     emptyMsg.hidden = false;
+    document.getElementById('pagination').innerHTML = '';
     return;
   }
   emptyMsg.hidden = true;
 
-  data.forEach((item) => {
+  // ページネーション
+  const total = filtered.length;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const paged = filtered.slice(start, start + PAGE_SIZE);
+
+  paged.forEach((item) => {
     const li = document.createElement('li');
     li.className = 'text-card';
 
@@ -109,13 +211,23 @@ async function renderList() {
       ? `<button class="btn btn-icon post" data-id="${item.id}" title="投稿">📣</button>`
       : '';
 
+    const folderBadge = item.folder
+      ? `<span class="card-folder-badge">📁 ${esc(item.folder)}</span>`
+      : '';
+
+    const folderOptions = [
+      `<option value="">── 未分類 ──</option>`,
+      ...allFolders.map(f => `<option value="${esc(f)}"${f === (item.folder || '') ? ' selected' : ''}>${esc(f)}</option>`),
+    ].join('');
+
     li.innerHTML = `
       <div class="card-body">
-        <div class="card-name">${esc(item.name)}</div>
+        <div class="card-name">${esc(item.name)}${folderBadge}</div>
         <div class="card-preview">${esc(item.content)}</div>
         <div class="card-meta">更新日: ${item.updatedAt}</div>
       </div>
       <div class="card-actions">
+        ${allFolders.length > 0 ? `<select class="card-folder-select" data-id="${item.id}" title="フォルダへ移動">${folderOptions}</select>` : ''}
         ${postBtn}
         <button class="btn btn-icon edit" data-id="${item.id}" title="編集">✏️</button>
         <button class="btn btn-icon delete" data-id="${item.id}" data-name="${esc(item.name)}" title="削除">🗑️</button>
@@ -124,20 +236,32 @@ async function renderList() {
     list.appendChild(li);
   });
 
+  renderPagination(total, currentPage);
+
+  // フォルダ移動セレクト
+  list.querySelectorAll('.card-folder-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      const id = sel.dataset.id;
+      const folder = sel.value;
+      const item = allItems.find(d => d.id === id);
+      if (!item) return;
+      await api.update(currentType, id, { name: item.name, content: item.content, folder });
+      await loadData();
+    });
+  });
+
   // 投稿ボタン
   list.querySelectorAll('.btn-icon.post').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const data = await api.getAll(currentType);
-      const item = data.find((d) => d.id === btn.dataset.id);
+    btn.addEventListener('click', () => {
+      const item = allItems.find((d) => d.id === btn.dataset.id);
       openPostModal(item);
     });
   });
 
   // 編集ボタン
   list.querySelectorAll('.btn-icon.edit').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const data = await api.getAll(currentType);
-      const item = data.find((d) => d.id === btn.dataset.id);
+    btn.addEventListener('click', () => {
+      const item = allItems.find((d) => d.id === btn.dataset.id);
       openModal('edit', item);
     });
   });
@@ -159,11 +283,11 @@ function openModal(mode, item = null) {
   keyInput.type = 'password';
   document.getElementById('btn-toggle-key').textContent = '👁️';
 
-  // 開催日時フィールドの表示制御（イベント告知のみ表示）
+  updateFolderSelect(item?.folder || '');
+
   const dtRow = document.getElementById('gen-datetime-row');
   if (currentType === 'event') {
     dtRow.hidden = false;
-    // 保存済みの日時を復元、なければ30日後をデフォルトに
     const savedDate = localStorage.getItem('event_gen_date');
     const d30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     document.getElementById('field-gen-date').value = savedDate || d30;
@@ -195,8 +319,6 @@ function closeDeleteModal() {
 }
 
 // ===== 投稿モーダル =====
-const SITES = ['こくチーズ', 'Peatix', 'connpass', 'techplay'];
-
 function openPostModal(item) {
   postingItem = item;
   document.getElementById('post-text-name').textContent = `テキスト: ${item.name}`;
@@ -215,7 +337,6 @@ function openPostModal(item) {
   runBtn.textContent = '投稿する →';
   document.getElementById('btn-post-cancel').textContent = 'キャンセル';
 
-  // 開催日時：保存済みの日時を使う、なければ30日後をデフォルトに
   const savedDate = localStorage.getItem('event_gen_date');
   const ymd = savedDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   document.getElementById('field-start-date').value = ymd;
@@ -248,7 +369,6 @@ async function runPost() {
   runBtn.disabled = true;
   runBtn.textContent = '投稿中...';
 
-  // 結果エリアを待機状態で初期化
   const resultsList = document.getElementById('results-list');
   resultsList.innerHTML = checked.map((site) => `
     <li class="result-item" data-site="${esc(site)}">
@@ -258,7 +378,6 @@ async function runPost() {
   `).join('');
   document.getElementById('post-results').hidden = false;
 
-  // ログエリアを表示
   const logBox = document.getElementById('log-box');
   logBox.textContent = '';
   document.getElementById('log-area').hidden = false;
@@ -268,7 +387,6 @@ async function runPost() {
     logBox.scrollTop = logBox.scrollHeight;
   };
 
-  // fetchでSSEストリームを受信
   try {
     const generateImage = document.getElementById('check-generate-image').checked;
     const imageStyle = document.querySelector('input[name="image-style"]:checked')?.value || 'cute';
@@ -313,7 +431,7 @@ async function runPost() {
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      buffer = lines.pop(); // 未完結の行を保持
+      buffer = lines.pop();
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
@@ -345,18 +463,34 @@ document.querySelectorAll('.tab').forEach((tab) => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     tab.classList.add('active');
     currentType = tab.dataset.type;
-    renderList();
+    currentFolder = null;
+    currentPage = 1;
+    loadData();
   });
 });
 
 document.getElementById('btn-new').addEventListener('click', () => openModal('create'));
 
+// フォルダ追加
+document.getElementById('btn-add-folder').addEventListener('click', async () => {
+  const input = document.getElementById('folder-input');
+  const name = input.value.trim();
+  if (!name) return;
+  const res = await api.createFolder(currentType, name);
+  if (res.error) { alert(res.error === 'already exists' ? 'そのフォルダは既に存在します' : res.error); return; }
+  input.value = '';
+  await loadData();
+});
+document.getElementById('folder-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('btn-add-folder').click();
+});
+
 document.getElementById('btn-save').addEventListener('click', async () => {
   const name = document.getElementById('field-name').value.trim();
   let content = document.getElementById('field-content').value.trim();
+  const folder = document.getElementById('field-folder')?.value || '';
   if (!name || !content) return alert('名前と内容を入力してください。');
 
-  // イベント告知かつ日付が入力されている場合、AIで日時を揃える
   const eventDate    = document.getElementById('field-gen-date')?.value || '';
   const eventTime    = document.getElementById('field-gen-time')?.value || '';
   const eventEndTime = document.getElementById('field-gen-end-time')?.value || '';
@@ -379,12 +513,12 @@ document.getElementById('btn-save').addEventListener('click', async () => {
   }
 
   if (editingId) {
-    await api.update(currentType, editingId, { name, content });
+    await api.update(currentType, editingId, { name, content, folder });
   } else {
-    await api.create(currentType, { name, content });
+    await api.create(currentType, { name, content, folder });
   }
   closeModal();
-  renderList();
+  await loadData();
 });
 
 document.getElementById('btn-cancel').addEventListener('click', closeModal);
@@ -395,7 +529,6 @@ document.getElementById('field-openai-key').addEventListener('blur', (e) => {
   if (v.startsWith('sk-')) localStorage.setItem('openai_api_key', v);
 });
 
-// ===== 投稿モーダルのAPIキー表示切替 =====
 document.getElementById('btn-toggle-post-key').addEventListener('click', () => {
   const input = document.getElementById('field-post-openai-key');
   const btn = document.getElementById('btn-toggle-post-key');
@@ -406,6 +539,7 @@ document.getElementById('field-post-openai-key').addEventListener('blur', (e) =>
   const v = e.target.value.trim();
   if (v.startsWith('sk-')) localStorage.setItem('openai_api_key', v);
 });
+
 // ===== 文章自動生成 =====
 document.getElementById('btn-generate').addEventListener('click', async () => {
   const nameInput = document.getElementById('field-name');
@@ -417,12 +551,9 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
   const textarea = document.getElementById('field-content');
   btn.disabled = true;
   btn.textContent = '生成中...';
-  const eventDate    = document.getElementById('field-gen-date')?.value
-                    || localStorage.getItem('event_gen_date') || '';
-  const eventTime    = document.getElementById('field-gen-time')?.value
-                    || localStorage.getItem('event_gen_time') || '10:00';
-  const eventEndTime = document.getElementById('field-gen-end-time')?.value
-                    || localStorage.getItem('event_gen_end_time') || '12:00';
+  const eventDate    = document.getElementById('field-gen-date')?.value || localStorage.getItem('event_gen_date') || '';
+  const eventTime    = document.getElementById('field-gen-time')?.value || localStorage.getItem('event_gen_time') || '10:00';
+  const eventEndTime = document.getElementById('field-gen-end-time')?.value || localStorage.getItem('event_gen_end_time') || '12:00';
   if (!eventDate) {
     alert('開催日時（文章生成用）の日付を入力してください。');
     btn.disabled = false;
@@ -444,13 +575,8 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
 document.getElementById('btn-toggle-key').addEventListener('click', () => {
   const input = document.getElementById('field-openai-key');
   const btn = document.getElementById('btn-toggle-key');
-  if (input.type === 'password') {
-    input.type = 'text';
-    btn.textContent = '🙈';
-  } else {
-    input.type = 'password';
-    btn.textContent = '👁️';
-  }
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+  else { input.type = 'password'; btn.textContent = '👁️'; }
 });
 
 // ===== 音声入力（Web Speech API） =====
@@ -477,9 +603,7 @@ document.getElementById('btn-voice').addEventListener('click', async () => {
   recognition.interimResults = true;
   recognition.onresult = (e) => {
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) {
-        textarea.value += e.results[i][0].transcript;
-      }
+      if (e.results[i].isFinal) textarea.value += e.results[i][0].transcript;
     }
   };
   recognition.onend = () => { isRecording = false; btn.classList.remove('recording'); };
@@ -546,14 +670,13 @@ document.getElementById('btn-post-run').addEventListener('click', runPost);
 document.getElementById('btn-delete-ok').addEventListener('click', async () => {
   await api.delete(currentType, deletingId);
   closeDeleteModal();
-  renderList();
+  await loadData();
 });
 
 // ===== 開催日時フィールドの変更を localStorage に保存 =====
 ['field-gen-date', 'field-gen-time', 'field-gen-end-time'].forEach((id) => {
   document.getElementById(id)?.addEventListener('change', syncEventDatetime);
 });
-// 投稿モーダルの日時変更も同期
 document.getElementById('field-start-date')?.addEventListener('change', (e) => {
   localStorage.setItem('event_gen_date', e.target.value);
   document.getElementById('field-end-date').value = e.target.value;
@@ -571,8 +694,8 @@ postModal.addEventListener('click', (e) => { if (e.target === postModal) closePo
 
 // ===== ユーティリティ =====
 function esc(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ===== 初期表示 =====
-renderList();
+loadData();
