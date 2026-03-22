@@ -302,13 +302,14 @@ module Posting
           log("[Peatix] 🎫 name入力失敗: #{e.message}")
         end
 
+        capacity = ef['capacity'].presence || '50'
         begin
           seats_input = page.locator('input[name="seatsMax"]').last
           seats_input.click(clickCount: 3, timeout: 3_000)
-          page.keyboard.type('50')
-          log("[Peatix] 🎫 quantity: 50")
+          page.keyboard.type(capacity)
+          log("[Peatix] 🎫 販売予定数: #{capacity}")
         rescue => e
-          log("[Peatix] 🎫 quantity入力失敗: #{e.message}")
+          log("[Peatix] 🎫 販売予定数入力失敗: #{e.message}")
         end
 
         result = ['done']
