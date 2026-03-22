@@ -241,10 +241,31 @@ export default function PostModal({ item, onClose, showToast }) {
       lmeAccount: lmeSubType,
     };
 
+    // 投稿内容にZoom情報を自動反映
+    let finalContent = item.content;
+    const { zoomUrl, zoomId, zoomPasscode } = eventFields;
+    if (zoomUrl) {
+      // プレースホルダーがあれば置換
+      finalContent = finalContent.replace(/参加URL[：:]\s*（後ほど共有）/g, `参加URL： ${zoomUrl}`);
+      finalContent = finalContent.replace(/ミーティング\s*ID[：:]\s*（後ほど共有）/g, `ミーティング ID: ${zoomId || ''}`);
+      finalContent = finalContent.replace(/パスコード[：:]\s*（後ほど共有）/g, `パスコード: ${zoomPasscode || ''}`);
+
+      // Zoom情報が本文に含まれていなければ末尾に追加
+      if (!finalContent.includes(zoomUrl)) {
+        const zoomBlock = [
+          '\n\n■ Zoom参加情報',
+          `参加URL: ${zoomUrl}`,
+          zoomId ? `ミーティングID: ${zoomId}` : '',
+          zoomPasscode ? `パスコード: ${zoomPasscode}` : '',
+        ].filter(Boolean).join('\n');
+        finalContent += zoomBlock;
+      }
+    }
+
     try {
       await postToSites(
         {
-          content: item.content,
+          content: finalContent,
           sites: effectiveSites,
           eventFields: ef,
           generateImage,
