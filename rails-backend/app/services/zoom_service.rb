@@ -358,9 +358,61 @@ class ZoomService
     meeting_id = result['meetingId'].to_s.strip
     passcode   = result['passcode'].to_s.strip
 
-    # パスコードがマスクされている場合、「招待状をコピー」から実際の値を取得
+    # パスコードがマスクされている場合、「表示」ボタンをクリックして数字を取得
     if passcode.blank? || passcode.include?('*')
-      log("[Zoom] パスコードがマスクされています。招待状から取得を試行...")
+      log("[Zoom] パスコードがマスクされています。「表示」ボタンで実パスコードを取得中...")
+      revealed = page.evaluate(<<~'REVEAL_JS')
+        (() => {
+          // 「表示」「Show」ボタン/リンクを探してクリック
+          const all = [...document.querySelectorAll('a, button, span')];
+          for (const el of all) {
+            const text = (el.textContent || '').trim();
+            if (text === '表示' || text === 'Show' || text === 'show') {
+              // パスコード近くの「表示」だけクリック
+              const parent = el.closest('div, tr, section, dd');
+              if (parent) {
+                const parentText = parent.textContent || '';
+                if (parentText.includes('パスコード') || parentText.includes('Passcode') || parentText.includes('********')) {
+                  el.click();
+                  return { clicked: true };
+                }
+              }
+            }
+          }
+          return { clicked: false };
+        })()
+      REVEAL_JS
+
+      if revealed['clicked']
+        page.wait_for_timeout(1000)
+        # 表示されたパスコード（数字）を再取得
+        revealed_passcode = page.evaluate(<<~'GET_PC_JS')
+          (() => {
+            const body = document.body.innerText || '';
+            // パスコード: の後の数字を取得（マスクでない）
+            const match = body.match(/(?:パスコード|Passcode)[:\s]*(\d{4,10})/i);
+            if (match) return match[1].trim();
+            // 「非表示」が出ていれば表示成功 → 近くの数字を探す
+            const all = [...document.querySelectorAll('span, div, td, dd')];
+            for (const el of all) {
+              const text = (el.textContent || '').trim();
+              if (/^\d{4,10}$/.test(text)) {
+                const parent = el.closest('div, tr, section');
+                if (parent && (parent.textContent.includes('パスコード') || parent.textContent.includes('Passcode'))) {
+                  return text;
+                }
+              }
+            }
+            return '';
+          })()
+        GET_PC_JS
+        if revealed_passcode.present?
+          passcode = revealed_passcode
+          log("[Zoom] ✅ パスコード取得成功: #{passcode}")
+        else
+          log("[Zoom] ⚠️ 表示ボタンクリック後もパスコードを取得できませんでした")
+        end
+      end
     end
 
     if zoom_url.blank? || passcode.blank? || passcode.include?('*')
@@ -409,7 +461,9 @@ class ZoomService
             id_m = invite_text.match(/(?:ミーティング\s*ID|Meeting\s*ID)[:\s]*([0-9\s]{9,})/i)
             meeting_id = id_m[1].strip if id_m && meeting_id.blank?
 
-            pc_m = invite_text.match(/(?:パスコード|Passcode|パスワード|Password)[:\s]*([^\s\n*]+)/i)
+            # 数字パスコードを優先取得
+            pc_m = invite_text.match(/(?:パスコード|Passcode|パスワード|Password)[:\s]*(\d{4,10})/i)
+            pc_m ||= invite_text.match(/(?:パスコード|Passcode|パスワード|Password)[:\s]*([^\s\n*]+)/i)
             passcode = pc_m[1].strip if pc_m && !pc_m[1].include?('*')
           end
 

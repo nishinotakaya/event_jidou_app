@@ -127,7 +127,7 @@ export default function PostModal({ item, onClose, showToast }) {
       let zoomResult = null;
       await createZoomMeeting(
         {
-          title: eventFields.title || item?.name || 'ミーティング',
+          title: eventFields.zoomTitle || eventFields.title || item?.name || 'ミーティング',
           startDate: eventFields.startDate,
           startTime: eventFields.startTime || '10:00',
           duration: 120,
@@ -147,7 +147,7 @@ export default function PostModal({ item, onClose, showToast }) {
               zoomId: event.data.meetingId || '',
               zoomPasscode: event.data.passcode || '',
             }));
-            showToast('Zoomミーティングを作成し、自動入力しました', 'success');
+            showToast('Zoomミーティングを作成・DB保存し、自動入力しました', 'success');
           }
         }
       );
@@ -173,12 +173,13 @@ export default function PostModal({ item, onClose, showToast }) {
     }
   }
 
-  // Auto-fill title from item name
+  // Auto-fill title and zoomTitle from item name
   useEffect(() => {
     if (item) {
       setEventFields((prev) => ({
         ...prev,
         title: prev.title || item.name,
+        zoomTitle: prev.zoomTitle || item.name,
       }));
     }
   }, [item]);
