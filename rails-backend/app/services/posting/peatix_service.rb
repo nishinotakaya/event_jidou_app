@@ -167,9 +167,9 @@ module Posting
       click_next_button(page, 'basics')
     end
 
-    # ===== details ページ（カバー画像のみ — カテゴリはAPI設定済み） =====
+    # ===== details ページ（カテゴリ選択 + カバー画像） =====
     def fill_details(page, image_path)
-      log("[Peatix] 📝 details: カバー画像を設定中...")
+      log("[Peatix] 📝 details: カテゴリ・画像を設定中...")
       # detailsページに遷移
       current = page.url
       if current.include?('/edit/') && !current.include?('/details')
@@ -179,11 +179,68 @@ module Posting
         page.wait_for_timeout(2000)
       end
 
+      # カテゴリ選択（mouse.click で FormKit セレクトを操作）
+      select_category(page)
+
       # カバー画像アップロード
       upload_cover_image(page, image_path)
 
       # 「進む」をクリック
       click_next_button(page, 'details')
+    end
+
+    def select_category(page)
+      begin
+        btn = page.locator('button[name="category"]')
+        box = btn.bounding_box(timeout: 5_000)
+        if box
+          page.mouse.click(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+          page.wait_for_timeout(1500)
+
+          # リストから「スキルアップ」を選択
+          page.locator('[role="option"]:has-text("スキルアップ")').click(timeout: 5_000)
+          page.wait_for_timeout(1500)
+          log("[Peatix] カテゴリ: スキルアップ／資格 選択完了")
+
+          # サブカテゴリ（タグ）入力
+          select_subcategory_tags(page)
+        else
+          log("[Peatix] ⚠️ カテゴリボタンが画面外です")
+        end
+      rescue => e
+        log("[Peatix] ⚠️ カテゴリ選択失敗: #{e.message}")
+      end
+    end
+
+    def select_subcategory_tags(page)
+      tags = ['生成AI', 'AIエージェント', 'リモートワーク', 'プログラミング', '転職']
+      begin
+        # タグ入力フィールドを探す（カテゴリ選択後に表示される）
+        tag_input = page.locator('input[placeholder*="タグ"], input[name*="tag"], input[placeholder*="Tag"], input[type="text"][aria-autocomplete]').first
+        tag_input.wait_for(state: 'visible', timeout: 5_000)
+
+        tags.each do |tag|
+          tag_input.fill(tag)
+          page.wait_for_timeout(500)
+          page.keyboard.press('Enter')
+          page.wait_for_timeout(300)
+        end
+        log("[Peatix] サブカテゴリ: #{tags.join(', ')}")
+      rescue => e
+        # フォールバック: チェックボックス型の場合
+        log("[Peatix] タグ入力欄なし、チェックボックス型を試行: #{e.message}")
+        begin
+          selected = []
+          tags.each do |tag|
+            opt = page.locator("text=#{tag}").first
+            opt.click(timeout: 2_000) rescue next
+            selected << tag
+          end
+          log("[Peatix] サブカテゴリ(checkbox): #{selected.join(', ')}") if selected.any?
+        rescue
+          log("[Peatix] ⚠️ サブカテゴリ選択失敗")
+        end
+      end
     end
 
     # ===== tickets ページ =====

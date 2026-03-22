@@ -37,8 +37,9 @@ class PostJob < ApplicationJob
     playwright_path = find_playwright_path
 
     Playwright.create(playwright_cli_executable_path: playwright_path) do |playwright|
+      # headless: false — PeatixのFormKit等、headlessでは座標クリックが効かないUIがあるため
       browser = playwright.chromium.launch(
-        headless: true,
+        headless: false,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
