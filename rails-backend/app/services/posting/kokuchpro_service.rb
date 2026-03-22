@@ -270,6 +270,12 @@ module Posting
         page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
         page.wait_for_timeout(2000)
 
+        # アラートダイアログ（「この開催日のイベントを公開してもよろしいですか？」）を自動承認
+        page.on('dialog', ->(dialog) {
+          log("[こくチーズ] 🌐 アラート: #{dialog.message}")
+          dialog.accept
+        })
+
         # 「公開する」ボタンをクリック
         clicked = page.evaluate(<<~'JS')
           (() => {
@@ -287,7 +293,7 @@ module Posting
         JS
 
         if clicked['found']
-          page.wait_for_timeout(3000)
+          page.wait_for_timeout(5000)
           page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
           log("[こくチーズ] 🌐 ✅ 公開完了")
         else
