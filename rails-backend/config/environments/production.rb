@@ -35,7 +35,10 @@ Rails.application.configure do
   # Mount Action Cable outside main process or domain.
   # config.action_cable.mount_path = nil
   # config.action_cable.url = "wss://example.com/cable"
-  # config.action_cable.allowed_request_origins = [ "http://example.com", /http:\/\/example.*/ ]
+  config.action_cable.allowed_request_origins = [
+    ENV.fetch("FRONTEND_URL", nil),
+    /\Ahttps?:\/\/.*\.vercel\.app\z/,
+  ].compact
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
   # Can be used together with config.force_ssl for Strict-Transport-Security and secure cookies.
@@ -63,9 +66,8 @@ Rails.application.configure do
   # Use a different cache store in production.
   # config.cache_store = :mem_cache_store
 
-  # Use a real queuing backend for Active Job (and separate queues per environment).
-  # config.active_job.queue_adapter = :resque
-  # config.active_job.queue_name_prefix = "rails_backend_production"
+  # Use Sidekiq for background jobs (Playwright posting)
+  config.active_job.queue_adapter = :sidekiq
 
   # Disable caching for Action Mailer templates even if Action Controller
   # caching is enabled.

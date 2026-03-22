@@ -22,6 +22,10 @@ export default function Sidebar({
       showToast('フォルダ名を入力してください', 'error');
       return;
     }
+    if (newFolderName.includes('/')) {
+      showToast('フォルダ名にスラッシュは使えません', 'error');
+      return;
+    }
     setAdding(true);
     try {
       await createFolder(activeType, {

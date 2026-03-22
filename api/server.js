@@ -60,10 +60,12 @@ app.get('/api/texts/:type', async (req, res) => res.json(await load(req.params.t
 
 app.post('/api/texts/:type', async (req, res) => {
   const { type } = req.params;
-  const { name, content, folder = '' } = req.body;
+  const { name, content, folder = '', eventDate, eventTime, eventEndTime, lmeSendDate, lmeSendTime, lmeAccount, lmeZoomUrl, lmeMeetingId, lmePasscode } = req.body;
   const data = await load(type);
   const now = today();
-  const item = { id: nextId(data, type), name, type, content, folder, createdAt: now, updatedAt: now };
+  const eventMeta = eventDate ? { eventDate, eventTime, eventEndTime } : {};
+  const lmeMeta = lmeSendDate ? { lmeSendDate, lmeSendTime, lmeAccount, lmeZoomUrl, lmeMeetingId, lmePasscode } : {};
+  const item = { id: nextId(data, type), name, type, content, folder, ...eventMeta, ...lmeMeta, createdAt: now, updatedAt: now };
   data.push(item);
   await save(type, data);
   res.json(item);
@@ -71,11 +73,13 @@ app.post('/api/texts/:type', async (req, res) => {
 
 app.put('/api/texts/:type/:id', async (req, res) => {
   const { type, id } = req.params;
-  const { name, content, folder } = req.body;
+  const { name, content, folder, eventDate, eventTime, eventEndTime, lmeSendDate, lmeSendTime, lmeAccount, lmeZoomUrl, lmeMeetingId, lmePasscode } = req.body;
   const data = await load(type);
   const idx = data.findIndex(d => d.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  data[idx] = { ...data[idx], name, content, ...(folder !== undefined && { folder }), updatedAt: today() };
+  const eventMeta = eventDate !== undefined ? { eventDate, eventTime, eventEndTime } : {};
+  const lmeMeta = lmeSendDate !== undefined ? { lmeSendDate, lmeSendTime, lmeAccount, lmeZoomUrl, lmeMeetingId, lmePasscode } : {};
+  data[idx] = { ...data[idx], name, content, ...(folder !== undefined && { folder }), ...eventMeta, ...lmeMeta, updatedAt: today() };
   await save(type, data);
   res.json(data[idx]);
 });
@@ -313,7 +317,7 @@ app.post('/api/ai/correct', async (req, res) => {
 
 app.post('/api/ai/generate', async (req, res) => {
   try {
-    const { title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType } = req.body;
+    const { title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType, zoomUrl, meetingId, passcode } = req.body;
     console.log(`[generate] eventDate="${eventDate}" eventTime="${eventTime}" eventEndTime="${eventEndTime}" eventSubType="${eventSubType}"`);
     const key = apiKey || process.env.OPENAI_API_KEY;
     if (!key) return res.status(400).json({ error: 'OpenAI APIキーを入力してください' });
@@ -384,10 +388,10 @@ app.post('/api/ai/generate', async (req, res) => {
 開催概要
 日時：${dateStr}
 対象：プログラミングに興味がある方・初学者の方
-参加URL： （後ほど共有）
+参加URL： ${zoomUrl || '（後ほど共有）'}
 
-ミーティング ID: （後ほど共有）
-パスコード: （後ほど共有）
+ミーティング ID: ${meetingId || '（後ほど共有）'}
+パスコード: ${passcode || '（後ほど共有）'}
 
 👉 {CTA}`;
       userPrompt = `タイトル：${title}\n\n開催日時は必ず「${dateStr}」をそのまま使用してください。`;
@@ -429,10 +433,10 @@ app.post('/api/ai/generate', async (req, res) => {
 開催概要
 日時：${dateStr}
 対象：プロアカ受講生
-参加URL： （後ほど共有）
+参加URL： ${zoomUrl || '（後ほど共有）'}
 
-ミーティング ID: （後ほど共有）
-パスコード: （後ほど共有）
+ミーティング ID: ${meetingId || '（後ほど共有）'}
+パスコード: ${passcode || '（後ほど共有）'}
 
 👉 {CTA}`;
       userPrompt = `タイトル：${title}\n\n開催日時は必ず「${dateStr}」をそのまま使用してください。`;

@@ -70,6 +70,7 @@ export default function ItemList({
   onEdit,
   onDelete,
   onPost,
+  onDuplicate,
   onRefresh,
   showToast,
   page,
@@ -121,6 +122,7 @@ export default function ItemList({
               onEdit={onEdit}
               onDelete={onDelete}
               onPost={onPost}
+              onDuplicate={onDuplicate}
               onRefresh={onRefresh}
               showToast={showToast}
             />

@@ -679,6 +679,20 @@ body {
   width: 80px;
 }
 
+.gen-zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.gen-zoom-input {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex: 1 1 auto;
+}
+
 /* ===== 編集モーダル LMEカード（投稿モーダルの site-check-lme と同スタイル） ===== */
 .gen-lme-card {
   display: flex;

@@ -1,34 +1,56 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { postToSites } from '../api.js';
+import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting } from '../api.js';
 
-const LS_API_KEY = 'openai_api_key';
+const LS_API_KEY       = 'openai_api_key';
+const LS_DATE          = 'event_gen_date';
+const LS_TIME          = 'event_gen_time';
+const LS_END_TIME      = 'event_gen_end_time';
+const LS_LME_SEND_DATE = 'lme_send_date';
+const LS_LME_SEND_TIME = 'lme_send_time';
+// EditModal と共有する Zoom 関連キー
+const LS_ZOOM_URL      = 'lme_zoom_url';
+const LS_MEETING_ID    = 'lme_meeting_id';
+const LS_PASSCODE      = 'lme_passcode';
 
-const SITES = ['こくチーズ', 'Peatix', 'connpass', 'LME'];
+// LME 一時非表示（エルメ側で配信ユーザー絞り込み調整中）
+const SITES = ['こくチーズ', 'Peatix', 'connpass', 'TechPlay' /*, 'LME' */];
 
-const DEFAULT_EVENT_FIELDS = {
-  title: '',
-  startDate: '',
-  startTime: '',
-  endDate: '',
-  endTime: '',
-  place: '',
-  zoomUrl: '',
-  capacity: '',
-  tel: '',
-  peatixEventId: '',
-};
+function getDefaultEventFields() {
+  return {
+    title:        '',
+    startDate:    localStorage.getItem(LS_DATE)         || '',
+    startTime:    localStorage.getItem(LS_TIME)         || '10:00',
+    endDate:      localStorage.getItem(LS_DATE)         || '',
+    endTime:      localStorage.getItem(LS_END_TIME)     || '12:00',
+    place:        'オンライン',
+    zoomTitle:    '',
+    zoomUrl:      localStorage.getItem(LS_ZOOM_URL)   || '',
+    zoomId:       localStorage.getItem(LS_MEETING_ID) || '',
+    zoomPasscode: localStorage.getItem(LS_PASSCODE)   || '',
+    capacity:     '50',
+    tel:          '03-1234-5678',
+    peatixEventId: '',
+    lmeSendDate:  localStorage.getItem(LS_LME_SEND_DATE) || '',
+    lmeSendTime:  localStorage.getItem(LS_LME_SEND_TIME) || localStorage.getItem(LS_TIME) || '10:00',
+  };
+}
 
 export default function PostModal({ item, onClose, showToast }) {
   const [selectedSites, setSelectedSites] = useState(() => {
     try {
       const saved = localStorage.getItem('post_selected_sites');
-      return saved ? JSON.parse(saved) : ['こくチーズ'];
+      const sites = saved ? JSON.parse(saved) : ['こくチーズ'];
+      const lmeChecked = localStorage.getItem('lme_gen_checked') === 'true';
+      if (lmeChecked && !sites.includes('LME')) sites.push('LME');
+      return sites;
     } catch {
       return ['こくチーズ'];
     }
   });
-  const [lmeSubType, setLmeSubType] = useState('taiken');
-  const [eventFields, setEventFields] = useState(DEFAULT_EVENT_FIELDS);
+  const [lmeSubType, setLmeSubType] = useState(
+    () => localStorage.getItem('lme_gen_subtype') || 'taiken'
+  );
+  const [eventFields, setEventFields] = useState(getDefaultEventFields);
   const [generateImage, setGenerateImage] = useState(false);
   const [imageStyle, setImageStyle] = useState('cute');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(LS_API_KEY) || '');
@@ -38,7 +60,118 @@ export default function PostModal({ item, onClose, showToast }) {
   const [siteStatuses, setSiteStatuses] = useState({});
   const [postDone, setPostDone] = useState(false);
 
+  // Zoom DB settings
+  const [zoomList, setZoomList] = useState([]);
+  const [zoomDropdownOpen, setZoomDropdownOpen] = useState(false);
+  const [zoomSaving, setZoomSaving] = useState(false);
+  const [zoomCreating, setZoomCreating] = useState(false);
+  const [zoomLogs, setZoomLogs] = useState([]);
+
   const logRef = useRef(null);
+
+  // Load Zoom settings from DB on mount
+  useEffect(() => {
+    fetchZoomSettings().then(setZoomList).catch(() => {});
+  }, []);
+
+  function handleLoadZoom(setting) {
+    setEventFields((prev) => ({
+      ...prev,
+      zoomTitle: setting.title || setting.label || '',
+      zoomUrl: setting.zoomUrl,
+      zoomId: setting.meetingId || '',
+      zoomPasscode: setting.passcode || '',
+    }));
+    setZoomDropdownOpen(false);
+    showToast(`Zoom設定「${setting.label}」を読み込みました`, 'success');
+  }
+
+  async function handleSaveZoom() {
+    if (!eventFields.zoomUrl) {
+      showToast('Zoom URLを入力してください', 'error');
+      return;
+    }
+    const label = prompt('保存名を入力してください（例: 定例ミーティング）');
+    if (!label) return;
+    setZoomSaving(true);
+    try {
+      await saveZoomSetting({
+        label,
+        title: eventFields.zoomTitle || eventFields.title || '',
+        zoomUrl: eventFields.zoomUrl,
+        meetingId: eventFields.zoomId,
+        passcode: eventFields.zoomPasscode,
+      });
+      const list = await fetchZoomSettings();
+      setZoomList(list);
+      showToast('Zoom設定を保存しました', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setZoomSaving(false);
+    }
+  }
+
+  async function handleCreateZoomMeeting() {
+    if (!eventFields.title && !item?.name) {
+      showToast('イベント名を入力してください', 'error');
+      return;
+    }
+    if (!eventFields.startDate) {
+      showToast('開催日を入力してください', 'error');
+      return;
+    }
+    setZoomCreating(true);
+    setZoomLogs([]);
+    try {
+      let zoomResult = null;
+      await createZoomMeeting(
+        {
+          title: eventFields.title || item?.name || 'ミーティング',
+          startDate: eventFields.startDate,
+          startTime: eventFields.startTime || '10:00',
+          duration: 120,
+        },
+        (event) => {
+          if (event.type === 'log') {
+            setZoomLogs((prev) => [...prev, event.message]);
+          } else if (event.type === 'error') {
+            setZoomLogs((prev) => [...prev, `❌ ${event.message}`]);
+            showToast(event.message, 'error');
+          } else if (event.type === 'result' && event.data) {
+            zoomResult = event.data;
+            setEventFields((prev) => ({
+              ...prev,
+              zoomTitle: event.data.title || event.data.label || '',
+              zoomUrl: event.data.zoomUrl || '',
+              zoomId: event.data.meetingId || '',
+              zoomPasscode: event.data.passcode || '',
+            }));
+            showToast('Zoomミーティングを作成し、自動入力しました', 'success');
+          }
+        }
+      );
+      // Refresh zoom list
+      const list = await fetchZoomSettings();
+      setZoomList(list);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setZoomCreating(false);
+    }
+  }
+
+  async function handleDeleteZoom(id, label) {
+    if (!confirm(`Zoom設定「${label}」を削除しますか？`)) return;
+    try {
+      await deleteZoomSetting(id);
+      const list = await fetchZoomSettings();
+      setZoomList(list);
+      showToast('Zoom設定を削除しました', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
 
   // Auto-fill title from item name
   useEffect(() => {
@@ -65,6 +198,20 @@ export default function PostModal({ item, onClose, showToast }) {
     }
   }, [logs]);
 
+  // Persist LME send date/time
+  useEffect(() => { localStorage.setItem(LS_LME_SEND_DATE, eventFields.lmeSendDate); }, [eventFields.lmeSendDate]);
+  useEffect(() => { localStorage.setItem(LS_LME_SEND_TIME, eventFields.lmeSendTime); }, [eventFields.lmeSendTime]);
+
+  // Persist Zoom fields (EditModal と共有)
+  useEffect(() => { localStorage.setItem(LS_ZOOM_URL,   eventFields.zoomUrl);      }, [eventFields.zoomUrl]);
+  useEffect(() => { localStorage.setItem(LS_MEETING_ID, eventFields.zoomId);       }, [eventFields.zoomId]);
+  useEffect(() => { localStorage.setItem(LS_PASSCODE,   eventFields.zoomPasscode); }, [eventFields.zoomPasscode]);
+
+  // 開始日を変更したら終了日も連動
+  function handleStartDateChange(val) {
+    setEventFields((prev) => ({ ...prev, startDate: val, endDate: val }));
+  }
+
   function toggleSite(site) {
     setSelectedSites((prev) =>
       prev.includes(site) ? prev.filter((s) => s !== site) : [...prev, site]
@@ -86,11 +233,11 @@ export default function PostModal({ item, onClose, showToast }) {
     setSiteStatuses({});
     setPostDone(false);
 
-    // Build effective sites list (LME includes subType)
     const effectiveSites = selectedSites.map((s) => s === 'LME' ? `LME:${lmeSubType}` : s);
-
-    // Effective event fields
-    const ef = { ...eventFields };
+    const ef = {
+      ...eventFields,
+      lmeAccount: lmeSubType,
+    };
 
     try {
       await postToSites(
@@ -139,15 +286,15 @@ export default function PostModal({ item, onClose, showToast }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, posting]);
 
-  // Compute display site name from effectiveSite key
   function getSiteDisplayStatus(site) {
-    // Check both raw name and with LME subtype
     if (siteStatuses[site]) return siteStatuses[site];
     if (site === 'LME') {
       return siteStatuses[`LME:${lmeSubType}`] || siteStatuses['LME'];
     }
     return null;
   }
+
+  const lmeSelected = selectedSites.includes('LME');
 
   return (
     <div className="modal-overlay" onClick={handleOverlayClick}>
@@ -192,28 +339,41 @@ export default function PostModal({ item, onClose, showToast }) {
                     {/* LME sub-options */}
                     {site === 'LME' && isChecked && (
                       <div className="lme-sub-options">
-                        <label className="lme-radio">
+                        <div className="lme-account-row">
+                          {[
+                            { value: 'taiken',    label: '体験会（セミナー）' },
+                            { value: 'benkyokai', label: '受講生勉強会' },
+                          ].map(({ value, label }) => (
+                            <label key={value} className="lme-radio">
+                              <input
+                                type="radio"
+                                name="lme-subtype"
+                                value={value}
+                                checked={lmeSubType === value}
+                                onChange={() => setLmeSubType(value)}
+                                disabled={posting}
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="lme-senddate-row" style={{ marginTop: '8px' }}>
+                          <span className="lme-senddate-label">配信日時</span>
                           <input
-                            type="radio"
-                            name="lme-subtype"
-                            value="taiken"
-                            checked={lmeSubType === 'taiken'}
-                            onChange={() => setLmeSubType('taiken')}
+                            className="form-input"
+                            type="date"
+                            value={eventFields.lmeSendDate}
+                            onChange={(e) => updateEventField('lmeSendDate', e.target.value)}
                             disabled={posting}
                           />
-                          体験会（セミナー）
-                        </label>
-                        <label className="lme-radio">
                           <input
-                            type="radio"
-                            name="lme-subtype"
-                            value="study"
-                            checked={lmeSubType === 'study'}
-                            onChange={() => setLmeSubType('study')}
+                            className="form-input"
+                            type="time"
+                            value={eventFields.lmeSendTime}
+                            onChange={(e) => updateEventField('lmeSendTime', e.target.value)}
                             disabled={posting}
                           />
-                          受講生勉強会
-                        </label>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -223,11 +383,13 @@ export default function PostModal({ item, onClose, showToast }) {
           </div>
 
           {/* Event Fields */}
-          <div className="event-fields-section">
-            <p className="event-fields-title">イベント情報</p>
+          <details className="event-fields-section" open>
+            <summary className="event-fields-title">
+              📅 イベント詳細 <span style={{ fontSize: '0.8em', color: '#888' }}>（こくチーズ用・受付期間は開催7日前〜1日前で自動計算）</span>
+            </summary>
 
-            <div className="form-group">
-              <label className="form-label">タイトル</label>
+            <div className="form-group" style={{ marginTop: '10px' }}>
+              <label className="form-label">イベント名（こくチーズ・connpassのタイトル）</label>
               <input
                 className="form-input"
                 value={eventFields.title}
@@ -239,12 +401,12 @@ export default function PostModal({ item, onClose, showToast }) {
 
             <div className="form-row" style={{ marginTop: '10px' }}>
               <div className="form-group">
-                <label className="form-label">開始日</label>
+                <label className="form-label">開催日</label>
                 <input
                   className="form-input"
                   type="date"
                   value={eventFields.startDate}
-                  onChange={(e) => updateEventField('startDate', e.target.value)}
+                  onChange={(e) => handleStartDateChange(e.target.value)}
                   disabled={posting}
                 />
               </div>
@@ -283,29 +445,17 @@ export default function PostModal({ item, onClose, showToast }) {
               </div>
             </div>
 
-            <div className="form-group" style={{ marginTop: '10px' }}>
-              <label className="form-label">開催場所</label>
-              <input
-                className="form-input"
-                value={eventFields.place}
-                onChange={(e) => updateEventField('place', e.target.value)}
-                placeholder="例: オンライン（Zoom）"
-                disabled={posting}
-              />
-            </div>
-
-            <div className="form-group" style={{ marginTop: '10px' }}>
-              <label className="form-label">Zoom URL</label>
-              <input
-                className="form-input"
-                value={eventFields.zoomUrl}
-                onChange={(e) => updateEventField('zoomUrl', e.target.value)}
-                placeholder="https://us02web.zoom.us/..."
-                disabled={posting}
-              />
-            </div>
-
             <div className="form-row" style={{ marginTop: '10px' }}>
+              <div className="form-group">
+                <label className="form-label">会場名</label>
+                <input
+                  className="form-input"
+                  value={eventFields.place}
+                  onChange={(e) => updateEventField('place', e.target.value)}
+                  placeholder="例: オンライン"
+                  disabled={posting}
+                />
+              </div>
               <div className="form-group">
                 <label className="form-label">定員</label>
                 <input
@@ -313,33 +463,152 @@ export default function PostModal({ item, onClose, showToast }) {
                   type="number"
                   value={eventFields.capacity}
                   onChange={(e) => updateEventField('capacity', e.target.value)}
-                  placeholder="50"
-                  disabled={posting}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">電話番号</label>
-                <input
-                  className="form-input"
-                  value={eventFields.tel}
-                  onChange={(e) => updateEventField('tel', e.target.value)}
-                  placeholder="03-xxxx-xxxx"
+                  min="1"
                   disabled={posting}
                 />
               </div>
             </div>
 
+            {/* Zoom Section */}
+            <div className="zoom-section" style={{ marginTop: '10px', background: '#f0f7ff', border: '1.5px solid #bfdbfe', borderRadius: '10px', padding: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+                <label className="form-label" style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#1e40af' }}>
+                  Zoom ミーティング
+                </label>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', position: 'relative' }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm zoom-create-btn"
+                    onClick={handleCreateZoomMeeting}
+                    disabled={posting || zoomCreating}
+                    title="Zoomにログインしてミーティングを自動作成"
+                  >
+                    {zoomCreating ? <><span className="spinner" /> 作成中...</> : '🔄 自動作成'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm zoom-load-btn"
+                    onClick={() => setZoomDropdownOpen(!zoomDropdownOpen)}
+                    disabled={posting || zoomCreating}
+                    title="保存済みZoom設定を読み込む"
+                  >
+                    📥 読み込み
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm zoom-save-btn"
+                    onClick={handleSaveZoom}
+                    disabled={posting || zoomSaving || zoomCreating || !eventFields.zoomUrl}
+                    title="現在のZoom設定をDBに保存"
+                  >
+                    {zoomSaving ? <span className="spinner" /> : '💾'} 保存
+                  </button>
+                  {zoomDropdownOpen && (
+                    <div className="zoom-dropdown">
+                      {zoomList.length === 0 ? (
+                        <div className="zoom-dropdown-empty">保存済み設定なし</div>
+                      ) : (
+                        zoomList.map((z) => (
+                          <div key={z.id} className="zoom-dropdown-item">
+                            <button
+                              className="zoom-dropdown-select"
+                              onClick={() => handleLoadZoom(z)}
+                            >
+                              <span className="zoom-dropdown-label">{z.title || z.label}</span>
+                              <span className="zoom-dropdown-url">{z.zoomUrl?.substring(0, 40)}...</span>
+                            </button>
+                            <button
+                              className="zoom-dropdown-delete"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteZoom(z.id, z.label); }}
+                              title="削除"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Zoom auto-create logs */}
+              {zoomLogs.length > 0 && (
+                <div className="zoom-log-container" style={{ marginBottom: '10px' }}>
+                  {zoomLogs.map((msg, i) => (
+                    <div key={i} className="zoom-log-line">{msg}</div>
+                  ))}
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label">Zoom タイトル</label>
+                <input
+                  className="form-input"
+                  value={eventFields.zoomTitle}
+                  onChange={(e) => updateEventField('zoomTitle', e.target.value)}
+                  placeholder="例: 3/29 テスト体験会"
+                  disabled={posting || zoomCreating}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginTop: '8px' }}>
+                <label className="form-label">Zoom URL</label>
+                <input
+                  className="form-input zoom-url-input"
+                  value={eventFields.zoomUrl}
+                  onChange={(e) => updateEventField('zoomUrl', e.target.value)}
+                  placeholder="https://us02web.zoom.us/j/..."
+                  disabled={posting || zoomCreating}
+                />
+              </div>
+
+              <div className="form-row" style={{ marginTop: '8px' }}>
+                <div className="form-group">
+                  <label className="form-label">ミーティングID</label>
+                  <input
+                    className="form-input"
+                    value={eventFields.zoomId}
+                    onChange={(e) => updateEventField('zoomId', e.target.value)}
+                    placeholder="123 456 7890"
+                    disabled={posting || zoomCreating}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">パスコード</label>
+                  <input
+                    className="form-input"
+                    value={eventFields.zoomPasscode}
+                    onChange={(e) => updateEventField('zoomPasscode', e.target.value)}
+                    placeholder="abc123"
+                    disabled={posting || zoomCreating}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="form-group" style={{ marginTop: '10px' }}>
-              <label className="form-label">Peatix イベントID（既存イベントに投稿する場合）</label>
+              <label className="form-label">連絡先TEL</label>
+              <input
+                className="form-input"
+                value={eventFields.tel}
+                onChange={(e) => updateEventField('tel', e.target.value)}
+                placeholder="03-xxxx-xxxx"
+                disabled={posting}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginTop: '10px', paddingBottom: '14px' }}>
+              <label className="form-label">Peatix イベントID <span style={{ color: '#888', fontSize: '0.85em' }}>（入力時は新規作成せず既存イベントを更新）</span></label>
               <input
                 className="form-input"
                 value={eventFields.peatixEventId}
                 onChange={(e) => updateEventField('peatixEventId', e.target.value)}
-                placeholder="例: 1234567"
+                placeholder="例: 12345678"
                 disabled={posting}
               />
             </div>
-          </div>
+          </details>
 
           {/* Image generation */}
           <div className="image-gen-row">
@@ -351,7 +620,7 @@ export default function PostModal({ item, onClose, showToast }) {
                 disabled={posting}
                 style={{ accentColor: '#f472b6' }}
               />
-              画像を自動生成する
+              🖼️ 画像自動生成（DALL-E 3）
             </label>
             {generateImage && (
               <div className="image-style-radio">
@@ -364,7 +633,7 @@ export default function PostModal({ item, onClose, showToast }) {
                     onChange={() => setImageStyle('cute')}
                     disabled={posting}
                   />
-                  かわいい
+                  🌸 可愛い系
                 </label>
                 <label>
                   <input
@@ -375,7 +644,7 @@ export default function PostModal({ item, onClose, showToast }) {
                     onChange={() => setImageStyle('cool')}
                     disabled={posting}
                   />
-                  かっこいい
+                  ⚡ かっこいい系
                 </label>
               </div>
             )}
@@ -394,14 +663,20 @@ export default function PostModal({ item, onClose, showToast }) {
             />
           </div>
 
-          {/* SSE Logs */}
-          {logs.length > 0 && (
-            <div className="sse-log-container" ref={logRef}>
-              {logs.map((log, i) => (
-                <div key={i} className={`sse-log-line ${log.type}`}>
-                  {log.text}
-                </div>
-              ))}
+          {/* 実行ログ */}
+          {(posting || postDone || logs.length > 0) && (
+            <div className="log-section">
+              <p className="log-section-title">実行ログ</p>
+              <div className="sse-log-container" ref={logRef}>
+                {logs.length === 0 && posting && (
+                  <div className="sse-log-line log">投稿処理を開始しています...</div>
+                )}
+                {logs.map((log, i) => (
+                  <div key={i} className={`sse-log-line ${log.type}`}>
+                    {log.text}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -422,7 +697,7 @@ export default function PostModal({ item, onClose, showToast }) {
             >
               {posting
                 ? <><span className="spinner" /> 投稿中...</>
-                : '投稿する'}
+                : '投稿する →'}
             </button>
           )}
         </div>

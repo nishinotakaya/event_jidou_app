@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_15_124338) do
+ActiveRecord::Schema[7.2].define(version: 2026_03_22_083019) do
   create_table "folders", force: :cascade do |t|
     t.string "folder_type"
     t.string "name"
@@ -26,5 +26,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_15_124338) do
     t.string "folder", default: ""
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+  end
+
+  create_table "zoom_settings", force: :cascade do |t|
+    t.string "zoom_url"
+    t.string "meeting_id"
+    t.string "passcode"
+    t.string "label"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "title"
   end
 end

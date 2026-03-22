@@ -430,6 +430,16 @@ body {
   border-color: #f472b6;
 }
 
+.btn-outline {
+  background: #fff;
+  color: #6b4fa0;
+  border-color: #ddd5f0;
+}
+.btn-outline:hover {
+  background: #f5f0ff;
+  border-color: #a855f7;
+}
+
 .btn-teal {
   background: #f0fdfa;
   color: #0f766e;
@@ -967,6 +977,49 @@ body {
   accent-color: #a855f7;
 }
 
+/* EditModal LME生成チェック */
+.lme-gen-check {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  margin-bottom: 0 !important;
+}
+.lme-gen-check input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #a855f7;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.lme-subtype-row {
+  display: flex;
+  gap: 16px;
+  padding-left: 23px;
+  margin-top: 6px;
+}
+.lme-subtype-opt {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+  margin-bottom: 0 !important;
+}
+.lme-subtype-opt input[type="radio"] {
+  accent-color: #a855f7;
+  cursor: pointer;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
 .event-fields-section {
   background: #f8f4ff;
   border: 1.5px solid #e8e0f8;
@@ -1185,4 +1238,270 @@ body {
   .form-row-3 {
     grid-template-columns: 1fr;
   }
+}
+
+/* Name + Generate row */
+.name-generate-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.name-generate-row .form-input {
+  flex: 1;
+}
+
+/* LME gen section */
+.lme-gen-section {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f5f0ff;
+  border-radius: 8px;
+  border: 1px solid #e2d9f3;
+}
+.lme-gen-options {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lme-senddate-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lme-senddate-label {
+  font-size: 12px;
+  color: #6b5c8a;
+  white-space: nowrap;
+  min-width: 80px;
+}
+.lme-zoom-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lme-zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lme-zoom-row .form-input {
+  flex: 1;
+}
+
+/* Voice button */
+.ai-btn-voice {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+}
+.ai-btn-voice:hover:not(:disabled) {
+  background: #d1fae5;
+}
+.ai-btn-voice.recording {
+  background: #fee2e2;
+  color: #dc2626;
+  border-color: #fca5a5;
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Event details section (PostModal) */
+.event-fields-section {
+  margin-top: 16px;
+  border: 1px solid #e2d9f3;
+  border-radius: 8px;
+}
+.event-fields-section summary.event-fields-title,
+summary.event-fields-title {
+  padding: 10px 14px;
+  background: #f5f0ff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4b3b6e;
+  list-style: none;
+  user-select: none;
+  border-radius: 8px;
+}
+.event-fields-section summary.event-fields-title::-webkit-details-marker { display: none; }
+.event-fields-section[open] > summary.event-fields-title {
+  border-bottom: 1px solid #e2d9f3;
+  border-radius: 8px 8px 0 0;
+}
+.event-fields-section > *:not(summary) {
+  padding: 0 14px;
+}
+
+/* Log section */
+.log-section {
+  margin-top: 4px;
+}
+.log-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #7c5cbf;
+  margin: 0 0 6px;
+}
+
+/* LME account row in PostModal */
+.lme-account-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ===== Zoom Settings Dropdown ===== */
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all 0.15s;
+}
+
+.zoom-load-btn {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+.zoom-load-btn:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.zoom-save-btn {
+  background: #f0fdf4;
+  color: #16a34a;
+  border-color: #bbf7d0;
+}
+.zoom-save-btn:hover:not(:disabled) {
+  background: #dcfce7;
+}
+.zoom-save-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.zoom-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1.5px solid #e2d9f3;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(100, 50, 200, 0.18);
+  z-index: 100;
+}
+
+.zoom-dropdown-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.zoom-dropdown-item {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #f3f0fa;
+}
+.zoom-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.zoom-dropdown-select {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.zoom-dropdown-select:hover {
+  background: #f5f0ff;
+}
+
+.zoom-dropdown-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3b1f6e;
+}
+
+.zoom-dropdown-url {
+  font-size: 11px;
+  color: #9878cc;
+  font-family: ui-monospace, monospace;
+}
+
+.zoom-dropdown-delete {
+  width: 28px;
+  height: 28px;
+  margin-right: 8px;
+  border: none;
+  background: #fee2e2;
+  color: #dc2626;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.zoom-dropdown-delete:hover {
+  background: #fecaca;
+}
+
+/* Zoom auto-create button */
+.zoom-create-btn {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 700;
+}
+.zoom-create-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1d4ed8, #6d28d9);
+}
+.zoom-create-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Zoom URL input - wider */
+.zoom-url-input {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  width: 100%;
+}
+
+/* Zoom log container */
+.zoom-log-container {
+  background: #1e1b2e;
+  border-radius: 8px;
+  padding: 10px 12px;
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+}
+.zoom-log-line {
+  color: #c4b0e0;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
 }

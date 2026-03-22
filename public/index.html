@@ -125,6 +125,23 @@
             <label class="gen-subtype-opt"><input type="radio" name="event-subtype" value="benkyokai" checked /><span>受講生勉強会</span></label>
             <label class="gen-subtype-opt"><input type="radio" name="event-subtype" value="taiken" /><span>体験会（セミナー）</span></label>
           </div>
+          <div class="lme-senddate-row" id="gen-lme-senddate-row" hidden>
+            <span class="lme-senddate-label">配信日時</span>
+            <input type="date" id="field-gen-lme-send-date" class="lme-send-date" />
+            <input type="time" id="field-gen-lme-send-time" class="lme-send-time" value="10:00" />
+          </div>
+          <div class="gen-zoom-row" id="gen-zoom-row" hidden>
+            <span class="lme-senddate-label">Zoom URL</span>
+            <input type="url" id="field-gen-zoom-url" class="gen-zoom-input" placeholder="https://zoom.us/j/..." />
+          </div>
+          <div class="gen-zoom-row" id="gen-meeting-row" hidden>
+            <span class="lme-senddate-label">ミーティング ID</span>
+            <input type="text" id="field-gen-meeting-id" class="gen-zoom-input" placeholder="123 456 7890" />
+          </div>
+          <div class="gen-zoom-row" id="gen-passcode-row" hidden>
+            <span class="lme-senddate-label">パスコード</span>
+            <input type="text" id="field-gen-passcode" class="gen-zoom-input" placeholder="abc123" />
+          </div>
         </div>
       </div>
       <label id="folder-select-row">フォルダ

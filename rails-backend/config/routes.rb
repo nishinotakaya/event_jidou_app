@@ -1,6 +1,9 @@
 Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # ActionCable WebSocket endpoint
+  mount ActionCable.server => "/cable"
+
   namespace :api do
     # テキスト CRUD
     get    "texts/:type",     to: "texts#index"
@@ -14,7 +17,16 @@ Rails.application.routes.draw do
     put    "folders/:type", to: "folders#update"
     delete "folders/:type", to: "folders#destroy"
 
-    # 投稿（SSE）
+    # Zoom設定
+    get    "zoom_settings",     to: "zoom_settings#index"
+    post   "zoom_settings",     to: "zoom_settings#create"
+    put    "zoom_settings/:id", to: "zoom_settings#update"
+    delete "zoom_settings/:id", to: "zoom_settings#destroy"
+
+    # Zoomミーティング自動作成
+    post "zoom/create_meeting", to: "zoom_settings#create_meeting"
+
+    # 投稿（ActionCable + Sidekiq バックグラウンドジョブ）
     post "post", to: "post#create"
 
     # AI

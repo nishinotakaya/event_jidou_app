@@ -160,8 +160,14 @@ async function selectAccount(page, log, accountType = 'taiken') {
   await page.goto(`${BASE_URL()}/admin/home`, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await sleep(2000);
 
+  const context = page.context();
+
   // まずキーワードで絞り込んで選択、なければ最初のプロアカを選択
   const specificEls = await page.$$(`xpath=//*[contains(normalize-space(text()), 'プロアカ') and contains(normalize-space(text()), '${keyword}')]`);
+
+  // クリック前に新しいタブのオープンを検知する準備
+  const newPagePromise = context.waitForEvent('page', { timeout: 8000 }).catch(() => null);
+
   if (specificEls.length > 0) {
     await specificEls[0].click().catch(() => {});
   } else {
@@ -169,9 +175,22 @@ async function selectAccount(page, log, accountType = 'taiken') {
     const loaEls = await page.$$(`xpath=//*[contains(normalize-space(text()), 'プロアカ')]`);
     if (loaEls.length > 0) await loaEls[0].click().catch(() => {});
   }
-  await sleep(2000);
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-  log(`[LME] アカウント選択完了 → ${page.url()}`);
+
+  // 新しいタブが開かれた場合はそちらに切り替える
+  const newPage = await newPagePromise;
+  let activePage = page;
+  if (newPage) {
+    log(`[LME] 新しいタブが開かれました → 切り替え`);
+    await newPage.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+    await newPage.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    activePage = newPage;
+  } else {
+    await sleep(2000);
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  }
+
+  log(`[LME] アカウント選択完了 → ${activePage.url()}`);
+  return activePage;
 }
 
 // ===== ブラウザ内fetch（セッションcookieを使用） =====
@@ -191,23 +210,179 @@ async function lmeFetch(page, path, { method = 'POST', body, contentType } = {})
   }, [BASE_URL(), path, method, body ?? null, contentType ?? null]);
 }
 
+// ===== 体験会テンプレート更新 =====
+
+const TAIKEN_TPL_GROUP_ID = '14088042';
+const TAIKEN_TPL_CHILD_ID = '14088044';
+const TAIKEN_TAG_GROUP_ID = '5238317';
+const TAIKEN_ACTION_ID    = '20049679';
+
+async function updateTaikenTemplate(activePage, eventFields, log) {
+  const L = '[LME][体験会テンプレ]';
+  log('[LME] 体験会テンプレート更新を開始します...');
+
+  // 1. テンプレートページへ移動（CSRF取得）
+  log(`${L} テンプレートページへ移動...`);
+  const tplUrl = `${BASE_URL()}/basic/template-v2/add-template?template_group_id=${TAIKEN_TPL_GROUP_ID}&template_child_id=${TAIKEN_TPL_CHILD_ID}`;
+  await activePage.goto(tplUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await activePage.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+
+  // タグリスト取得ヘルパー（名前検索用）
+  const fetchTagsArr = async () => {
+    const res = await lmeFetch(activePage, '/ajax/get-list-group-tag', {
+      body: `group_id=${TAIKEN_TAG_GROUP_ID}&action=showGroup`,
+      contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+    });
+    // レスポンス形式: {"status":true,"groups":[{"id":5238317,...,"tags":[...],"list":[...]}]}
+    // groups 内のタグ配列キーが tags / list どちらか不明なため両方試みる
+    return Array.isArray(res?.tags)
+      ? res.tags
+      : (res?.groups ?? []).flatMap(g => g.tags ?? g.list ?? []);
+  };
+
+  // 2. 今日の日付タグ名
+  const now = new Date();
+  const tagName = `${now.getFullYear()}年 ${now.getMonth() + 1}月${now.getDate()}日 参加予定`;
+
+  // 3. 既存タグを名前で検索
+  log(`${L} タグリスト取得中 (group=${TAIKEN_TAG_GROUP_ID})...`);
+  let tagsArr = await fetchTagsArr();
+  log(`${L} 取得タグ数: ${tagsArr.length} / 検索名: "${tagName}"`);
+
+  let tagId;
+  const existingTag = tagsArr.find(t => t.name === tagName);
+  if (existingTag) {
+    tagId = existingTag.id;
+    log(`${L} 既存タグ使用: id=${tagId}`);
+  } else {
+    // 4. 新規タグ作成 → 作成後に再度リストを取得して名前で ID を引く
+    log(`${L} 新規タグ作成中: "${tagName}"...`);
+    const createRes = await lmeFetch(activePage, '/ajax/save-add-tag-in-modal-action', {
+      body: `folder_id=${TAIKEN_TAG_GROUP_ID}&tag_name=${encodeURIComponent(tagName)}`,
+      contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+    });
+    log(`${L} タグ作成レスポンス: ${JSON.stringify(createRes).slice(0, 500)}`);
+
+    // レスポンスから直接 ID が取れれば使う、取れなければリスト再取得して名前で検索
+    tagId = createRes?.data?.id ?? createRes?.id ?? createRes?.tag?.id ?? createRes?.tag_id;
+    if (!tagId) {
+      log(`${L} レスポンスにIDなし → タグリスト再取得して名前で検索...`);
+      tagsArr = await fetchTagsArr();
+      const newTag = tagsArr.find(t => t.name === tagName);
+      if (!newTag) throw new Error(`${L} タグ作成後もリストに見つかりません: "${tagName}"`);
+      tagId = newTag.id;
+    }
+    log(`${L} タグ作成完了: id=${tagId}`);
+  }
+
+  // 5. タグオブジェクト構築
+  const tagObj = {
+    id: tagId,
+    bot_id: parseInt(BOT_ID()),
+    name: tagName,
+    category_id: parseInt(TAIKEN_TAG_GROUP_ID),
+    rich_menu_id: null,
+    position: 0,
+    add_template_id: null,
+    scenario_id: null,
+    scenario_day: null,
+    scenario_time: null,
+    is_2th_apply: 0,
+    max_users_number: null,
+    ins_add_template_id: null,
+    ins_scenario_id: null,
+    ins_scenario_day: null,
+    ins_scenario_time: null,
+    ins_is_2th_apply: null,
+    ins_tag_id: null,
+    action_mode: 0,
+    action_id: null,
+    created_at: `${now.toISOString().slice(0, 10)} 00:00:00`,
+    updated_at: null,
+    count_user_tag: 0,
+    is_limit: 0,
+    limit: 0,
+    limit_action_id: null,
+    limit_action_mode: 0,
+    deleted_at: null,
+    user_id_del: null,
+    setting_actions: [],
+  };
+
+  // 6. タグアクション更新
+  log(`${L} タグアクション更新中 (action_id=${TAIKEN_ACTION_ID})...`);
+  const tagActionDetail = [{
+    title: 'タグ',
+    type: 'tag',
+    active: true,
+    is_edit_content: true,
+    change_filter: 1,
+    data: { ids: [tagId], action: 1, is_select_all: false, filters: { and: [], or: [] } },
+    list_tags: [tagObj],
+    group_open_tag: TAIKEN_TAG_GROUP_ID,
+    tag_items: [tagObj],
+    items_default_tag: [],
+  }];
+
+  const tagActionRes = await lmeFetch(activePage, '/ajax/action/save', {
+    body: new URLSearchParams({
+      action_detail: JSON.stringify(tagActionDetail),
+      type: 'button_v2',
+      id: TAIKEN_ACTION_ID,
+    }).toString(),
+    contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+  });
+  log(`${L} タグアクション更新結果: ${JSON.stringify(tagActionRes).slice(0, 200)}`);
+
+  // 7. テキストアクション更新（Zoom URL）
+  const zoomUrl = eventFields.lmeZoomUrl || '';
+  if (zoomUrl) {
+    const textContent = `以下のzoom URLで開催します！\n時間の5分前になりましたら入室してください👍\n\n\n${zoomUrl}`;
+    const textActionDetail = [{
+      type: 'text',
+      active: true,
+      is_edit_content: false,
+      change_filter: 0,
+      data: { content: textContent, urls: [], number_action_url_redirect: 1, use_preview_url: 1, is_shorten_url: 1 },
+    }];
+
+    log(`${L} テキストアクション更新中 (Zoom URL)...`);
+    const textActionRes = await lmeFetch(activePage, '/ajax/action/save', {
+      body: new URLSearchParams({
+        action_detail: JSON.stringify(textActionDetail),
+        type: 'button_v2',
+        id: TAIKEN_ACTION_ID,
+      }).toString(),
+      contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+    });
+    log(`${L} テキストアクション更新結果: ${JSON.stringify(textActionRes).slice(0, 200)}`);
+  }
+
+  log(`${L} ✅ テンプレート更新完了 (tagId=${tagId}, tagName="${tagName}")`);
+}
+
 // ===== 投稿（メッセージ配信下書き作成） =====
 
 export async function post(page, content, eventFields = {}, log) {
   // 1. ログイン
   await login(page, log);
 
-  // 2. アカウント選択
+  // 2. アカウント選択（新タブが開かれた場合は activePage が更新される）
   const accountType = eventFields.lmeAccount || 'taiken';
-  await selectAccount(page, log, accountType);
+  const activePage = await selectAccount(page, log, accountType);
+
+  // 2.5 体験会テンプレート更新（体験会の場合のみ）
+  if (accountType === 'taiken') {
+    await updateTaikenTemplate(activePage, eventFields, log);
+  }
 
   // 3. CSRF取得のためメッセージ配信ページへ移動
-  await page.goto(`${BASE_URL()}/basic/message-send-all`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await activePage.goto(`${BASE_URL()}/basic/message-send-all`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await activePage.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
   // 4. プロファイル取得
   log(`[LME] プロファイル取得中...`);
-  const profileRes = await lmeFetch(page, '/ajax/broadcast/init-list-bots-profiles', {
+  const profileRes = await lmeFetch(activePage, '/ajax/broadcast/init-list-bots-profiles', {
     body: 'profile_id=',
     contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
   });
@@ -217,15 +392,15 @@ export async function post(page, content, eventFields = {}, log) {
 
   // 5. アクティブ友達数取得
   log(`[LME] アクティブ友達数取得中...`);
-  const overviewRes = await lmeFetch(page, '/basic/static-overview', { method: 'GET' });
+  const overviewRes = await lmeFetch(activePage, '/basic/static-overview', { method: 'GET' });
   const todayStr = new Date().toISOString().slice(0, 10);
   const filterNumber = overviewRes.dates?.[todayStr]?.active_friend ?? 471;
   log(`[LME] アクティブ友達数: ${filterNumber}`);
 
   // 6. 配信パラメータ設定
   const name = (eventFields.title || content.split('\n')[0].replace(/^[#【\s]+/, '').replace(/[】\s]+$/, '')).slice(0, 50) || 'イベントお知らせ';
-  const sendDay  = eventFields.lmeSendDate || eventFields.startDate || todayStr;
-  const sendTime = eventFields.lmeSendTime || eventFields.startTime || '10:00';
+  const sendDay  = eventFields.lmeSendDate || todayStr;
+  const sendTime = eventFields.lmeSendTime || '10:00';
   log(`[LME] 配信日時: ${sendDay} ${sendTime}`);
 
   // 7. 新規broadcast作成（下書き）
@@ -256,7 +431,7 @@ export async function post(page, content, eventFields = {}, log) {
     status:              'draft',
   }).toString();
 
-  const broadcastRes = await lmeFetch(page, '/ajax/save-broadcast-v2', {
+  const broadcastRes = await lmeFetch(activePage, '/ajax/save-broadcast-v2', {
     body: broadcastBody,
     contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
   });
@@ -265,6 +440,47 @@ export async function post(page, content, eventFields = {}, log) {
   const broadcastId = broadcastRes.broadcastIdNew ?? broadcastRes.broadcast_id ?? broadcastRes.data?.id ?? broadcastRes.id;
   if (!broadcastId) throw new Error(`[LME] broadcast_id が取得できませんでした: ${JSON.stringify(broadcastRes)}`);
   log(`[LME] broadcast_id=${broadcastId}`);
+
+  // 7-b. get-detail-broadcast-v2 で現在値取得 → send_day/send_time を上書き保存
+  log(`[LME] get-detail-broadcast-v2 で broadcast 詳細取得中...`);
+  const detailRes = await lmeFetch(activePage, '/ajax/get-detail-broadcast-v2', {
+    body: `broadcast_id=${broadcastId}`,
+    contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+  });
+  log(`[LME] get-detail-broadcast-v2: ${JSON.stringify(detailRes)}`);
+
+  const detail = detailRes.data ?? detailRes;
+  const updateBody = new URLSearchParams({
+    broadcast_id:        String(broadcastId),
+    type:                detail.type                ?? '',
+    send_day:            sendDay,
+    send_time:           sendTime,
+    setting_send_message:'1',
+    profile_id:          String(detail.profile_id  ?? profile.id),
+    filter_number:       String(detail.filter_number ?? filterNumber),
+    filter_date:         detail.filter_date         ?? '',
+    name:                detail.name                ?? name,
+    action_id:           detail.action_id           ?? '',
+    'profile_bot[id]':         String(profile.id),
+    'profile_bot[bot_id]':     String(profile.bot_id),
+    'profile_bot[user_id]':    String(profile.user_id),
+    'profile_bot[avt_path]':   profile.avt_path,
+    'profile_bot[nick_name]':  profile.nick_name,
+    'profile_bot[is_default]': String(profile.is_default),
+    'profile_bot[created_at]': profile.created_at,
+    'profile_bot[updated_at]': profile.updated_at,
+    'profile_bot[position]':   String(profile.position),
+    checkFilter:         '1',
+    flag_setting_filter: '0',
+    count_filter:        String(detail.filter_number ?? filterNumber),
+    status:              'draft',
+  }).toString();
+
+  const updateRes = await lmeFetch(activePage, '/ajax/save-broadcast-v2', {
+    body: updateBody,
+    contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+  });
+  log(`[LME] 配信日時更新 save-broadcast-v2: ${JSON.stringify(updateRes)} → ${sendDay} ${sendTime}`);
 
   // 8. フィルター保存（絞り込み条件）
   log(`[LME] フィルター保存中（${accountType === 'benkyokai' ? '勉強会' : '体験会'}フィルター）...`);
@@ -350,7 +566,7 @@ export async function post(page, content, eventFields = {}, log) {
     richMenuItemId:   '0',
   }).toString();
 
-  const filterRes = await lmeFetch(page, '/ajax/filter/save-filter-v2', {
+  const filterRes = await lmeFetch(activePage, '/ajax/filter/save-filter-v2', {
     body: filterBody,
     contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
   });
@@ -386,7 +602,7 @@ export async function post(page, content, eventFields = {}, log) {
   });
 
   const base = BASE_URL();
-  const templateRes = await page.evaluate(async ([base, broadcastId, templateJson]) => {
+  const templateRes = await activePage.evaluate(async ([base, broadcastId, templateJson]) => {
     const rawCookie = document.cookie.split(';').find(c => c.trim().startsWith('XSRF-TOKEN='));
     const csrfToken = rawCookie ? decodeURIComponent(rawCookie.split('=').slice(1).join('=')) : '';
 

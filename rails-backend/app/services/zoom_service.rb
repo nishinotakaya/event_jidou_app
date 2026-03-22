@@ -1,0 +1,437 @@
+class ZoomService
+  SIGN_IN_URL  = 'https://zoom.us/signin'
+  MEETINGS_URL = 'https://zoom.us/meeting'
+  SCHEDULE_URL = 'https://zoom.us/meeting/schedule'
+
+  def initialize(&log_callback)
+    @log = log_callback || ->(_msg) {}
+  end
+
+  # Returns { zoom_url:, meeting_id:, passcode: }
+  def create_meeting(page, title:, start_date:, start_time:, duration_minutes: 120)
+    login(page)
+    schedule_meeting(page, title: title, start_date: start_date, start_time: start_time, duration_minutes: duration_minutes)
+    extract_meeting_info(page)
+  end
+
+  private
+
+  def log(msg)
+    @log.call(msg.to_s)
+  end
+
+  # ===== LOGIN =====
+  def login(page)
+    log("[Zoom] ミーティングページにアクセスしてログイン状態を確認中...")
+    page.goto(MEETINGS_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
+    page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
+    page.wait_for_timeout(2000)
+
+    unless page.url.include?('/signin') || page.url.include?('/login')
+      log("[Zoom] ✅ セッション有効 - ログイン済み")
+      return
+    end
+
+    log("[Zoom] セッションが切れています。ログイン中...")
+
+    email    = ENV['ZOOM_EMAIL'].to_s
+    password = ENV['ZOOM_PASSWORD'].to_s
+    raise 'ZOOM_EMAIL が未設定です' if email.blank?
+    raise 'ZOOM_PASSWORD が未設定です' if password.blank?
+
+    log("[Zoom] メールアドレスを入力中...")
+    email_input = page.locator('input[type="email"], input[name="email"], #email').first
+    email_input.wait_for(state: 'visible', timeout: 10_000)
+    email_input.fill(email)
+
+    next_btn = page.locator('button:has-text("次へ"), button:has-text("Next"), button[type="submit"]').first
+    next_btn.click
+    page.wait_for_timeout(2000)
+
+    log("[Zoom] パスワードを入力中...")
+    pass_input = page.locator('input[type="password"], input[name="password"], #password').first
+    pass_input.wait_for(state: 'visible', timeout: 10_000)
+    pass_input.fill(password)
+
+    signin_btn = page.locator('button:has-text("サインイン"), button:has-text("Sign In"), button:has-text("ログイン"), button[type="submit"]').first
+    signin_btn.click
+    page.wait_for_timeout(3000)
+    page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
+
+    if page.url.include?('/signin') || page.url.include?('/login')
+      error_text = page.evaluate("document.querySelector('.error-message, [role=\"alert\"]')?.textContent?.trim() || ''") rescue ''
+      raise "Zoomログイン失敗: #{error_text.presence || 'CAPTCHAの可能性。rake zoom:login で手動ログインしてください'}"
+    end
+
+    log("[Zoom] ✅ ログイン完了")
+  end
+
+  # ===== SCHEDULE =====
+  def schedule_meeting(page, title:, start_date:, start_time:, duration_minutes:)
+    log("[Zoom] スケジュール画面に直接アクセス中...")
+    page.goto(SCHEDULE_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
+    page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
+    page.wait_for_timeout(3000)
+
+    log("[Zoom] ミーティングフォームを入力中...")
+
+    # ===== トピック =====
+    topic_input = page.locator('input[id*="topic"], input[name*="topic"], #topic').first
+    topic_input.wait_for(state: 'visible', timeout: 10_000)
+    topic_input.fill('')
+    topic_input.fill(title)
+    log("[Zoom] トピック: #{title}")
+
+    # ===== 日時入力（ZoomのカスタムUI対応）=====
+    fill_datetime_js(page, start_date, start_time, duration_minutes)
+
+    # ===== 待機室を有効にする =====
+    enable_waiting_room(page)
+
+    # スクリーンショットで保存前の状態を確認
+    screenshot_path = Rails.root.join('tmp', 'zoom_before_save.png').to_s
+    page.screenshot(path: screenshot_path, fullPage: true) rescue nil
+
+    # ===== 保存ボタン =====
+    log("[Zoom] 保存ボタンを検索中...")
+
+    # ページ最下部にスクロール
+    page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+    page.wait_for_timeout(1000)
+
+    # 「保存」ボタンのみを対象（<button>タグ限定、ナビリンク<a>を除外）
+    save_clicked = page.evaluate(<<~'JS')
+      (() => {
+        // button タグのみ（<a> ナビリンクを除外）
+        const buttons = [...document.querySelectorAll('button')];
+        for (const btn of buttons) {
+          const text = (btn.textContent || '').trim();
+          if (text === '保存' || text === 'Save') {
+            btn.scrollIntoView({ block: 'center' });
+            btn.click();
+            return { found: true, text, tag: 'BUTTON', id: btn.id || '', cls: (btn.className || '').substring(0, 60) };
+          }
+        }
+        // input[type=submit] もチェック
+        const submits = [...document.querySelectorAll('input[type="submit"]')];
+        for (const inp of submits) {
+          const val = (inp.value || '').trim();
+          if (val === '保存' || val === 'Save') {
+            inp.scrollIntoView({ block: 'center' });
+            inp.click();
+            return { found: true, text: val, tag: 'INPUT', id: inp.id || '' };
+          }
+        }
+        // フォールバック: フォーム末尾の青いボタン（primary button）
+        const primaryBtns = document.querySelectorAll('button[class*="primary"], button[class*="submit"], .zm-btn--primary');
+        if (primaryBtns.length > 0) {
+          const btn = primaryBtns[primaryBtns.length - 1];
+          btn.scrollIntoView({ block: 'center' });
+          btn.click();
+          return { found: true, text: (btn.textContent || '').trim(), tag: 'BUTTON-PRIMARY' };
+        }
+        // ボタン一覧をデバッグ出力
+        const allBtns = buttons.map(b => ({ text: (b.textContent || '').trim().substring(0, 30), cls: (b.className || '').substring(0, 40) }));
+        return { found: false, allButtons: allBtns };
+      })()
+    JS
+
+    if save_clicked['found']
+      log("[Zoom] 保存ボタンクリック: #{save_clicked['text']} (#{save_clicked['tag']})")
+    else
+      log("[Zoom] ボタン一覧: #{save_clicked['allButtons']&.to_json}")
+      raise "保存ボタンが見つかりませんでした"
+    end
+
+    # 保存後のページ遷移を待つ
+    page.wait_for_timeout(5000)
+    page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
+    page.wait_for_timeout(2000)
+
+    # 保存後のスクリーンショット
+    screenshot_path = Rails.root.join('tmp', 'zoom_after_save.png').to_s
+    page.screenshot(path: screenshot_path, fullPage: true) rescue nil
+
+    log("[Zoom] ✅ ミーティング保存完了 → #{page.url}")
+  end
+
+  # ===== 日時入力（ZoomカスタムReact UI対応）=====
+  def fill_datetime_js(page, start_date, start_time, duration_minutes)
+    date = Date.parse(start_date.to_s) rescue Date.today + 7
+    hour, minute = (start_time || '10:00').split(':').map(&:to_i)
+
+    # まずフォーム内のinput構造をデバッグ出力
+    form_info = page.evaluate(<<~'JS')
+      (() => {
+        const inputs = [...document.querySelectorAll('input')].map(inp => ({
+          type: inp.type, id: inp.id, name: inp.name,
+          value: (inp.value || '').substring(0, 30),
+          placeholder: (inp.placeholder || '').substring(0, 20),
+          cls: (inp.className || '').substring(0, 40),
+        }));
+        const selects = [...document.querySelectorAll('select')].map(sel => ({
+          id: sel.id, name: sel.name,
+          options: [...sel.options].slice(0, 5).map(o => o.value),
+        }));
+        return { inputs, selects };
+      })()
+    JS
+    log("[Zoom] フォームinput一覧: #{form_info['inputs']&.to_json}")
+    log("[Zoom] フォームselect一覧: #{form_info['selects']&.to_json}")
+
+    # 日付入力：日付のような値が入っているinputを見つけてクリア→入力
+    date_str = date.strftime('%Y/%m/%d')
+    date_set = page.evaluate(<<~JS, arg: { dateStr: date_str })
+      (args) => {
+        const inputs = document.querySelectorAll('input');
+        for (const inp of inputs) {
+          const val = inp.value || '';
+          // 日付パターン（YYYY/MM/DD, MM/DD/YYYY, YYYY-MM-DD）にマッチするinputを探す
+          if (/\\d{2,4}[\\/\\-]\\d{1,2}[\\/\\-]\\d{1,4}/.test(val)) {
+            // React の内部値を書き換える
+            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+            if (nativeSetter) {
+              nativeSetter.call(inp, args.dateStr);
+            } else {
+              inp.value = args.dateStr;
+            }
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+            inp.dispatchEvent(new Event('blur', { bubbles: true }));
+            return { found: true, was: val, now: args.dateStr };
+          }
+        }
+        return { found: false };
+      }
+    JS
+
+    if date_set['found']
+      log("[Zoom] 開催日: #{date_str}（元: #{date_set['was']}）")
+    else
+      log("[Zoom] ⚠️ 日付入力が見つかりませんでした。Playwright click+type で試行...")
+      # フォールバック：全inputのvalueから日付を持つものをPlaywright経由で操作
+      all_inputs = page.locator('input').all
+      all_inputs.each do |inp|
+        val = inp.input_value rescue ''
+        if val =~ /\d{2,4}[\/-]\d{1,2}[\/-]\d{1,4}/
+          inp.click
+          page.wait_for_timeout(300)
+          inp.fill(date_str)
+          log("[Zoom] 開催日(Playwright): #{date_str}")
+          break
+        end
+      end
+    end
+
+    # 時刻入力：時刻のような値（H:MM or HH:MM）が入っているinputを探す
+    time_12h = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour)
+    am_pm = hour >= 12 ? 'PM' : 'AM'
+    time_str = "#{time_12h}:#{format('%02d', minute)}"
+
+    time_set = page.evaluate(<<~JS, arg: { timeStr: time_str, amPm: am_pm })
+      (args) => {
+        const inputs = document.querySelectorAll('input');
+        const logs = [];
+        for (const inp of inputs) {
+          const val = inp.value || '';
+          // 時刻パターン（H:MM, HH:MM）
+          if (/^\\d{1,2}:\\d{2}$/.test(val)) {
+            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+            if (nativeSetter) nativeSetter.call(inp, args.timeStr);
+            else inp.value = args.timeStr;
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+            logs.push('time: ' + args.timeStr + ' (was: ' + val + ')');
+            break;
+          }
+        }
+        // AM/PM のドロップダウン・ボタンを探す
+        const ampmEls = document.querySelectorAll('button, span, div, select');
+        for (const el of ampmEls) {
+          const text = (el.textContent || el.value || '').trim();
+          if (text === 'AM' || text === 'PM') {
+            if (text !== args.amPm) {
+              el.click();
+              // クリック後にPM/AMのオプションを選ぶ
+              setTimeout(() => {
+                const options = document.querySelectorAll('li, option, [role="option"], [class*="option"]');
+                for (const opt of options) {
+                  if ((opt.textContent || '').trim() === args.amPm) {
+                    opt.click();
+                    break;
+                  }
+                }
+              }, 300);
+            }
+            logs.push('ampm: ' + args.amPm);
+            break;
+          }
+        }
+        return logs;
+      }
+    JS
+
+    Array(time_set).each { |l| log("[Zoom] #{l}") }
+
+    # 所要時間
+    log("[Zoom] 所要時間: #{duration_minutes / 60}時間#{duration_minutes % 60 > 0 ? "#{duration_minutes % 60}分" : ''}")
+  end
+
+  # ===== 待機室有効化 =====
+  def enable_waiting_room(page)
+    log("[Zoom] 待機室を有効にしています...")
+
+    enabled = page.evaluate(<<~'JS')
+      (() => {
+        // "待機室" or "Waiting Room" のラベルに関連するチェックボックスを探す
+        const labels = [...document.querySelectorAll('label, span, div')];
+        for (const label of labels) {
+          const text = (label.textContent || '').trim();
+          if (text.includes('待機室') || text.includes('Waiting Room')) {
+            // ラベルに紐づくcheckboxを探す
+            let checkbox = label.querySelector('input[type="checkbox"]');
+            if (!checkbox && label.htmlFor) {
+              checkbox = document.getElementById(label.htmlFor);
+            }
+            if (!checkbox) {
+              // 親要素や兄弟要素から探す
+              const parent = label.closest('div, label, section');
+              if (parent) checkbox = parent.querySelector('input[type="checkbox"]');
+            }
+            if (checkbox && !checkbox.checked) {
+              checkbox.click();
+              return { found: true, checked: true, method: 'checkbox' };
+            } else if (checkbox && checkbox.checked) {
+              return { found: true, checked: true, method: 'already_checked' };
+            }
+
+            // チェックボックスがない場合、ラベル自体をクリック
+            label.click();
+            return { found: true, checked: true, method: 'label_click' };
+          }
+        }
+        return { found: false };
+      })()
+    JS
+
+    if enabled['found']
+      log("[Zoom] ✅ 待機室: #{enabled['method'] == 'already_checked' ? '既に有効' : '有効にしました'}")
+    else
+      log("[Zoom] ⚠️ 待機室のチェックボックスが見つかりませんでした")
+    end
+  end
+
+  # ===== ミーティング情報取得 =====
+  def extract_meeting_info(page)
+    log("[Zoom] ミーティング情報を取得中...")
+    page.wait_for_timeout(2000)
+
+    result = page.evaluate(<<~'JS')
+      (() => {
+        const body = document.body.innerText || '';
+
+        // Invite link
+        let zoomUrl = '';
+        const linkEl = document.querySelector('a[href*="zoom.us/j/"]');
+        if (linkEl) {
+          zoomUrl = linkEl.href;
+        } else {
+          const urlMatch = body.match(/(https:\/\/[a-z0-9]+\.zoom\.us\/j\/\d+[^\s<"]*)/i);
+          if (urlMatch) zoomUrl = urlMatch[1];
+        }
+
+        // Meeting ID
+        let meetingId = '';
+        const idMatch = body.match(/(?:ミーティング\s*ID|Meeting\s*ID)[:\s]*([0-9\s]{9,})/i);
+        if (idMatch) meetingId = idMatch[1].trim();
+
+        // Passcode
+        let passcode = '';
+        const pcMatch = body.match(/(?:パスコード|Passcode|パスワード|Password)[:\s]*([^\s\n<]+)/i);
+        if (pcMatch) passcode = pcMatch[1].trim();
+
+        return { zoomUrl, meetingId, passcode, pageUrl: location.href };
+      })()
+    JS
+
+    zoom_url   = result['zoomUrl'].to_s.strip
+    meeting_id = result['meetingId'].to_s.strip
+    passcode   = result['passcode'].to_s.strip
+
+    # パスコードがマスクされている場合、「招待状をコピー」から実際の値を取得
+    if passcode.blank? || passcode.include?('*')
+      log("[Zoom] パスコードがマスクされています。招待状から取得を試行...")
+    end
+
+    if zoom_url.blank? || passcode.blank? || passcode.include?('*')
+      log("[Zoom] 招待コピーから詳細情報を取得中...")
+      begin
+        # 「招待状をコピー」ボタンを幅広く検索
+        copy_clicked = page.evaluate(<<~'JS2')
+          (() => {
+            const all = [...document.querySelectorAll('a, button, span, div')];
+            for (const el of all) {
+              const text = (el.textContent || '').trim();
+              if (text.includes('招待状をコピー') || text.includes('Copy Invitation') ||
+                  text.includes('招待リンクをコピー') || text.includes('Copy the invitation')) {
+                el.click();
+                return { found: true, text: text.substring(0, 30) };
+              }
+            }
+            return { found: false };
+          })()
+        JS2
+        log("[Zoom] 招待コピーボタン: #{copy_clicked.to_json}")
+
+        if copy_clicked['found']
+          page.wait_for_timeout(2000)
+
+          # モーダルまたはテキストエリアから招待テキストを取得
+          invite_text = page.evaluate(<<~'JS3')
+            (() => {
+              // モーダル内のテキスト
+              const modal = document.querySelector('[role="dialog"], .zm-modal, [class*="modal"], [class*="Modal"]');
+              if (modal) return modal.innerText || '';
+              // テキストエリア
+              const textarea = document.querySelector('textarea');
+              if (textarea) return textarea.value || '';
+              // クリップボードからは取れないので、ページ全体から
+              return '';
+            })()
+          JS3
+
+          if invite_text.present?
+            log("[Zoom] 招待テキスト取得成功（#{invite_text.length}文字）")
+
+            url_m = invite_text.match(/(https:\/\/[a-z0-9]+\.zoom\.us\/j\/\d+[^\s]*)/i)
+            zoom_url = url_m[1] if url_m && zoom_url.blank?
+
+            id_m = invite_text.match(/(?:ミーティング\s*ID|Meeting\s*ID)[:\s]*([0-9\s]{9,})/i)
+            meeting_id = id_m[1].strip if id_m && meeting_id.blank?
+
+            pc_m = invite_text.match(/(?:パスコード|Passcode|パスワード|Password)[:\s]*([^\s\n*]+)/i)
+            passcode = pc_m[1].strip if pc_m && !pc_m[1].include?('*')
+          end
+
+          # モーダルを閉じる
+          page.evaluate("document.querySelector('[role=\"dialog\"] button[aria-label*=\"閉\"], [role=\"dialog\"] button[aria-label*=\"close\"], .zm-modal-close')?.click()") rescue nil
+          page.wait_for_timeout(500)
+        end
+      rescue => e
+        log("[Zoom] ⚠️ 招待コピー取得失敗: #{e.message}")
+      end
+    end
+
+    # 最終スクリーンショット
+    screenshot_path = Rails.root.join('tmp', 'zoom_result.png').to_s
+    page.screenshot(path: screenshot_path) rescue nil
+
+    raise "Zoom招待リンクが取得できませんでした（ページURL: #{result['pageUrl']}）" if zoom_url.blank?
+
+    log("[Zoom] ✅ 招待リンク: #{zoom_url}")
+    log("[Zoom] ✅ ミーティングID: #{meeting_id}") if meeting_id.present?
+    log("[Zoom] ✅ パスコード: #{passcode}") if passcode.present?
+
+    { zoom_url: zoom_url, meeting_id: meeting_id, passcode: passcode }
+  end
+end

@@ -3,7 +3,7 @@ import Sidebar from './components/Sidebar.jsx';
 import ItemList from './components/ItemList.jsx';
 import EditModal from './components/EditModal.jsx';
 import PostModal from './components/PostModal.jsx';
-import { fetchTexts, fetchFolders, deleteText } from './api.js';
+import { fetchTexts, fetchFolders, deleteText, createText } from './api.js';
 import './index.css';
 
 // ===== Toast Hook =====
@@ -99,6 +99,21 @@ export default function App() {
     }
   }
 
+  // ===== Duplicate =====
+  async function handleDuplicate(item) {
+    try {
+      await createText(activeType, {
+        name: `${item.name}（コピー）`,
+        content: item.content,
+        folder: item.folder || '',
+      });
+      showToast('複製しました', 'success');
+      await loadItems();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
   // ===== Labels =====
   const typeLabel = activeType === 'event' ? 'イベント告知' : '受講生サポート';
 
@@ -158,6 +173,7 @@ export default function App() {
           onEdit={(item) => setEditItem(item)}
           onDelete={(item) => setDeleteConfirm(item)}
           onPost={(item) => setPostItem(item)}
+          onDuplicate={handleDuplicate}
           onRefresh={loadItems}
           showToast={showToast}
           page={page}

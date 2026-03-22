@@ -12,7 +12,7 @@ function buildFolderOptions(folders) {
   return opts;
 }
 
-export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost, onRefresh, showToast }) {
+export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost, onDuplicate, onRefresh, showToast }) {
   const [movingFolder, setMovingFolder] = useState(false);
   const folderOptions = buildFolderOptions(folders);
 
@@ -61,6 +61,13 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
             title="編集"
           >
             編集
+          </button>
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => onDuplicate(item)}
+            title="複製"
+          >
+            複製
           </button>
           <button
             className="btn btn-danger btn-sm"

@@ -23,8 +23,13 @@ function FolderRow({ folderPath, label, isActive, onClick, count, onRename, onDe
   const [editValue, setEditValue] = useState(label);
 
   function handleEditConfirm() {
-    if (editValue.trim() && editValue.trim() !== label) {
-      onRename(folderPath, editValue.trim());
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== label) {
+      if (trimmed.includes('/')) {
+        alert('フォルダ名にスラッシュは使えません');
+        return;
+      }
+      onRename(folderPath, trimmed);
     }
     setEditing(false);
   }

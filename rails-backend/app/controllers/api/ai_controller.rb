@@ -22,13 +22,16 @@ module Api
     end
 
     def generate
-      key           = params[:apiKey].presence || ENV['OPENAI_API_KEY']
-      title         = params[:title]
-      type          = params[:type]
-      event_date    = params[:eventDate]
-      event_time    = params[:eventTime]    || '10:00'
-      event_end_time = params[:eventEndTime] || '12:00'
-      event_sub_type = params[:eventSubType] || 'benkyokai'
+      key            = params[:apiKey].presence || ENV['OPENAI_API_KEY']
+      title          = params[:title]
+      type           = params[:type]
+      event_date     = params[:eventDate]
+      event_time     = params[:eventTime]     || '10:00'
+      event_end_time = params[:eventEndTime]  || '12:00'
+      event_sub_type = params[:eventSubType].presence
+      zoom_url       = params[:zoomUrl].presence
+      meeting_id     = params[:meetingId].presence
+      passcode       = params[:passcode].presence
 
       return render json: { error: 'OpenAI APIキーを入力してください' }, status: :bad_request unless key
       return render json: { error: '名前（タイトル）を入力してください' }, status: :bad_request unless title&.strip&.present?
@@ -37,9 +40,15 @@ module Api
       date_str = format_date(event_date, event_time, event_end_time)
       is_event = type != 'student'
 
-      system_prompt, user_prompt = build_generate_prompts(title, is_event, event_sub_type, date_str)
+      system_prompt, user_prompt = build_generate_prompts(title, is_event, event_sub_type, date_str, zoom_url, meeting_id, passcode)
 
       result = call_openai(key, system: system_prompt, user: user_prompt, temperature: 0.7)
+
+      # Zoom URL 等が入力済みならプレースホルダーを置換
+      result = result.gsub(/参加URL：\s*（後ほど共有）/,        "参加URL： #{zoom_url}")   if zoom_url
+      result = result.gsub(/ミーティング ID:\s*（後ほど共有）/, "ミーティング ID: #{meeting_id}") if meeting_id
+      result = result.gsub(/パスコード:\s*（後ほど共有）/,      "パスコード: #{passcode}")  if passcode
+
       render json: { content: result }
     rescue => e
       render json: { error: e.message }, status: :internal_server_error
@@ -117,68 +126,102 @@ module Api
       "#{d.year}年#{d.month}月#{d.day}日（#{dow}） #{event_time}〜#{event_end_time}"
     end
 
-    def build_generate_prompts(title, is_event, sub_type, date_str)
+    LINE_RULES = <<~RULES.freeze
+      【LINE向け文章ルール】
+      - スマホのLINEで読まれる文章です。1行は短く端的に（目安：全角20〜25文字以内）
+      - 長い一文は途中で改行せず、最初から短い文に分けて書く
+      - リスト項目（・✅📌）は1行で収まる長さにする。収まらない場合は内容を絞って短くする
+      - 読者がスクロールせず一目で把握できる密度を意識する
+      - 各セクションの間は必ず1行の空行を入れること（空行とは空の1行のこと。「（空行）」という文字を出力しないこと）
+    RULES
+
+    def build_generate_prompts(title, is_event, sub_type, date_str, zoom_url = nil, meeting_id = nil, passcode = nil)
       if !is_event
         system = 'あなたは受講生サポートのメッセージ作成プロです。タイトルに沿って、受講生に寄り添う温かみのあるサポートメッセージを生成してください。押し付けがましくなく、励ましや次のステップを示す内容にしてください。'
         user   = "以下のタイトルに沿った文章を生成してください：\n\n#{title}"
+      elsif sub_type.blank?
+        # LME未チェック：汎用イベント告知プロンプト
+        system = "あなたはイベント告知文の作成プロです。タイトルに沿って、魅力的で読みやすいイベント告知文を生成してください。構成: 開催日時、開催形式、参加費、内容、得られること。プレーンテキストで、改行を適切に使い、見出しは■で区切ってください。【重要】開催日時は必ず「#{date_str}」をそのまま使用してください。それ以外の日付・時刻を記載しないでください。"
+        user   = "【開催日時】#{date_str}\n\n上記の開催日時を文章中に必ず記載してください。日付・時刻を変えないでください。\n\nタイトル：#{title}"
       elsif sub_type == 'taiken'
         system = <<~PROMPT
-          あなたはイベント告知文の作成プロです。「体験会（セミナー）」の告知文を以下の構成・形式で生成してください。告知文本文のみを返し、余計な説明は不要です。マークダウン記法は使わないでください。
+          あなたはLINE配信用のイベント告知文の作成プロです。「体験会（セミナー）」の告知文を以下の構成・形式で生成してください。告知文本文のみを返し、余計な説明は不要です。マークダウン記法は使わないでください。
 
-          【構成】
-          1行目：タイトルをそのまま記載
-          （空行）
+          #{LINE_RULES}
+          【出力フォーマット（この通りの改行・空行で出力すること）】
+          {タイトル}
+
           こんな悩みはありませんか？
-          （空行）
-          ・悩み（5項目、各1行）
-          （空行）
+
+          ・{悩み1}
+          ・{悩み2}
+          ・{悩み3}
+          ・{悩み4}
+          ・{悩み5}
+
           放置するとこんなリスクが…
-          ✅ リスク（4項目、各1行）
-          （空行）
+          ✅ {リスク1}
+          ✅ {リスク2}
+          ✅ {リスク3}
+          ✅ {リスク4}
+
           今回のセミナーで得られること
-          📌 得られること（3項目、各1行）
-          （空行）
-          タイトルの内容に合った感情を動かすクロージング1〜2文
-          （空行）
+          📌 {得られること1}
+          📌 {得られること2}
+          📌 {得られること3}
+
+          {クロージング1〜2文}
+
           開催概要
           日時：#{date_str}
           対象：プログラミングに興味がある方・初学者の方
           参加URL： （後ほど共有）
-          （空行）
+
           ミーティング ID: （後ほど共有）
           パスコード: （後ほど共有）
-          （空行）
-          👉 参加を促すCTA（1行）
+
+          👉 {CTA}
         PROMPT
         user = "タイトル：#{title}\n\n開催日時は必ず「#{date_str}」をそのまま使用してください。"
       else
+        # 受講生勉強会
         system = <<~PROMPT
-          あなたはイベント告知文の作成プロです。「受講生勉強会」の告知文を以下の構成・形式で生成してください。告知文本文のみを返し、余計な説明は不要です。マークダウン記法は使わないでください。
+          あなたはLINE配信用のイベント告知文の作成プロです。「受講生勉強会」の告知文を以下の構成・形式で生成してください。告知文本文のみを返し、余計な説明は不要です。マークダウン記法は使わないでください。
 
-          【構成】
-          1行目：タイトルをそのまま記載
-          （空行）
+          #{LINE_RULES}
+          【出力フォーマット（この通りの改行・空行で出力すること）】
+          {タイトル}
+
           こんな悩みはありませんか？
-          （空行）
-          ・悩み（5項目、各1行）
-          （空行）
+
+          ・{悩み1}
+          ・{悩み2}
+          ・{悩み3}
+          ・{悩み4}
+          ・{悩み5}
+
           放置するとこんなリスクが…
-          ✅ リスク（4項目、各1行）
-          （空行）
+          ✅ {リスク1}
+          ✅ {リスク2}
+          ✅ {リスク3}
+          ✅ {リスク4}
+
           今回の勉強会で得られること
-          📌 得られること（3項目、各1行）
-          （空行）
-          タイトルの内容に合った感情を動かすクロージング1〜2文
-          （空行）
+          📌 {得られること1}
+          📌 {得られること2}
+          📌 {得られること3}
+
+          {クロージング1〜2文}
+
           開催概要
           日時：#{date_str}
           対象：プロアカ受講生
           参加URL： （後ほど共有）
-          （空行）
+
           ミーティング ID: （後ほど共有）
           パスコード: （後ほど共有）
-          （空行）
-          👉 参加を促すCTA（1行）
+
+          👉 {CTA}
         PROMPT
         user = "タイトル：#{title}\n\n開催日時は必ず「#{date_str}」をそのまま使用してください。"
       end

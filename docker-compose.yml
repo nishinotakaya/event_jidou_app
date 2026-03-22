@@ -1,0 +1,92 @@
+version: '3.9'
+
+services:
+  # ── Redis (ActionCable + Sidekiq) ───────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # ── Rails API（port 3001）──────────────────────────────
+  api:
+    build:
+      context: ./rails-backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./rails-backend:/rails                  # ホットリロード用
+      - ./api:/workspace/api                    # 投稿スクリプト
+      - ./scripts:/workspace/scripts            # Node.js ブリッジ
+      - ./texts:/workspace/texts                # JSONデータ（既存共有）
+      - ./.env:/workspace/.env                  # 環境変数
+      - rails_db:/rails/storage                 # SQLite永続化
+      - bundle_cache:/usr/local/bundle          # gem キャッシュ
+    environment:
+      - RAILS_ENV=development
+      - RAILS_LOG_TO_STDOUT=true
+      - REDIS_URL=redis://redis:6379/1
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/up"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Sidekiq worker ─────────────────────────────────────
+  worker:
+    build:
+      context: ./rails-backend
+      dockerfile: Dockerfile
+    command: bundle exec sidekiq
+    volumes:
+      - ./rails-backend:/rails
+      - bundle_cache:/usr/local/bundle
+    environment:
+      - RAILS_ENV=development
+      - REDIS_URL=redis://redis:6379/1
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - api
+
+  # ── React フロントエンド（port 5173）──────────────────
+  web:
+    build:
+      context: ./react-frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./react-frontend:/app                   # ホットリロード用
+      - /app/node_modules                        # コンテナ内 node_modules を保持
+    environment:
+      - VITE_API_BASE=http://localhost:3001
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ── 既存 Express アプリ（port 3000）───────────────────
+  legacy:
+    image: node:20-alpine
+    working_dir: /app
+    command: node api/server.js
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    profiles:
+      - legacy                                   # 明示的に起動するときだけ: --profile legacy
+
+volumes:
+  rails_db:
+  bundle_cache:
+  redis_data:
