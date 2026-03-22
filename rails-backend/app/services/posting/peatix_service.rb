@@ -115,38 +115,47 @@ module Posting
     def publish_event(page, event_id)
       log("[Peatix] 🌐 公開処理中...")
       begin
-        # 設定/フォームページに遷移
-        settings_url = "https://peatix.com/event/#{event_id}/edit/settings"
-        page.goto(settings_url, waitUntil: 'domcontentloaded', timeout: 15_000)
-        page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
-        page.wait_for_timeout(2000)
+        # 現在のページ（ticketsの後）からサイドバーの「公開」ボタンを探す
+        # Peatixではサイドバー左下に「公開 ✎」ボタンがある
+        page.screenshot(path: Rails.root.join('tmp', 'peatix_before_publish.png').to_s) rescue nil
 
-        # 「公開」ボタンをクリック
-        clicked = page.evaluate(<<~'JS')
+        # サイドバーの「公開」ボタンを座標クリック
+        pub_info = page.evaluate(<<~'JS')
           (() => {
-            const btns = [...document.querySelectorAll('button, a')];
-            for (const btn of btns) {
-              const text = (btn.textContent || '').trim();
-              if (text === '公開' || text === 'Publish' || text === '公開する') {
-                btn.scrollIntoView({ block: 'center' });
-                btn.click();
-                return { found: true, text };
+            const all = [...document.querySelectorAll('a, button, div')];
+            for (const el of all) {
+              const text = (el.textContent || '').trim();
+              const rect = el.getBoundingClientRect();
+              // サイドバー内（x < 200）の「公開」ボタン
+              if ((text === '公開' || text === '公開 ✎' || text.match(/^公開\s/)) && rect.x < 200 && rect.width > 30 && rect.height > 20) {
+                return { found: true, x: rect.x + rect.width/2, y: rect.y + rect.height/2, text, tag: el.tagName };
+              }
+            }
+            // フォールバック: 全要素から「公開」テキストのボタン
+            for (const el of all) {
+              const text = (el.textContent || '').trim();
+              const rect = el.getBoundingClientRect();
+              if (text === '公開' && rect.width > 30 && rect.height > 20 && rect.width < 200) {
+                return { found: true, x: rect.x + rect.width/2, y: rect.y + rect.height/2, text, tag: el.tagName };
               }
             }
             return { found: false };
           })()
         JS
 
-        if clicked['found']
+        if pub_info['found']
+          log("[Peatix] 「#{pub_info['text']}」ボタン発見 (#{pub_info['x'].to_i}, #{pub_info['y'].to_i})")
+          page.mouse.click(pub_info['x'], pub_info['y'])
           page.wait_for_timeout(3000)
-          page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
-          # 確認ダイアログがある場合
+
+          # 確認ダイアログ/モーダルが出る場合
+          page.screenshot(path: Rails.root.join('tmp', 'peatix_publish_confirm.png').to_s) rescue nil
           confirm = page.evaluate(<<~'JS')
             (() => {
-              const btns = [...document.querySelectorAll('button')];
+              const btns = [...document.querySelectorAll('button')].filter(el => el.offsetParent !== null);
               for (const btn of btns) {
                 const text = (btn.textContent || '').trim();
-                if (text === '公開' || text === 'Publish' || text === '公開する' || text === 'OK' || text === '確認') {
+                if (text === '公開' || text === 'Publish' || text === '公開する' || text === 'OK') {
                   btn.click();
                   return { found: true, text };
                 }
@@ -154,7 +163,11 @@ module Posting
               return { found: false };
             })()
           JS
-          page.wait_for_timeout(2000) if confirm['found']
+          if confirm['found']
+            log("[Peatix] 確認ダイアログ: #{confirm['text']}")
+            page.wait_for_timeout(3000)
+          end
+          page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
           log("[Peatix] 🌐 ✅ 公開完了")
         else
           log("[Peatix] ⚠️ 「公開」ボタンが見つかりません")

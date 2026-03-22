@@ -84,36 +84,44 @@ module Posting
     def publish_event(page, event_url)
       log("[connpass] 🌐 公開処理中...")
       begin
-        # イベント管理画面に遷移
-        if event_url.present?
-          manage_url = event_url.sub(/\/$/, '') + '/edit/'
-          page.goto(manage_url, waitUntil: 'domcontentloaded', timeout: 15_000)
-        end
-        page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
-        page.wait_for_timeout(2000)
+        # event_urlからevent_idを取得
+        event_id = event_url.match(%r{/event/(\d+)})[1] rescue nil
+        raise "event_idが取得できません: #{event_url}" unless event_id
 
-        # ヘッダーの「即時公開する」をクリック
-        clicked = page.evaluate(<<~'JS')
-          (() => {
-            const btns = [...document.querySelectorAll('a, button, input[type="submit"]')];
-            for (const btn of btns) {
-              const text = (btn.textContent || btn.value || '').trim();
-              if (text.includes('即時公開') || text === '公開する' || text === '公開') {
-                btn.scrollIntoView({ block: 'center' });
-                btn.click();
-                return { found: true, text };
-              }
-            }
-            return { found: false };
-          })()
+        # CSRFトークンを取得
+        csrftoken = page.evaluate("document.cookie.split(';').find(c => c.trim().startsWith('connpass-csrftoken='))?.split('=')[1]?.trim() || ''")
+        raise "CSRFトークンが取得できません" if csrftoken.blank?
+
+        # APIで status を published に変更
+        log("[connpass] PUT /api/event/#{event_id} status=published")
+        result = page.evaluate(<<~JS, arg: { eventId: event_id, csrftoken: csrftoken })
+          async ({ eventId, csrftoken }) => {
+            // まず現在のイベント情報を取得
+            const getRes = await fetch(`/api/event/${eventId}`, {
+              headers: { 'x-requested-with': 'XMLHttpRequest' },
+              credentials: 'include',
+            });
+            if (!getRes.ok) return { ok: false, step: 'get', status: getRes.status };
+            const event = await getRes.json();
+
+            // statusをpublishedに変更してPUT
+            event.status = 'published';
+            const putRes = await fetch(`/api/event/${eventId}`, {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json', 'x-csrftoken': csrftoken,
+                         'x-requested-with': 'XMLHttpRequest' },
+              credentials: 'include',
+              body: JSON.stringify(event),
+            });
+            const text = await putRes.text();
+            return { ok: putRes.ok, status: putRes.status, resp: text.substring(0, 200) };
+          }
         JS
 
-        if clicked['found']
-          page.wait_for_timeout(3000)
-          page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
-          log("[connpass] 🌐 ✅ 公開完了")
+        if result['ok']
+          log("[connpass] 🌐 ✅ 公開完了（API status=published）")
         else
-          log("[connpass] ⚠️ 「即時公開する」ボタンが見つかりません")
+          log("[connpass] ⚠️ 公開API失敗: #{result['status']} #{result['resp']}")
         end
       rescue => e
         log("[connpass] ⚠️ 公開処理失敗: #{e.message}")
