@@ -10,7 +10,7 @@ module Api
           title: s.title,
           zoomUrl: s.zoom_url,
           meetingId: s.meeting_id,
-          passcode: s.passcode,
+          passcode: s.passcode.to_s.match?(/\A\d{4,10}\z/) ? s.passcode : '',
           updatedAt: s.updated_at.strftime("%Y-%m-%d %H:%M"),
         }
       }

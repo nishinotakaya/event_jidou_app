@@ -26,7 +26,7 @@ function getDefaultEventFields() {
     zoomTitle:    '',
     zoomUrl:      localStorage.getItem(LS_ZOOM_URL)   || '',
     zoomId:       localStorage.getItem(LS_MEETING_ID) || '',
-    zoomPasscode: localStorage.getItem(LS_PASSCODE)   || '',
+    zoomPasscode: (() => { const v = localStorage.getItem(LS_PASSCODE) || ''; return /\*/.test(v) ? '' : v; })(),
     capacity:     '50',
     tel:          '03-1234-5678',
     peatixEventId: '',
@@ -65,6 +65,7 @@ export default function PostModal({ item, onClose, showToast }) {
   const [zoomDropdownOpen, setZoomDropdownOpen] = useState(false);
   const [zoomSaving, setZoomSaving] = useState(false);
   const [zoomCreating, setZoomCreating] = useState(false);
+  const [showPasscode, setShowPasscode] = useState(true);
   const [zoomLogs, setZoomLogs] = useState([]);
 
   const logRef = useRef(null);
@@ -80,7 +81,7 @@ export default function PostModal({ item, onClose, showToast }) {
       zoomTitle: setting.title || setting.label || '',
       zoomUrl: setting.zoomUrl,
       zoomId: setting.meetingId || '',
-      zoomPasscode: setting.passcode || '',
+      zoomPasscode: (setting.passcode && !/\*/.test(setting.passcode)) ? setting.passcode : '',
     }));
     setZoomDropdownOpen(false);
     showToast(`Zoom設定「${setting.label}」を読み込みました`, 'success');
@@ -145,7 +146,7 @@ export default function PostModal({ item, onClose, showToast }) {
               zoomTitle: event.data.title || event.data.label || '',
               zoomUrl: event.data.zoomUrl || '',
               zoomId: event.data.meetingId || '',
-              zoomPasscode: event.data.passcode || '',
+              zoomPasscode: (event.data.passcode && !/\*/.test(event.data.passcode)) ? event.data.passcode : '',
             }));
             showToast('Zoomミーティングを作成・DB保存し、自動入力しました', 'success');
           }
@@ -577,13 +578,24 @@ export default function PostModal({ item, onClose, showToast }) {
                 </div>
                 <div className="form-group">
                   <label className="form-label">パスコード</label>
-                  <input
-                    className="form-input"
-                    value={eventFields.zoomPasscode}
-                    onChange={(e) => updateEventField('zoomPasscode', e.target.value)}
-                    placeholder="abc123"
-                    disabled={posting || zoomCreating}
-                  />
+                  <div className="passcode-input-row">
+                    <input
+                      className="form-input"
+                      type={showPasscode ? 'text' : 'password'}
+                      value={eventFields.zoomPasscode}
+                      onChange={(e) => updateEventField('zoomPasscode', e.target.value)}
+                      placeholder="数字6桁（例: 311071）"
+                      disabled={posting || zoomCreating}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm passcode-toggle"
+                      onClick={() => setShowPasscode(!showPasscode)}
+                      title={showPasscode ? 'パスコードを隠す' : 'パスコードを表示'}
+                    >
+                      {showPasscode ? '🙈' : '👁️'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

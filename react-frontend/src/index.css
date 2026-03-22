@@ -1505,3 +1505,24 @@ summary.event-fields-title {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* Passcode input with toggle */
+.passcode-input-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.passcode-input-row .form-input {
+  flex: 1;
+}
+.passcode-toggle {
+  background: #f5f0ff;
+  color: #6b4fa0;
+  border-color: #ddd5f0;
+  font-size: 14px;
+  padding: 6px 8px;
+  flex-shrink: 0;
+}
+.passcode-toggle:hover {
+  background: #ede5ff;
+}
