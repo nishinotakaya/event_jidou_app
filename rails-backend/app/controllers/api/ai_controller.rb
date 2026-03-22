@@ -44,10 +44,7 @@ module Api
 
       result = call_openai(key, system: system_prompt, user: user_prompt, temperature: 0.7)
 
-      # Zoom URL 等が入力済みならプレースホルダーを置換
-      result = result.gsub(/参加URL：\s*（後ほど共有）/,        "参加URL： #{zoom_url}")   if zoom_url
-      result = result.gsub(/ミーティング ID:\s*（後ほど共有）/, "ミーティング ID: #{meeting_id}") if meeting_id
-      result = result.gsub(/パスコード:\s*（後ほど共有）/,      "パスコード: #{passcode}")  if passcode
+      # Zoom情報は投稿時にPostModalで自動反映するため、生成時には置換しない
 
       render json: { content: result }
     rescue => e
@@ -175,10 +172,6 @@ module Api
           開催概要
           日時：#{date_str}
           対象：プログラミングに興味がある方・初学者の方
-          参加URL： （後ほど共有）
-
-          ミーティング ID: （後ほど共有）
-          パスコード: （後ほど共有）
 
           👉 {CTA}
         PROMPT
@@ -216,10 +209,6 @@ module Api
           開催概要
           日時：#{date_str}
           対象：プロアカ受講生
-          参加URL： （後ほど共有）
-
-          ミーティング ID: （後ほど共有）
-          パスコード: （後ほど共有）
 
           👉 {CTA}
         PROMPT
