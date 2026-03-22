@@ -196,46 +196,53 @@ class ZoomService
     # カレンダーで月をナビゲートして日付を選択
     navigate_calendar(page, target_date)
 
-    # --- 時刻: aria-label="Select start time" の入力欄 ---
+    # --- 時刻: input[aria-label="Select start time"] + AM/PM セレクト ---
     time_12h = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour)
     am_pm = hour >= 12 ? 'PM' : 'AM'
     time_str = "#{time_12h}:#{format('%02d', minute)}"
 
+    log("[Zoom] 開始時刻を #{time_str} #{am_pm} に設定中...")
+
+    # 時刻input: triple-click で全選択 → タイプで上書き
     begin
       time_input = page.locator('input[aria-label="Select start time"]').first
-      time_input.click(clickCount: 3, timeout: 3_000)
+      time_input.click(clickCount: 3, timeout: 5_000)
       page.wait_for_timeout(300)
+      page.keyboard.press('Backspace')
       page.keyboard.type(time_str)
+      page.keyboard.press('Tab')
       page.wait_for_timeout(500)
-      log("[Zoom] 開始時刻: #{time_str}")
-
-      # AM/PM 切り替え
-      current_ampm = page.evaluate("document.querySelector('.zm-togglebtn__toggle--selected, [class*=\"ampm\"] .active, button[aria-pressed=\"true\"]')?.textContent?.trim() || ''")
-      if current_ampm != am_pm
-        begin
-          page.locator("button:has-text('#{am_pm}')").first.click(timeout: 3_000)
-          log("[Zoom] AM/PM: #{am_pm}")
-        rescue
-          page.evaluate("(() => { const btns = [...document.querySelectorAll('button')]; for (const b of btns) { if (b.textContent.trim() === '#{am_pm}') { b.click(); return true; } } return false; })")
-          log("[Zoom] AM/PM(JS): #{am_pm}")
-        end
-      end
+      log("[Zoom] 時刻入力: #{time_str}")
     rescue => e
       log("[Zoom] ⚠️ 時刻入力失敗: #{e.message}")
-      # JS フォールバック
-      page.evaluate(<<~JS, arg: { timeStr: time_str, amPm: am_pm })
-        (args) => {
-          const inputs = document.querySelectorAll('input');
-          for (const inp of inputs) {
-            if (/^\\d{1,2}:\\d{2}$/.test(inp.value)) {
-              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-              if (setter) setter.call(inp, args.timeStr);
-              else inp.value = args.timeStr;
-              inp.dispatchEvent(new Event('input', { bubbles: true }));
-              inp.dispatchEvent(new Event('change', { bubbles: true }));
-              break;
-            }
+    end
+
+    # AM/PM: span[aria-label="Select start time unit"] をクリックしてドロップダウン表示
+    begin
+      ampm_btn = page.locator('span[aria-label="Select start time unit"], .zoom-select-input__span').first
+      current_ampm = ampm_btn.text_content.strip rescue ''
+      log("[Zoom] 現在のAM/PM: #{current_ampm}")
+
+      if current_ampm != am_pm
+        ampm_btn.click(timeout: 3_000)
+        page.wait_for_timeout(800)
+        # ドロップダウンからAM/PMを選択
+        page.locator(".zoom-select-option__content:has-text('#{am_pm}')").first.click(timeout: 3_000)
+        page.wait_for_timeout(500)
+        log("[Zoom] AM/PM: #{am_pm} に切り替え完了")
+      else
+        log("[Zoom] AM/PM: #{am_pm}（変更不要）")
+      end
+    rescue => e
+      log("[Zoom] ⚠️ AM/PM切り替え失敗: #{e.message}")
+      # JSフォールバック
+      page.evaluate(<<~JS, arg: am_pm)
+        (ampm) => {
+          const opts = document.querySelectorAll('.zoom-select-option__content');
+          for (const opt of opts) {
+            if (opt.textContent.trim() === ampm) { opt.click(); return true; }
           }
+          return false;
         }
       JS
     end
