@@ -248,79 +248,102 @@ module Posting
       log("[Peatix] 🎫 tickets: 無料チケット設定中...")
       page.wait_for_timeout(2000)
 
-      start_date = ef['startDate'].to_s.gsub('/', '-').presence || default_date_plus(30)
-      start_time = pad_time(ef['startTime'] || '10:00')
-      # Peatixの日付フォーマット: YYYY / MM / DD
-      d = Date.parse(start_date) rescue Date.today + 30
-      peatix_date = d.strftime('%Y / %m / %d')
+      # チケットページに遷移
+      current = page.url
+      unless current.include?('/tickets')
+        tickets_url = current.sub(%r{/edit/\w+}, '/edit/tickets')
+        page.goto(tickets_url, waitUntil: 'domcontentloaded', timeout: 15_000)
+        page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
+        page.wait_for_timeout(2000)
+      end
 
       begin
-        # 「無料チケット」カードをクリック
-        free_ticket = page.evaluate(<<~'JS')
+        # 「無料チケット」カード（button.type-selector）を座標クリック
+        card_info = page.evaluate(<<~'JS')
           (() => {
-            const all = [...document.querySelectorAll('div, button, a, [role="button"]')];
-            for (const el of all) {
-              const text = (el.textContent || '').trim();
-              if (text.includes('無料チケット') && !text.includes('有料')) {
-                el.click();
-                return { found: true, text: text.substring(0, 40) };
+            const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,span,div')];
+            for (const el of headings) {
+              const text = el.textContent.trim();
+              const rect = el.getBoundingClientRect();
+              if (text === '無料チケット' && rect.width > 50 && rect.x > 200) {
+                let card = el;
+                for (let i = 0; i < 5; i++) {
+                  card = card.parentElement;
+                  if (!card) break;
+                  const cr = card.getBoundingClientRect();
+                  if (cr.height > 80 && cr.height < 300 && cr.width > 100) {
+                    return { found: true, x: cr.x + cr.width/2, y: cr.y + cr.height/2 };
+                  }
+                }
               }
             }
             return { found: false };
           })()
         JS
-        log("[Peatix] 無料チケットカード: #{free_ticket['found'] ? '✅' : '❌'}")
 
-        if free_ticket['found']
-          page.wait_for_timeout(2000)
+        if card_info['found']
+          page.mouse.click(card_info['x'], card_info['y'])
+          log("[Peatix] 無料チケットカード: ✅ 座標クリック")
+          page.wait_for_timeout(3000)
+        else
+          log("[Peatix] ⚠️ 無料チケットカードが見つかりません")
+          click_next_button(page, 'tickets')
+          return
+        end
 
-          # チケット名・枚数・締切を設定
-          ticket_args = { ticketName: '無料チケット', quantity: '50', deadlineDate: peatix_date, deadlineTime: start_time }
-          result = page.evaluate(<<~JS, arg: ticket_args)
-            (args) => {
-              const logs = [];
-              const setVal = (el, v) => {
-                if (!el) return false;
-                const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-                const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-                if (setter) setter.call(el, String(v));
-                else el.value = String(v);
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-                return true;
-              };
+        # モーダルフォーム: チケット名(name="name")・販売予定数(name="seatsMax")を入力
+        # Playwright locator で確実に入力
+        begin
+          name_input = page.locator('input[name="name"]').last
+          name_input.click(clickCount: 3, timeout: 3_000)
+          page.keyboard.type('オンラインチケット')
+          log("[Peatix] 🎫 name: オンラインチケット")
+        rescue => e
+          log("[Peatix] 🎫 name入力失敗: #{e.message}")
+        end
 
-              // チケット名
-              const nameInput = document.querySelector('input#name, input[name="name"][placeholder*="例"]');
-              if (nameInput) { setVal(nameInput, args.ticketName); logs.push('name: ' + args.ticketName); }
+        begin
+          seats_input = page.locator('input[name="seatsMax"]').last
+          seats_input.click(clickCount: 3, timeout: 3_000)
+          page.keyboard.type('50')
+          log("[Peatix] 🎫 quantity: 50")
+        rescue => e
+          log("[Peatix] 🎫 quantity入力失敗: #{e.message}")
+        end
 
-              // 販売締切日時（id="input_16", id="input_17" — 「個別で販売締切を設定していない...」のセクション）
-              const dateInputs = [...document.querySelectorAll('input[name="date"]')];
-              const timeInputs = [...document.querySelectorAll('input[name="time"]')];
+        result = ['done']
+        Array(result).each { |l| log("[Peatix] 🎫 #{l}") }
 
-              // 最後の date/time ペアが販売締切（input_16, input_17）
-              if (dateInputs.length >= 3) {
-                const deadlineDateInput = dateInputs[dateInputs.length - 1];
-                setVal(deadlineDateInput, args.deadlineDate);
-                logs.push('deadline_date: ' + args.deadlineDate);
+        # 「追加する」ボタンをクリック
+        page.wait_for_timeout(500)
+        add_clicked = page.evaluate(<<~'JS')
+          (() => {
+            const btns = [...document.querySelectorAll('button')].filter(el => el.offsetParent !== null);
+            for (const btn of btns) {
+              const text = (btn.textContent || '').trim();
+              if (text === '追加する' || text === 'Add') {
+                btn.scrollIntoView({ block: 'center' });
+                btn.click();
+                return { found: true, text };
               }
-              if (timeInputs.length >= 3) {
-                const deadlineTimeInput = timeInputs[timeInputs.length - 1];
-                setVal(deadlineTimeInput, args.deadlineTime);
-                logs.push('deadline_time: ' + args.deadlineTime);
-              }
-
-              return logs;
             }
-          JS
-          Array(result).each { |l| log("[Peatix] 🎫 #{l}") }
-          log("[Peatix] 🎫 無料チケット設定完了（締切: #{peatix_date} #{start_time}）")
+            return { found: false };
+          })()
+        JS
+
+        if add_clicked['found']
+          log("[Peatix] 🎫 「#{add_clicked['text']}」クリック")
+          page.wait_for_timeout(3000)
+          page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
+          log("[Peatix] 🎫 ✅ チケット追加完了")
+        else
+          log("[Peatix] ⚠️ 「追加する」ボタンが見つかりません")
         end
       rescue => e
         log("[Peatix] ⚠️ チケット設定失敗: #{e.message}")
       end
 
-      # 「進む」/「保存して進む」をクリック
+      # 「進む」をクリック
       click_next_button(page, 'tickets')
     end
 
