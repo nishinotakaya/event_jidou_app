@@ -345,9 +345,9 @@ class ZoomService
         const idMatch = body.match(/(?:ミーティング\s*ID|Meeting\s*ID)[:\s]*([0-9\s]{9,})/i);
         if (idMatch) meetingId = idMatch[1].trim();
 
-        // Passcode
+        // Passcode（数字のみを対象）
         let passcode = '';
-        const pcMatch = body.match(/(?:パスコード|Passcode|パスワード|Password)[:\s]*([^\s\n<]+)/i);
+        const pcMatch = body.match(/(?:パスコード|Passcode|パスワード|Password)[:\s]*(\d{4,10})/i);
         if (pcMatch) passcode = pcMatch[1].trim();
 
         return { zoomUrl, meetingId, passcode, pageUrl: location.href };
@@ -358,33 +358,43 @@ class ZoomService
     meeting_id = result['meetingId'].to_s.strip
     passcode   = result['passcode'].to_s.strip
 
-    # パスコードがマスクされている場合、「表示」ボタンをクリックして数字を取得
-    if passcode.blank? || passcode.include?('*')
+    # パスコードが数字でない場合（マスクや不正テキスト）、「表示」ボタンで実パスコードを取得
+    passcode = '' unless passcode.match?(/\A\d{4,10}\z/)
+    if passcode.blank?
       log("[Zoom] パスコードがマスクされています。「表示」ボタンで実パスコードを取得中...")
+      # パスコード付近のHTMLをデバッグ出力
+      pc_debug = page.evaluate(<<~'DEBUG_JS')
+        (() => {
+          const body = document.body.innerText || '';
+          const match = body.match(/.{0,30}パスコード.{0,50}/i) || body.match(/.{0,30}Passcode.{0,50}/i);
+          return match ? match[0] : 'NOT_FOUND';
+        })()
+      DEBUG_JS
+      log("[Zoom] パスコード周辺テキスト: #{pc_debug}")
+
       revealed = page.evaluate(<<~'REVEAL_JS')
         (() => {
-          // 「表示」「Show」ボタン/リンクを探してクリック
+          // パスコード行にある「表示」「Show」リンクを探してクリック
           const all = [...document.querySelectorAll('a, button, span')];
           for (const el of all) {
             const text = (el.textContent || '').trim();
             if (text === '表示' || text === 'Show' || text === 'show') {
-              // パスコード近くの「表示」だけクリック
-              const parent = el.closest('div, tr, section, dd');
-              if (parent) {
-                const parentText = parent.textContent || '';
-                if (parentText.includes('パスコード') || parentText.includes('Passcode') || parentText.includes('********')) {
-                  el.click();
-                  return { clicked: true };
-                }
-              }
+              el.click();
+              return { clicked: true, text };
             }
           }
           return { clicked: false };
         })()
       REVEAL_JS
 
+      log("[Zoom] 表示ボタン: #{revealed.to_json}")
+
       if revealed['clicked']
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(1500)
+
+        # クリック後のスクリーンショット
+        page.screenshot(path: Rails.root.join('tmp', 'zoom_passcode_revealed.png').to_s) rescue nil
+
         # 表示されたパスコード（数字）を再取得
         revealed_passcode = page.evaluate(<<~'GET_PC_JS')
           (() => {
@@ -415,7 +425,7 @@ class ZoomService
       end
     end
 
-    if zoom_url.blank? || passcode.blank? || passcode.include?('*')
+    if zoom_url.blank? || !passcode.match?(/\A\d{4,10}\z/)
       log("[Zoom] 招待コピーから詳細情報を取得中...")
       begin
         # 「招待状をコピー」ボタンを幅広く検索
