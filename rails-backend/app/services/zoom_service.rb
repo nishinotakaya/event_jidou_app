@@ -155,126 +155,158 @@ class ZoomService
     log("[Zoom] ✅ ミーティング保存完了 → #{page.url}")
   end
 
-  # ===== 日時入力（ZoomカスタムReact UI対応）=====
+  # ===== 日時入力（Zoomカレンダーピッカー対応）=====
   def fill_datetime_js(page, start_date, start_time, duration_minutes)
-    date = Date.parse(start_date.to_s) rescue Date.today + 7
+    target_date = Date.parse(start_date.to_s) rescue Date.today + 7
     hour, minute = (start_time || '10:00').split(':').map(&:to_i)
 
-    # まずフォーム内のinput構造をデバッグ出力
-    form_info = page.evaluate(<<~'JS')
-      (() => {
-        const inputs = [...document.querySelectorAll('input')].map(inp => ({
-          type: inp.type, id: inp.id, name: inp.name,
-          value: (inp.value || '').substring(0, 30),
-          placeholder: (inp.placeholder || '').substring(0, 20),
-          cls: (inp.className || '').substring(0, 40),
-        }));
-        const selects = [...document.querySelectorAll('select')].map(sel => ({
-          id: sel.id, name: sel.name,
-          options: [...sel.options].slice(0, 5).map(o => o.value),
-        }));
-        return { inputs, selects };
-      })()
-    JS
-    log("[Zoom] フォームinput一覧: #{form_info['inputs']&.to_json}")
-    log("[Zoom] フォームselect一覧: #{form_info['selects']&.to_json}")
+    # --- 日付: カレンダーピッカーで選択 ---
+    log("[Zoom] 開催日を #{target_date.strftime('%Y/%m/%d')} に設定中...")
 
-    # 日付入力：日付のような値が入っているinputを見つけてクリア→入力
-    date_str = date.strftime('%Y/%m/%d')
-    date_set = page.evaluate(<<~JS, arg: { dateStr: date_str })
-      (args) => {
-        const inputs = document.querySelectorAll('input');
-        for (const inp of inputs) {
-          const val = inp.value || '';
-          // 日付パターン（YYYY/MM/DD, MM/DD/YYYY, YYYY-MM-DD）にマッチするinputを探す
-          if (/\\d{2,4}[\\/\\-]\\d{1,2}[\\/\\-]\\d{1,4}/.test(val)) {
-            // React の内部値を書き換える
-            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-            if (nativeSetter) {
-              nativeSetter.call(inp, args.dateStr);
-            } else {
-              inp.value = args.dateStr;
+    # 日付テキスト（2026/03/22 等）をクリックしてカレンダーを開く
+    begin
+      today_str = Date.today.strftime('%Y/%m/%d')
+      page.locator("text=#{today_str}").first.click(timeout: 5_000)
+      page.wait_for_timeout(1500)
+    rescue
+      # フォールバック: 日付表示部分を座標クリック
+      page.evaluate("document.querySelector('.base-options-1, [class*=\"date\"]')?.scrollIntoView({ block: 'center' })")
+      page.wait_for_timeout(500)
+      begin
+        # 日付表示のテキストを探してクリック
+        page.evaluate(<<~'JS')
+          (() => {
+            const all = [...document.querySelectorAll('*')];
+            for (const el of all) {
+              const text = (el.textContent || '').trim();
+              if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) {
+                el.click();
+                return true;
+              }
             }
-            inp.dispatchEvent(new Event('input', { bubbles: true }));
-            inp.dispatchEvent(new Event('change', { bubbles: true }));
-            inp.dispatchEvent(new Event('blur', { bubbles: true }));
-            return { found: true, was: val, now: args.dateStr };
+            return false;
+          })()
+        JS
+        page.wait_for_timeout(1500)
+      rescue
+        log("[Zoom] ⚠️ カレンダーを開けませんでした")
+      end
+    end
+
+    # カレンダーで月をナビゲートして日付を選択
+    navigate_calendar(page, target_date)
+
+    # --- 時刻: aria-label="Select start time" の入力欄 ---
+    time_12h = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour)
+    am_pm = hour >= 12 ? 'PM' : 'AM'
+    time_str = "#{time_12h}:#{format('%02d', minute)}"
+
+    begin
+      time_input = page.locator('input[aria-label="Select start time"]').first
+      time_input.click(clickCount: 3, timeout: 3_000)
+      page.wait_for_timeout(300)
+      page.keyboard.type(time_str)
+      page.wait_for_timeout(500)
+      log("[Zoom] 開始時刻: #{time_str}")
+
+      # AM/PM 切り替え
+      current_ampm = page.evaluate("document.querySelector('.zm-togglebtn__toggle--selected, [class*=\"ampm\"] .active, button[aria-pressed=\"true\"]')?.textContent?.trim() || ''")
+      if current_ampm != am_pm
+        begin
+          page.locator("button:has-text('#{am_pm}')").first.click(timeout: 3_000)
+          log("[Zoom] AM/PM: #{am_pm}")
+        rescue
+          page.evaluate("(() => { const btns = [...document.querySelectorAll('button')]; for (const b of btns) { if (b.textContent.trim() === '#{am_pm}') { b.click(); return true; } } return false; })")
+          log("[Zoom] AM/PM(JS): #{am_pm}")
+        end
+      end
+    rescue => e
+      log("[Zoom] ⚠️ 時刻入力失敗: #{e.message}")
+      # JS フォールバック
+      page.evaluate(<<~JS, arg: { timeStr: time_str, amPm: am_pm })
+        (args) => {
+          const inputs = document.querySelectorAll('input');
+          for (const inp of inputs) {
+            if (/^\\d{1,2}:\\d{2}$/.test(inp.value)) {
+              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+              if (setter) setter.call(inp, args.timeStr);
+              else inp.value = args.timeStr;
+              inp.dispatchEvent(new Event('input', { bubbles: true }));
+              inp.dispatchEvent(new Event('change', { bubbles: true }));
+              break;
+            }
           }
         }
-        return { found: false };
-      }
-    JS
+      JS
+    end
 
-    if date_set['found']
-      log("[Zoom] 開催日: #{date_str}（元: #{date_set['was']}）")
-    else
-      log("[Zoom] ⚠️ 日付入力が見つかりませんでした。Playwright click+type で試行...")
-      # フォールバック：全inputのvalueから日付を持つものをPlaywright経由で操作
-      all_inputs = page.locator('input').all
-      all_inputs.each do |inp|
-        val = inp.input_value rescue ''
-        if val =~ /\d{2,4}[\/-]\d{1,2}[\/-]\d{1,4}/
-          inp.click
-          page.wait_for_timeout(300)
-          inp.fill(date_str)
-          log("[Zoom] 開催日(Playwright): #{date_str}")
+    log("[Zoom] 所要時間: #{duration_minutes / 60}時間#{duration_minutes % 60 > 0 ? "#{duration_minutes % 60}分" : ''}")
+  end
+
+  # カレンダーピッカーで目標日付にナビゲートして選択
+  def navigate_calendar(page, target_date)
+    today = Date.today
+    target_month_diff = (target_date.year * 12 + target_date.month) - (today.year * 12 + today.month)
+
+    # 「次の月」ボタンで目標月まで移動
+    if target_month_diff > 0
+      target_month_diff.times do
+        begin
+          page.locator('button[aria-label="次の月"]').click(timeout: 2_000)
+          page.wait_for_timeout(500)
+        rescue
+          break
+        end
+      end
+      log("[Zoom] カレンダー: #{target_month_diff}ヶ月先に移動")
+    elsif target_month_diff < 0
+      target_month_diff.abs.times do
+        begin
+          page.locator('button[aria-label="前の月"]').click(timeout: 2_000)
+          page.wait_for_timeout(500)
+        rescue
           break
         end
       end
     end
 
-    # 時刻入力：時刻のような値（H:MM or HH:MM）が入っているinputを探す
-    time_12h = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour)
-    am_pm = hour >= 12 ? 'PM' : 'AM'
-    time_str = "#{time_12h}:#{format('%02d', minute)}"
+    page.wait_for_timeout(500)
 
-    time_set = page.evaluate(<<~JS, arg: { timeStr: time_str, amPm: am_pm })
-      (args) => {
-        const inputs = document.querySelectorAll('input');
-        const logs = [];
-        for (const inp of inputs) {
-          const val = inp.value || '';
-          // 時刻パターン（H:MM, HH:MM）
-          if (/^\\d{1,2}:\\d{2}$/.test(val)) {
-            const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-            if (nativeSetter) nativeSetter.call(inp, args.timeStr);
-            else inp.value = args.timeStr;
-            inp.dispatchEvent(new Event('input', { bubbles: true }));
-            inp.dispatchEvent(new Event('change', { bubbles: true }));
-            logs.push('time: ' + args.timeStr + ' (was: ' + val + ')');
-            break;
-          }
-        }
-        // AM/PM のドロップダウン・ボタンを探す
-        const ampmEls = document.querySelectorAll('button, span, div, select');
-        for (const el of ampmEls) {
-          const text = (el.textContent || el.value || '').trim();
-          if (text === 'AM' || text === 'PM') {
-            if (text !== args.amPm) {
-              el.click();
-              // クリック後にPM/AMのオプションを選ぶ
-              setTimeout(() => {
-                const options = document.querySelectorAll('li, option, [role="option"], [class*="option"]');
-                for (const opt of options) {
-                  if ((opt.textContent || '').trim() === args.amPm) {
-                    opt.click();
-                    break;
-                  }
-                }
-              }, 300);
+    # 目標日のセルをクリック
+    day = target_date.day.to_s
+    begin
+      # available クラスのセルから正しい日を選ぶ（next-month, prev-month を避ける）
+      clicked = page.evaluate(<<~JS, arg: { day: day })
+        (args) => {
+          const cells = document.querySelectorAll('td.available:not(.next-month):not(.prev-month)');
+          for (const cell of cells) {
+            if (cell.textContent.trim() === args.day) {
+              cell.click();
+              return { found: true, text: cell.textContent.trim(), cls: cell.className };
             }
-            logs.push('ampm: ' + args.amPm);
-            break;
           }
+          // フォールバック: テキスト一致
+          const allCells = document.querySelectorAll('td');
+          for (const cell of allCells) {
+            if (cell.textContent.trim() === args.day && !cell.classList.contains('disabled')) {
+              cell.click();
+              return { found: true, text: cell.textContent.trim(), cls: cell.className, fallback: true };
+            }
+          }
+          return { found: false };
         }
-        return logs;
-      }
-    JS
+      JS
 
-    Array(time_set).each { |l| log("[Zoom] #{l}") }
+      if clicked['found']
+        log("[Zoom] 開催日: #{target_date.strftime('%Y/%m/%d')} 選択完了")
+      else
+        log("[Zoom] ⚠️ カレンダーで #{day} 日が見つかりませんでした")
+      end
+    rescue => e
+      log("[Zoom] ⚠️ 日付セル選択失敗: #{e.message}")
+    end
 
-    # 所要時間
-    log("[Zoom] 所要時間: #{duration_minutes / 60}時間#{duration_minutes % 60 > 0 ? "#{duration_minutes % 60}分" : ''}")
+    page.wait_for_timeout(1000)
   end
 
   # ===== 待機室有効化 =====
