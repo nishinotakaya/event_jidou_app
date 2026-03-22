@@ -102,8 +102,66 @@ module Posting
       # --- tickets（無料チケット、締切=開催日時） ---
       fill_tickets(page, ef)
 
+      # 公開処理
+      publish_sites = ef['publishSites'] || {}
+      if publish_sites['Peatix']
+        publish_event(page, event_id)
+      end
+
       event_url = "https://peatix.com/event/#{event_id}"
       log("[Peatix] ✅ 全ステップ完了 → #{event_url}")
+    end
+
+    def publish_event(page, event_id)
+      log("[Peatix] 🌐 公開処理中...")
+      begin
+        # 設定/フォームページに遷移
+        settings_url = "https://peatix.com/event/#{event_id}/edit/settings"
+        page.goto(settings_url, waitUntil: 'domcontentloaded', timeout: 15_000)
+        page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
+        page.wait_for_timeout(2000)
+
+        # 「公開」ボタンをクリック
+        clicked = page.evaluate(<<~'JS')
+          (() => {
+            const btns = [...document.querySelectorAll('button, a')];
+            for (const btn of btns) {
+              const text = (btn.textContent || '').trim();
+              if (text === '公開' || text === 'Publish' || text === '公開する') {
+                btn.scrollIntoView({ block: 'center' });
+                btn.click();
+                return { found: true, text };
+              }
+            }
+            return { found: false };
+          })()
+        JS
+
+        if clicked['found']
+          page.wait_for_timeout(3000)
+          page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
+          # 確認ダイアログがある場合
+          confirm = page.evaluate(<<~'JS')
+            (() => {
+              const btns = [...document.querySelectorAll('button')];
+              for (const btn of btns) {
+                const text = (btn.textContent || '').trim();
+                if (text === '公開' || text === 'Publish' || text === '公開する' || text === 'OK' || text === '確認') {
+                  btn.click();
+                  return { found: true, text };
+                }
+              }
+              return { found: false };
+            })()
+          JS
+          page.wait_for_timeout(2000) if confirm['found']
+          log("[Peatix] 🌐 ✅ 公開完了")
+        else
+          log("[Peatix] ⚠️ 「公開」ボタンが見つかりません")
+        end
+      rescue => e
+        log("[Peatix] ⚠️ 公開処理失敗: #{e.message}")
+      end
     end
 
     # ===== basics ページ =====

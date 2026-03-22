@@ -921,6 +921,38 @@ body {
   user-select: none;
 }
 
+/* Publish toggle */
+.publish-toggle {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  border: 1.5px solid;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.publish-off {
+  background: #f3f4f6;
+  color: #9ca3af;
+  border-color: #d1d5db;
+}
+.publish-off:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+.publish-on {
+  background: #dcfce7;
+  color: #16a34a;
+  border-color: #86efac;
+}
+.publish-on:hover:not(:disabled) {
+  background: #bbf7d0;
+}
+.publish-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .site-checkbox {
   width: 18px;
   height: 18px;

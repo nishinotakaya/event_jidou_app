@@ -242,13 +242,60 @@ module Posting
         raise "登録失敗: #{errors.presence || '不明'}"
       end
 
-      log("[こくチーズ] ✅ 投稿完了 → #{page.url}")
+      admin_url = page.url  # 投稿完了後の管理画面URL
+      log("[こくチーズ] ✅ 投稿完了 → #{admin_url}")
 
       # チケット追加
       add_ticket(page, start_date, t_start, cap)
 
       # メール設定（申込完了メール・キャンセルメール）
       setup_mail(page, title, start_date, t_start, t_end, place, ef)
+
+      # 公開処理
+      publish_sites = ef['publishSites'] || {}
+      if publish_sites['こくチーズ']
+        publish_event(page, admin_url)
+      end
+    end
+
+    # ===== 公開処理 =====
+    def publish_event(page, admin_url = nil)
+      log("[こくチーズ] 🌐 公開処理中...")
+      begin
+        # 管理画面に遷移
+        if admin_url.present?
+          log("[こくチーズ] 管理画面: #{admin_url}")
+          page.goto(admin_url, waitUntil: 'domcontentloaded', timeout: 15_000)
+        end
+        page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
+        page.wait_for_timeout(2000)
+
+        # 「公開する」ボタンをクリック
+        clicked = page.evaluate(<<~'JS')
+          (() => {
+            const btns = [...document.querySelectorAll('a, button, input[type="submit"]')];
+            for (const btn of btns) {
+              const text = (btn.textContent || btn.value || '').trim();
+              if (text.includes('公開する') || text === '公開') {
+                btn.scrollIntoView({ block: 'center' });
+                btn.click();
+                return { found: true, text };
+              }
+            }
+            return { found: false };
+          })()
+        JS
+
+        if clicked['found']
+          page.wait_for_timeout(3000)
+          page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
+          log("[こくチーズ] 🌐 ✅ 公開完了")
+        else
+          log("[こくチーズ] ⚠️ 「公開する」ボタンが見つかりません")
+        end
+      rescue => e
+        log("[こくチーズ] ⚠️ 公開処理失敗: #{e.message}")
+      end
     end
 
     # ===== チケット追加 =====

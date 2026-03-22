@@ -71,7 +71,53 @@ module Posting
 
       raise "本文更新失敗: #{put_result['status']} #{put_result['text']}" unless put_result['ok']
       updated = JSON.parse(put_result['text'])
-      log("[connpass] ✅ 投稿完了 → #{updated['public_url']}")
+      event_url = updated['public_url'] || ''
+      log("[connpass] ✅ 投稿完了 → #{event_url}")
+
+      # 公開処理
+      publish_sites = ef['publishSites'] || {}
+      if publish_sites['connpass']
+        publish_event(page, event_url)
+      end
+    end
+
+    def publish_event(page, event_url)
+      log("[connpass] 🌐 公開処理中...")
+      begin
+        # イベント管理画面に遷移
+        if event_url.present?
+          manage_url = event_url.sub(/\/$/, '') + '/edit/'
+          page.goto(manage_url, waitUntil: 'domcontentloaded', timeout: 15_000)
+        end
+        page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
+        page.wait_for_timeout(2000)
+
+        # ヘッダーの「即時公開する」をクリック
+        clicked = page.evaluate(<<~'JS')
+          (() => {
+            const btns = [...document.querySelectorAll('a, button, input[type="submit"]')];
+            for (const btn of btns) {
+              const text = (btn.textContent || btn.value || '').trim();
+              if (text.includes('即時公開') || text === '公開する' || text === '公開') {
+                btn.scrollIntoView({ block: 'center' });
+                btn.click();
+                return { found: true, text };
+              }
+            }
+            return { found: false };
+          })()
+        JS
+
+        if clicked['found']
+          page.wait_for_timeout(3000)
+          page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
+          log("[connpass] 🌐 ✅ 公開完了")
+        else
+          log("[connpass] ⚠️ 「即時公開する」ボタンが見つかりません")
+        end
+      rescue => e
+        log("[connpass] ⚠️ 公開処理失敗: #{e.message}")
+      end
     end
 
     def ensure_login(page)

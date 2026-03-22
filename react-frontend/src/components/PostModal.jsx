@@ -55,6 +55,9 @@ export default function PostModal({ item, onClose, showToast }) {
   const [imageStyle, setImageStyle] = useState('cute');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(LS_API_KEY) || '');
 
+  // 公開/非公開設定（デフォルト: 非公開）
+  const [publishSites, setPublishSites] = useState({});
+
   const [posting, setPosting] = useState(false);
   const [logs, setLogs] = useState([]);
   const [siteStatuses, setSiteStatuses] = useState({});
@@ -250,6 +253,7 @@ export default function PostModal({ item, onClose, showToast }) {
     const ef = {
       ...eventFields,
       lmeAccount: lmeSubType,
+      publishSites: publishSites,
     };
 
     // 投稿内容にZoom情報を自動反映
@@ -352,6 +356,18 @@ export default function PostModal({ item, onClose, showToast }) {
                       className="site-card-header"
                       onClick={() => !posting && toggleSite(site)}
                     >
+                      <button
+                        type="button"
+                        className={`publish-toggle ${publishSites[site] ? 'publish-on' : 'publish-off'}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!posting) setPublishSites((prev) => ({ ...prev, [site]: !prev[site] }));
+                        }}
+                        disabled={posting}
+                        title={publishSites[site] ? '公開する' : '非公開'}
+                      >
+                        {publishSites[site] ? '公開' : '非公開'}
+                      </button>
                       <input
                         type="checkbox"
                         className="site-checkbox"
