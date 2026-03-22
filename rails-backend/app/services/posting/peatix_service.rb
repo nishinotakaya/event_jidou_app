@@ -79,58 +79,63 @@ module Posting
     def fill_basics(page, zoom_url, zoom_id, zoom_passcode, body_text, content)
       log("[Peatix] 📝 basics: 配信URL・参加方法を入力中...")
 
-      # 「配信プラットフォームのURL」にZoom URLを入力
-      if zoom_url.present?
-        begin
-          url_input = page.locator('input[placeholder*="URL"], input[name*="url"], input[type="url"]').first
-          url_input.wait_for(state: 'visible', timeout: 5_000)
-          url_input.fill(zoom_url)
-          log("[Peatix] 配信URL: #{zoom_url}")
-        rescue => e
-          log("[Peatix] ⚠️ 配信URL入力失敗: #{e.message}")
-          # JSフォールバック
-          page.evaluate(<<~JS, arg: zoom_url)
-            (url) => {
-              const inputs = document.querySelectorAll('input');
-              for (const inp of inputs) {
-                const p = (inp.placeholder || '').toLowerCase();
-                if (p.includes('url') || p.includes('配信')) {
-                  inp.value = url;
-                  inp.dispatchEvent(new Event('input', { bubbles: true }));
-                  inp.dispatchEvent(new Event('change', { bubbles: true }));
-                  break;
-                }
-              }
-            }
-          JS
-        end
-      end
+      # ページ下部にスクロールして隠れている要素を表示
+      page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+      page.wait_for_timeout(1000)
 
-      # 「イベントへの参加方法を入力」にZoom情報を記載
       participation_text = build_participation_text(zoom_url, zoom_id, zoom_passcode)
-      begin
-        # textarea を探す
-        ta = page.locator('textarea').first
-        ta.wait_for(state: 'visible', timeout: 5_000)
-        ta.fill(participation_text)
-        log("[Peatix] 参加方法: #{participation_text.length}文字")
-      rescue => e
-        log("[Peatix] ⚠️ 参加方法入力失敗: #{e.message}")
-        page.evaluate(<<~JS, arg: participation_text)
-          (text) => {
+
+      # JS で直接操作（hidden 要素もname指定で確実に入力）
+      fill_result = page.evaluate(<<~JS, arg: { zoomUrl: zoom_url, participation: participation_text })
+        (args) => {
+          const logs = [];
+          const setVal = (el, v) => {
+            if (!el) return false;
+            const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) setter.call(el, v);
+            else el.value = v;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('blur', { bubbles: true }));
+            return true;
+          };
+
+          // 配信URL（name="url"）
+          const urlInput = document.querySelector('input[name="url"]');
+          if (urlInput && args.zoomUrl) {
+            setVal(urlInput, args.zoomUrl);
+            logs.push('配信URL: OK');
+          } else {
+            logs.push('配信URL: NOT_FOUND');
+          }
+
+          // 参加方法（name="attendeeInfo"）
+          const attendeeTA = document.querySelector('textarea[name="attendeeInfo"]');
+          if (attendeeTA) {
+            setVal(attendeeTA, args.participation);
+            logs.push('参加方法: OK (' + args.participation.length + '文字)');
+          } else {
+            // フォールバック: 最初のtextarea
             const ta = document.querySelector('textarea');
             if (ta) {
-              const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-              if (setter) setter.call(ta, text);
-              else ta.value = text;
-              ta.dispatchEvent(new Event('input', { bubbles: true }));
-              ta.dispatchEvent(new Event('change', { bubbles: true }));
+              setVal(ta, args.participation);
+              logs.push('参加方法(fallback): OK');
+            } else {
+              logs.push('参加方法: NOT_FOUND');
             }
           }
-        JS
-      end
 
-      # 「進む」をクリック
+          return logs;
+        }
+      JS
+
+      Array(fill_result).each { |l| log("[Peatix] #{l}") }
+
+      # スクリーンショット
+      page.screenshot(path: Rails.root.join('tmp', 'peatix_basics_filled.png').to_s, fullPage: true) rescue nil
+
+      # 「進む」/ 「保存して進む」をクリック
       click_next_button(page, 'basics')
     end
 
