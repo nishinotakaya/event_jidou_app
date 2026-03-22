@@ -96,8 +96,8 @@ module Posting
       # --- details（カバー画像）→ カテゴリはAPI設定済み ---
       fill_details(page, image_path)
 
-      # --- tickets（無料チケット） ---
-      fill_tickets(page)
+      # --- tickets（無料チケット、締切=開催日時） ---
+      fill_tickets(page, ef)
 
       event_url = "https://peatix.com/event/#{event_id}"
       log("[Peatix] ✅ 全ステップ完了 → #{event_url}")
@@ -244,12 +244,18 @@ module Posting
     end
 
     # ===== tickets ページ =====
-    def fill_tickets(page)
+    def fill_tickets(page, ef)
       log("[Peatix] 🎫 tickets: 無料チケット設定中...")
       page.wait_for_timeout(2000)
 
-      # 「無料チケット」カードをクリック
+      start_date = ef['startDate'].to_s.gsub('/', '-').presence || default_date_plus(30)
+      start_time = pad_time(ef['startTime'] || '10:00')
+      # Peatixの日付フォーマット: YYYY / MM / DD
+      d = Date.parse(start_date) rescue Date.today + 30
+      peatix_date = d.strftime('%Y / %m / %d')
+
       begin
+        # 「無料チケット」カードをクリック
         free_ticket = page.evaluate(<<~'JS')
           (() => {
             const all = [...document.querySelectorAll('div, button, a, [role="button"]')];
@@ -263,55 +269,52 @@ module Posting
             return { found: false };
           })()
         JS
-        log("[Peatix] 無料チケットカード: #{free_ticket.to_json}")
+        log("[Peatix] 無料チケットカード: #{free_ticket['found'] ? '✅' : '❌'}")
 
         if free_ticket['found']
           page.wait_for_timeout(2000)
 
-          # チケット作成フォームのスクリーンショット
-          page.screenshot(path: Rails.root.join('tmp', 'peatix_ticket_form.png').to_s, fullPage: true) rescue nil
-
-          # チケット名を入力、枚数を50に設定
-          page.evaluate(<<~'JS')
-            (() => {
+          # チケット名・枚数・締切を設定
+          ticket_args = { ticketName: '無料チケット', quantity: '50', deadlineDate: peatix_date, deadlineTime: start_time }
+          result = page.evaluate(<<~JS, arg: ticket_args)
+            (args) => {
               const logs = [];
               const setVal = (el, v) => {
-                if (!el) return;
+                if (!el) return false;
                 const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
                 const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
                 if (setter) setter.call(el, String(v));
                 else el.value = String(v);
                 el.dispatchEvent(new Event('input', { bubbles: true }));
                 el.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
               };
 
-              // チケット名（input[name="name"]のうち、チケット関連のもの）
-              const allInputs = [...document.querySelectorAll('input[type="text"]')];
-              for (const inp of allInputs) {
-                const ph = inp.placeholder || '';
-                if (ph.includes('チケット') || ph.includes('例）') || ph.includes('ticket')) {
-                  setVal(inp, '無料チケット');
-                  logs.push('name: 無料チケット');
-                  break;
-                }
-              }
+              // チケット名
+              const nameInput = document.querySelector('input#name, input[name="name"][placeholder*="例"]');
+              if (nameInput) { setVal(nameInput, args.ticketName); logs.push('name: ' + args.ticketName); }
 
-              // 枚数（input[type="number"] で purchaseLimit 以外）
-              const numInputs = [...document.querySelectorAll('input[type="number"]')];
-              for (const inp of numInputs) {
-                const name = (inp.name || '').toLowerCase();
-                const label = inp.closest('div, label')?.textContent || '';
-                if (label.includes('枚数') || label.includes('定員') || label.includes('quantity') || name.includes('quantity') || name.includes('capacity')) {
-                  setVal(inp, '50');
-                  logs.push('quantity: 50');
-                  break;
-                }
+              // 販売締切日時（id="input_16", id="input_17" — 「個別で販売締切を設定していない...」のセクション）
+              const dateInputs = [...document.querySelectorAll('input[name="date"]')];
+              const timeInputs = [...document.querySelectorAll('input[name="time"]')];
+
+              // 最後の date/time ペアが販売締切（input_16, input_17）
+              if (dateInputs.length >= 3) {
+                const deadlineDateInput = dateInputs[dateInputs.length - 1];
+                setVal(deadlineDateInput, args.deadlineDate);
+                logs.push('deadline_date: ' + args.deadlineDate);
+              }
+              if (timeInputs.length >= 3) {
+                const deadlineTimeInput = timeInputs[timeInputs.length - 1];
+                setVal(deadlineTimeInput, args.deadlineTime);
+                logs.push('deadline_time: ' + args.deadlineTime);
               }
 
               return logs;
-            })()
+            }
           JS
-          log("[Peatix] チケット: 無料チケット 50枚 設定完了")
+          Array(result).each { |l| log("[Peatix] 🎫 #{l}") }
+          log("[Peatix] 🎫 無料チケット設定完了（締切: #{peatix_date} #{start_time}）")
         end
       rescue => e
         log("[Peatix] ⚠️ チケット設定失敗: #{e.message}")
