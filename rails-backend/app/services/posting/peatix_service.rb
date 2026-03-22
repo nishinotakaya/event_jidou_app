@@ -63,8 +63,11 @@ module Posting
       zoom_info += "\nミーティングID: #{zoom_id}" if zoom_id.present?
       zoom_info += "\nパスコード: #{zoom_passcode}" if zoom_passcode.present?
 
+      # 改行を <br> に変換（Peatixの詳細欄はリッチテキスト/HTML）
+      description_html = (body_text + zoom_info).gsub("\n", "<br>\n")
+
       patch_body = {
-        details: { description: body_text + zoom_info },
+        details: { description: description_html },
         category: 'skills_qualifications',
         tags: ['生成AI', 'AIエージェント', 'リモートワーク', 'プログラミング', '転職'],
       }
