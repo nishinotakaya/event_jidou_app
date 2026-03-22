@@ -81,7 +81,8 @@ class PostJob < ApplicationJob
             when 'こくチーズ' then Posting::KokuchproService.new.call(page, content, ef, &log_fn)
             when 'Peatix'     then Posting::PeatixService.new.call(page, content, ef, &log_fn)
             when 'connpass'   then Posting::ConnpassService.new.call(page, content, ef, &log_fn)
-            when 'LME'        then Posting::LmeService.new.call(page, content, ef, &log_fn)
+            # LME 一時停止（配信ユーザー絞り込み調整中）
+            # when 'LME'        then Posting::LmeService.new.call(page, content, ef, &log_fn)
             when 'TechPlay'   then Posting::TechplayService.new.call(page, content, ef, &log_fn)
             else broadcast(job_id, type: 'log', message: "[#{site_name}] 未対応サイトです")
             end

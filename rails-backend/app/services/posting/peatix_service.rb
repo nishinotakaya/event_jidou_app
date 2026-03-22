@@ -55,20 +55,48 @@ module Posting
       event_id = created['id'] || created['eventId']
       log("[Peatix] ✅ イベント作成 ID: #{event_id}")
 
-      # ===== Step2: 編集ウィザードをPlaywrightで操作 =====
+      # ===== Step2: API でカテゴリ・説明文を設定 =====
+      log("[Peatix] PATCH /v4/events/#{event_id} カテゴリ・説明文更新中...")
+      zoom_info = ''
+      zoom_info += "\n\n■ Zoom参加情報" if zoom_url.present?
+      zoom_info += "\n参加URL: #{zoom_url}" if zoom_url.present?
+      zoom_info += "\nミーティングID: #{zoom_id}" if zoom_id.present?
+      zoom_info += "\nパスコード: #{zoom_passcode}" if zoom_passcode.present?
+
+      patch_body = {
+        details: { description: body_text + zoom_info },
+        category: 'skills_qualifications',
+        tags: ['生成AI', 'AIエージェント', 'リモートワーク', 'プログラミング', '転職'],
+      }
+
+      patch_result = page.evaluate(<<~JS, arg: { eventId: event_id, bearer: bearer, body: patch_body })
+        async ({ eventId, bearer, body }) => {
+          const res = await fetch(`https://peatix-api.com/v4/events/${eventId}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json', 'authorization': `Bearer ${bearer}`,
+                       'origin': 'https://peatix.com', 'referer': `https://peatix.com/event/${eventId}/edit`,
+                       'x-requested-with': 'XMLHttpRequest' },
+            body: JSON.stringify(body),
+          });
+          return { ok: res.ok, status: res.status, text: await res.text() };
+        }
+      JS
+      log("[Peatix] API更新: #{patch_result['ok'] ? '✅ 成功' : "⚠️ #{patch_result['status']}"}")
+
+      # ===== Step3: 編集ウィザードをPlaywrightで操作 =====
       edit_url = "https://peatix.com/event/#{event_id}/edit/basics"
       log("[Peatix] 編集画面に遷移: #{edit_url}")
       page.goto(edit_url, waitUntil: 'domcontentloaded', timeout: 30_000)
       page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
       page.wait_for_timeout(3000)
 
-      # --- Step2a: basics（基本情報） ---
+      # --- basics（配信URL・参加方法） ---
       fill_basics(page, zoom_url, zoom_id, zoom_passcode, body_text, content)
 
-      # --- Step2b: details（詳細・カテゴリ・カバー画像） ---
+      # --- details（カバー画像）→ カテゴリはAPI設定済み ---
       fill_details(page, image_path)
 
-      # --- Step2c: tickets（チケット） ---
+      # --- tickets（無料チケット） ---
       fill_tickets(page)
 
       event_url = "https://peatix.com/event/#{event_id}"
@@ -139,27 +167,22 @@ module Posting
       click_next_button(page, 'basics')
     end
 
-    # ===== details ページ（カテゴリ・カバー画像・イベント詳細） =====
+    # ===== details ページ（カバー画像のみ — カテゴリはAPI設定済み） =====
     def fill_details(page, image_path)
-      log("[Peatix] 📝 details: カテゴリ・画像・詳細を設定中...")
-      page.wait_for_timeout(2000)
-
-      # スクリーンショット
-      page.screenshot(path: Rails.root.join('tmp', 'peatix_details.png').to_s, fullPage: true) rescue nil
-
-      # カテゴリ選択: スキルアップ/資格
-      select_category(page)
-
-      # サブカテゴリ選択
-      select_subcategories(page)
+      log("[Peatix] 📝 details: カバー画像を設定中...")
+      # detailsページに遷移
+      current = page.url
+      if current.include?('/edit/') && !current.include?('/details')
+        details_url = current.sub(%r{/edit/\w+}, '/edit/details')
+        page.goto(details_url, waitUntil: 'domcontentloaded', timeout: 15_000)
+        page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
+        page.wait_for_timeout(2000)
+      end
 
       # カバー画像アップロード
       upload_cover_image(page, image_path)
 
-      # イベント詳細の改行修正
-      fix_description_newlines(page)
-
-      # 「保存して進む」をクリック
+      # 「進む」をクリック
       click_next_button(page, 'details')
     end
 
@@ -168,64 +191,76 @@ module Posting
       log("[Peatix] 🎫 tickets: 無料チケット設定中...")
       page.wait_for_timeout(2000)
 
-      page.screenshot(path: Rails.root.join('tmp', 'peatix_tickets.png').to_s, fullPage: true) rescue nil
-
-      # チケット追加ボタン探し
-      add_ticket = page.evaluate(<<~'JS')
-        (() => {
-          const btns = [...document.querySelectorAll('button, a, [role="button"]')];
-          for (const btn of btns) {
-            const text = (btn.textContent || '').trim();
-            if (text.includes('チケット') && (text.includes('追加') || text.includes('作成'))) {
-              btn.click();
-              return { found: true, text };
-            }
-          }
-          // 既にチケットフォームがある場合
-          const nameInput = document.querySelector('input[name*="ticket"], input[placeholder*="チケット"]');
-          if (nameInput) return { found: true, text: 'form_exists' };
-          return { found: false };
-        })()
-      JS
-      log("[Peatix] チケット追加: #{add_ticket.to_json}")
-
-      if add_ticket['found']
-        page.wait_for_timeout(1500)
-
-        # チケット名と枚数を入力
-        page.evaluate(<<~'JS')
+      # 「無料チケット」カードをクリック
+      begin
+        free_ticket = page.evaluate(<<~'JS')
           (() => {
-            const inputs = document.querySelectorAll('input[type="text"], input[type="number"]');
-            for (const inp of inputs) {
-              const ph = (inp.placeholder || inp.name || '').toLowerCase();
-              const label = inp.closest('div, label, tr')?.textContent?.toLowerCase() || '';
-              if (ph.includes('チケット') || ph.includes('ticket') || label.includes('チケット名') || label.includes('ticket name')) {
-                inp.value = '無料チケット';
-                inp.dispatchEvent(new Event('input', { bubbles: true }));
-                inp.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-              if (ph.includes('枚') || ph.includes('quantity') || ph.includes('num') || label.includes('枚数') || label.includes('数量')) {
-                inp.value = '50';
-                inp.dispatchEvent(new Event('input', { bubbles: true }));
-                inp.dispatchEvent(new Event('change', { bubbles: true }));
+            const all = [...document.querySelectorAll('div, button, a, [role="button"]')];
+            for (const el of all) {
+              const text = (el.textContent || '').trim();
+              if (text.includes('無料チケット') && !text.includes('有料')) {
+                el.click();
+                return { found: true, text: text.substring(0, 40) };
               }
             }
-            // 金額を0にする
-            const priceInputs = document.querySelectorAll('input[type="number"]');
-            for (const inp of priceInputs) {
-              const label = inp.closest('div, label, tr')?.textContent?.toLowerCase() || '';
-              if (label.includes('価格') || label.includes('金額') || label.includes('price')) {
-                inp.value = '0';
-                inp.dispatchEvent(new Event('input', { bubbles: true }));
-                inp.dispatchEvent(new Event('change', { bubbles: true }));
-              }
-            }
+            return { found: false };
           })()
         JS
-        log("[Peatix] チケット: 無料チケット 50枚")
+        log("[Peatix] 無料チケットカード: #{free_ticket.to_json}")
+
+        if free_ticket['found']
+          page.wait_for_timeout(2000)
+
+          # チケット作成フォームのスクリーンショット
+          page.screenshot(path: Rails.root.join('tmp', 'peatix_ticket_form.png').to_s, fullPage: true) rescue nil
+
+          # チケット名を入力、枚数を50に設定
+          page.evaluate(<<~'JS')
+            (() => {
+              const logs = [];
+              const setVal = (el, v) => {
+                if (!el) return;
+                const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                if (setter) setter.call(el, String(v));
+                else el.value = String(v);
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              };
+
+              // チケット名（input[name="name"]のうち、チケット関連のもの）
+              const allInputs = [...document.querySelectorAll('input[type="text"]')];
+              for (const inp of allInputs) {
+                const ph = inp.placeholder || '';
+                if (ph.includes('チケット') || ph.includes('例）') || ph.includes('ticket')) {
+                  setVal(inp, '無料チケット');
+                  logs.push('name: 無料チケット');
+                  break;
+                }
+              }
+
+              // 枚数（input[type="number"] で purchaseLimit 以外）
+              const numInputs = [...document.querySelectorAll('input[type="number"]')];
+              for (const inp of numInputs) {
+                const name = (inp.name || '').toLowerCase();
+                const label = inp.closest('div, label')?.textContent || '';
+                if (label.includes('枚数') || label.includes('定員') || label.includes('quantity') || name.includes('quantity') || name.includes('capacity')) {
+                  setVal(inp, '50');
+                  logs.push('quantity: 50');
+                  break;
+                }
+              }
+
+              return logs;
+            })()
+          JS
+          log("[Peatix] チケット: 無料チケット 50枚 設定完了")
+        end
+      rescue => e
+        log("[Peatix] ⚠️ チケット設定失敗: #{e.message}")
       end
 
-      # 「保存して進む」をクリック
+      # 「進む」/「保存して進む」をクリック
       click_next_button(page, 'tickets')
     end
 
@@ -243,116 +278,16 @@ module Posting
       lines.join("\n")
     end
 
-    def select_category(page)
-      begin
-        page.evaluate(<<~'JS')
-          (() => {
-            const selects = document.querySelectorAll('select');
-            for (const sel of selects) {
-              const label = sel.closest('div, label')?.textContent || '';
-              if (label.includes('カテゴリ') || label.includes('Category')) {
-                for (const opt of sel.options) {
-                  if (opt.textContent.includes('スキルアップ') || opt.textContent.includes('資格')) {
-                    sel.value = opt.value;
-                    sel.dispatchEvent(new Event('change', { bubbles: true }));
-                    return 'selected: ' + opt.textContent.trim();
-                  }
-                }
-              }
-            }
-            // ボタン/ラベルクリック型の場合
-            const all = [...document.querySelectorAll('button, label, div, span, li, a')];
-            for (const el of all) {
-              const text = (el.textContent || '').trim();
-              if (text === 'スキルアップ/資格' || text === 'スキルアップ・資格') {
-                el.click();
-                return 'clicked: ' + text;
-              }
-            }
-            return 'not_found';
-          })()
-        JS
-        log("[Peatix] カテゴリ: スキルアップ/資格")
-      rescue => e
-        log("[Peatix] ⚠️ カテゴリ選択失敗: #{e.message}")
-      end
-    end
-
-    def select_subcategories(page)
-      page.wait_for_timeout(1000)
-      subcats = ['生成AI', 'AIエージェント', 'リモートワーク', 'プログラミング', '転職']
-      begin
-        selected = page.evaluate(<<~JS, arg: subcats)
-          (keywords) => {
-            const results = [];
-            const all = [...document.querySelectorAll('button, label, div, span, li, a, input[type="checkbox"]')];
-            for (const kw of keywords) {
-              for (const el of all) {
-                const text = (el.textContent || '').trim();
-                if (text === kw || text.includes(kw)) {
-                  if (el.tagName === 'INPUT' && el.type === 'checkbox') {
-                    if (!el.checked) el.click();
-                  } else {
-                    el.click();
-                  }
-                  results.push(kw);
-                  break;
-                }
-              }
-            }
-            return results;
-          }
-        JS
-        log("[Peatix] サブカテゴリ: #{selected.join(', ')}")
-      rescue => e
-        log("[Peatix] ⚠️ サブカテゴリ選択失敗: #{e.message}")
-      end
-    end
-
     def upload_cover_image(page, image_path)
       return unless image_path.present? && File.exist?(image_path)
       begin
-        file_inputs = page.locator('input[type="file"]')
-        if file_inputs.count > 0
-          file_inputs.first.set_input_files(image_path)
-          page.wait_for_timeout(3000)
-          log("[Peatix] 📸 カバー画像アップロード完了")
-        else
-          log("[Peatix] ⚠️ 画像アップロードフィールドなし")
-        end
+        # Peatixのカバー画像: id="event-file"
+        file_input = page.locator('#event-file')
+        file_input.set_input_files(image_path)
+        page.wait_for_timeout(3000)
+        log("[Peatix] 📸 カバー画像アップロード完了")
       rescue => e
         log("[Peatix] ⚠️ 画像アップロード失敗: #{e.message}")
-      end
-    end
-
-    def fix_description_newlines(page)
-      begin
-        page.evaluate(<<~'JS')
-          (() => {
-            const textareas = document.querySelectorAll('textarea');
-            for (const ta of textareas) {
-              const label = ta.closest('div, section')?.textContent?.substring(0, 50) || '';
-              if (label.includes('詳細') || label.includes('説明') || label.includes('description')) {
-                // 改行が消えている場合に復元
-                let val = ta.value;
-                if (val && !val.includes('\n') && val.length > 100) {
-                  // 句読点・記号の後に改行を入れる
-                  val = val.replace(/([。！？\n])\s*/g, '$1\n');
-                  val = val.replace(/(━+)/g, '\n$1\n');
-                  val = val.replace(/(■\s)/g, '\n$1');
-                  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-                  if (setter) setter.call(ta, val);
-                  else ta.value = val;
-                  ta.dispatchEvent(new Event('input', { bubbles: true }));
-                  ta.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-              }
-            }
-          })()
-        JS
-        log("[Peatix] 詳細文の改行修正完了")
-      rescue => e
-        log("[Peatix] ⚠️ 改行修正失敗: #{e.message}")
       end
     end
 
