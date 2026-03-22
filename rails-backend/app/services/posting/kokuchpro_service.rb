@@ -484,8 +484,20 @@ module Posting
       zoom_id = ef['zoomId'].to_s
       zoom_passcode = ef['zoomPasscode'].to_s
 
-      # パスコードがマスク（********）の場合は空にする（URLのpwd=はトークンであり数字パスコードではない）
-      zoom_passcode = '' if zoom_passcode.include?('*')
+      # パスコードが数字でない場合（マスクやゴミ）、DBから最新の数字パスコードを取得
+      unless zoom_passcode.match?(/\A\d{4,10}\z/)
+        if zoom_url.present?
+          db_setting = ZoomSetting.where('zoom_url LIKE ?', "%#{zoom_url.split('/j/').last&.split('?')&.first}%")
+                                  .where("passcode REGEXP ?", '^[0-9]{4,10}$')
+                                  .order(updated_at: :desc).first rescue nil
+          # SQLiteはREGEXPサポートしないのでRubyでフィルタ
+          unless db_setting
+            db_setting = ZoomSetting.order(updated_at: :desc).select { |s| s.passcode.to_s.match?(/\A\d{4,10}\z/) }.first rescue nil
+          end
+          zoom_passcode = db_setting.passcode if db_setting
+        end
+        zoom_passcode = '' unless zoom_passcode.match?(/\A\d{4,10}\z/)
+      end
 
       # 申込完了メール本文
       apply_body = <<~MAIL
@@ -500,17 +512,14 @@ module Posting
       MAIL
 
       if zoom_url.present?
-        apply_body += <<~ZOOM
+        zoom_lines = ["参加URL: #{zoom_url}"]
+        zoom_lines << "ミーティングID: #{zoom_id}" if zoom_id.present?
+        zoom_lines << "パスコード: #{zoom_passcode}" if zoom_passcode.present?
 
-■ Zoom参加情報
-━━━━━━━━━━━━━━━━
-参加URL: #{zoom_url}
-#{"ミーティングID: #{zoom_id}" if zoom_id.present?}
-#{"パスコード: #{zoom_passcode}" if zoom_passcode.present?}
-━━━━━━━━━━━━━━━━
-
-※ 開始5分前になりましたらURLよりご入室ください。
-        ZOOM
+        apply_body += "\n■ Zoom参加情報\n━━━━━━━━━━━━━━━━\n"
+        apply_body += zoom_lines.join("\n") + "\n"
+        apply_body += "━━━━━━━━━━━━━━━━\n\n"
+        apply_body += "※ 開始5分前になりましたらURLよりご入室ください。\n"
       end
 
       apply_body += <<~FOOTER
