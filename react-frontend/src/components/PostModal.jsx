@@ -209,9 +209,20 @@ export default function PostModal({ item, onClose, showToast }) {
   useEffect(() => { localStorage.setItem(LS_MEETING_ID, eventFields.zoomId);       }, [eventFields.zoomId]);
   useEffect(() => { localStorage.setItem(LS_PASSCODE,   eventFields.zoomPasscode); }, [eventFields.zoomPasscode]);
 
-  // 開始日を変更したら終了日も連動
+  // 開始日を変更したら終了日・Zoomタイトルの日付も連動
   function handleStartDateChange(val) {
-    setEventFields((prev) => ({ ...prev, startDate: val, endDate: val }));
+    setEventFields((prev) => {
+      const updated = { ...prev, startDate: val, endDate: val };
+      // Zoomタイトルの日付プレフィックスを更新
+      if (val && updated.zoomTitle) {
+        const d = new Date(val);
+        const prefix = `${d.getMonth() + 1}/${d.getDate()} `;
+        // 既存の日付プレフィックス（M/D ）を置換、なければ先頭に追加
+        updated.zoomTitle = updated.zoomTitle.replace(/^\d{1,2}\/\d{1,2}\s+/, '');
+        updated.zoomTitle = prefix + updated.zoomTitle;
+      }
+      return updated;
+    });
   }
 
   function toggleSite(site) {
