@@ -3,6 +3,8 @@ import Sidebar from './components/Sidebar.jsx';
 import ItemList from './components/ItemList.jsx';
 import EditModal from './components/EditModal.jsx';
 import PostModal from './components/PostModal.jsx';
+import ConnectionsPage from './components/ConnectionsPage.jsx';
+import LoginPage from './components/LoginPage.jsx';
 import { fetchTexts, fetchFolders, deleteText, createText } from './api.js';
 import './index.css';
 
@@ -28,6 +30,7 @@ function useToasts() {
 }
 
 export default function App() {
+  const [activePage, setActivePage] = useState('main'); // 'main' | 'connections'
   const [activeType, setActiveType] = useState('event');
   const [items, setItems] = useState([]);
   const [folders, setFolders] = useState([]);
@@ -39,6 +42,7 @@ export default function App() {
   const [editItem, setEditItem] = useState(null); // null = closed, {} = new, item = edit
   const [postItem, setPostItem] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [currentUser, setCurrentUser] = useState(undefined); // undefined=loading, null=guest, object=logged in
 
   const { toasts, showToast, removeToast } = useToasts();
 
@@ -69,6 +73,21 @@ export default function App() {
   const loadAll = useCallback(async () => {
     await Promise.all([loadItems(), loadFolders()]);
   }, [loadItems, loadFolders]);
+
+  // Load current user on mount
+  useEffect(() => {
+    fetch('/api/current_user').then(r => r.json()).then(d => {
+      if (d && d.id) setCurrentUser(d);
+    }).catch(() => {});
+    // URLにlogin=successがあればユーザー再取得してトップへ
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('login') === 'success') {
+      window.history.replaceState({}, '', window.location.pathname);
+      fetch('/api/current_user').then(r => r.json()).then(d => {
+        if (d && d.id) setCurrentUser(d);
+      }).catch(() => {});
+    }
+  }, []);
 
   // Load when type changes
   const activeTypeRef = useRef(activeType);
@@ -123,6 +142,33 @@ export default function App() {
       : selectedFolder
     : 'すべて';
 
+  // ログイン画面（未認証時は必ず表示）
+  if (!currentUser) {
+    return (
+      <LoginPage onLogin={(user) => {
+        if (user) setCurrentUser(user);
+      }} />
+    );
+  }
+
+  if (activePage === 'connections') {
+    return (
+      <div className="app-shell" style={{ justifyContent: 'center' }}>
+        <ConnectionsPage
+          showToast={showToast}
+          onBack={() => setActivePage('main')}
+        />
+        <div className="toast-container">
+          {toasts.map((toast) => (
+            <div key={toast.id} className={`toast ${toast.type}`} onClick={() => removeToast(toast.id)} style={{ cursor: 'pointer' }}>
+              {toast.message}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <Sidebar
@@ -134,6 +180,7 @@ export default function App() {
         onSelectFolder={handleSelectFolder}
         onFolderChange={loadAll}
         showToast={showToast}
+        onNavigate={setActivePage}
       />
 
       <div className="main-area">
@@ -147,6 +194,34 @@ export default function App() {
             </div>
           </div>
           <div className="main-header-actions">
+            {currentUser && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '8px', padding: '4px 12px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                {currentUser.avatarUrl && (
+                  <img src={currentUser.avatarUrl} alt="" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                )}
+                <div style={{ lineHeight: 1.2 }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#166534' }}>{currentUser.name}</div>
+                  <div style={{ fontSize: '10px', color: '#6b7280' }}>{currentUser.email}</div>
+                </div>
+                <button
+                  onClick={async () => {
+                    await fetch('/api/logout', { method: 'DELETE' });
+                    setCurrentUser(null);
+                  }}
+                  style={{ marginLeft: '4px', padding: '2px 8px', background: 'none', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '10px', color: '#6b7280', cursor: 'pointer' }}
+                >
+                  ログアウト
+                </button>
+              </div>
+            )}
+            <button
+              className="btn"
+              onClick={() => setActivePage('connections')}
+              title="サービス接続管理"
+              style={{ background: '#eef2ff', color: '#4f46e5', border: '1.5px solid #c7d2fe', fontWeight: 600 }}
+            >
+              🔗 接続管理
+            </button>
             <button
               className="btn btn-secondary"
               onClick={loadAll}

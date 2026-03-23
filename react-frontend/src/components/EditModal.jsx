@@ -1,17 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { createText, updateText, aiCorrect, aiGenerate, aiAlignDatetime, aiAgent, fetchZoomSettings, saveZoomSetting, deleteZoomSetting } from '../api.js';
-
-const LS_DATE       = 'event_gen_date';
-const LS_TIME       = 'event_gen_time';
-const LS_END_TIME   = 'event_gen_end_time';
-const LS_API_KEY    = 'openai_api_key';
-const LS_LME_CHECKED  = 'lme_gen_checked';
-const LS_LME_SUBTYPE  = 'lme_gen_subtype';
-const LS_LME_SEND_DATE = 'lme_send_date';
-const LS_LME_SEND_TIME = 'lme_send_time';
-const LS_ZOOM_URL   = 'lme_zoom_url';
-const LS_MEETING_ID = 'lme_meeting_id';
-const LS_PASSCODE   = 'lme_passcode';
+import { createText, updateText, aiCorrect, aiGenerate, aiAlignDatetime, aiAgent, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, fetchAppSettings, saveAppSettings } from '../api.js';
 
 function buildFolderOptions(folders) {
   const opts = [{ value: '', label: '未分類' }];
@@ -38,19 +26,20 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
   const [showAgent, setShowAgent] = useState(false);
 
   // Datetime for AI generation
-  const [genDate, setGenDate] = useState(() => localStorage.getItem(LS_DATE) || '');
-  const [genTime, setGenTime] = useState(() => localStorage.getItem(LS_TIME) || '10:00');
-  const [genEndTime, setGenEndTime] = useState(() => localStorage.getItem(LS_END_TIME) || '12:00');
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(LS_API_KEY) || '');
+  const [genDate, setGenDate] = useState('');
+  const [genTime, setGenTime] = useState('10:00');
+  const [genEndTime, setGenEndTime] = useState('12:00');
+  const [apiKey, setApiKey] = useState('');
 
   // LME
-  const [lmeChecked, setLmeChecked] = useState(() => localStorage.getItem(LS_LME_CHECKED) === 'true');
-  const [eventSubType, setEventSubType] = useState(() => localStorage.getItem(LS_LME_SUBTYPE) || 'benkyokai');
-  const [lmeSendDate, setLmeSendDate] = useState(() => localStorage.getItem(LS_LME_SEND_DATE) || '');
-  const [lmeSendTime, setLmeSendTime] = useState(() => localStorage.getItem(LS_LME_SEND_TIME) || '10:00');
-  const [zoomUrl, setZoomUrl] = useState(() => localStorage.getItem(LS_ZOOM_URL) || '');
-  const [meetingId, setMeetingId] = useState(() => localStorage.getItem(LS_MEETING_ID) || '');
-  const [passcode, setPasscode] = useState(() => localStorage.getItem(LS_PASSCODE) || '');
+  const [lmeChecked, setLmeChecked] = useState(false);
+  const [eventSubType, setEventSubType] = useState('benkyokai');
+  const [lmeSendDate, setLmeSendDate] = useState('');
+  const [lmeSendTime, setLmeSendTime] = useState('10:00');
+  const [zoomUrl, setZoomUrl] = useState('');
+  const [meetingId, setMeetingId] = useState('');
+  const [passcode, setPasscode] = useState('');
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // Zoom DB settings
   const [zoomList, setZoomList] = useState([]);
@@ -64,9 +53,23 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
   const contentRef = useRef(null);
   const folderOptions = buildFolderOptions(folders);
 
-  // Load Zoom settings from DB on mount
+  // Load all settings from DB on mount
   useEffect(() => {
     fetchZoomSettings().then(setZoomList).catch(() => {});
+    fetchAppSettings().then((s) => {
+      if (s.event_gen_date)     setGenDate(s.event_gen_date);
+      if (s.event_gen_time)     setGenTime(s.event_gen_time);
+      if (s.event_gen_end_time) setGenEndTime(s.event_gen_end_time);
+      if (s.openai_api_key)     setApiKey(s.openai_api_key);
+      if (s.lme_gen_checked)    setLmeChecked(s.lme_gen_checked === 'true');
+      if (s.lme_gen_subtype)    setEventSubType(s.lme_gen_subtype);
+      if (s.lme_send_date)      setLmeSendDate(s.lme_send_date);
+      if (s.lme_send_time)      setLmeSendTime(s.lme_send_time);
+      if (s.lme_zoom_url)       setZoomUrl(s.lme_zoom_url);
+      if (s.lme_meeting_id)     setMeetingId(s.lme_meeting_id);
+      if (s.lme_passcode && !/\*/.test(s.lme_passcode)) setPasscode(s.lme_passcode);
+      setSettingsLoaded(true);
+    }).catch(() => setSettingsLoaded(true));
   }, []);
 
   function handleLoadZoom(setting) {
@@ -106,18 +109,28 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
     }
   }
 
-  // Persist all settings
-  useEffect(() => { localStorage.setItem(LS_DATE, genDate); }, [genDate]);
-  useEffect(() => { localStorage.setItem(LS_TIME, genTime); }, [genTime]);
-  useEffect(() => { localStorage.setItem(LS_END_TIME, genEndTime); }, [genEndTime]);
-  useEffect(() => { localStorage.setItem(LS_API_KEY, apiKey); }, [apiKey]);
-  useEffect(() => { localStorage.setItem(LS_LME_CHECKED, lmeChecked); }, [lmeChecked]);
-  useEffect(() => { localStorage.setItem(LS_LME_SUBTYPE, eventSubType); }, [eventSubType]);
-  useEffect(() => { localStorage.setItem(LS_LME_SEND_DATE, lmeSendDate); }, [lmeSendDate]);
-  useEffect(() => { localStorage.setItem(LS_LME_SEND_TIME, lmeSendTime); }, [lmeSendTime]);
-  useEffect(() => { localStorage.setItem(LS_ZOOM_URL, zoomUrl); }, [zoomUrl]);
-  useEffect(() => { localStorage.setItem(LS_MEETING_ID, meetingId); }, [meetingId]);
-  useEffect(() => { localStorage.setItem(LS_PASSCODE, passcode); }, [passcode]);
+  // Persist settings to DB (debounced)
+  const saveTimerRef = useRef(null);
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveAppSettings({
+        event_gen_date:     genDate,
+        event_gen_time:     genTime,
+        event_gen_end_time: genEndTime,
+        openai_api_key:     apiKey,
+        lme_gen_checked:    String(lmeChecked),
+        lme_gen_subtype:    eventSubType,
+        lme_send_date:      lmeSendDate,
+        lme_send_time:      lmeSendTime,
+        lme_zoom_url:       zoomUrl,
+        lme_meeting_id:     meetingId,
+        lme_passcode:       passcode,
+      }).catch(() => {});
+    }, 500);
+    return () => clearTimeout(saveTimerRef.current);
+  }, [settingsLoaded, genDate, genTime, genEndTime, apiKey, lmeChecked, eventSubType, lmeSendDate, lmeSendTime, zoomUrl, meetingId, passcode]);
 
   const handleSave = useCallback(async () => {
     if (!name.trim()) { showToast('名前を入力してください', 'error'); return; }

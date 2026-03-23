@@ -1,9 +1,11 @@
-# This file should ensure the existence of records required to run the application in every environment (production,
-# development, test). The code here should be idempotent so that it can be executed at any point in every environment.
-# The data can then be loaded with the bin/rails db:seed command (or created alongside the database with db:setup).
-#
-# Example:
-#
-#   ["Action", "Comedy", "Drama", "Horror"].each do |genre_name|
-#     MovieGenre.find_or_create_by!(name: genre_name)
-#   end
+# デフォルトユーザー
+user = User.find_or_create_by!(email: 'takaya314boxing@gmail.com') do |u|
+  u.password = 'Takaya314!'
+  u.name = '西野 鷹也'
+end
+puts "✅ Default user: #{user.email}"
+
+# 未紐付けデータをユーザーに紐付け
+Item.where(user_id: nil).update_all(user_id: user.id)
+ServiceConnection.where(user_id: nil).update_all(user_id: user.id)
+puts "✅ Existing data associated with #{user.email}"

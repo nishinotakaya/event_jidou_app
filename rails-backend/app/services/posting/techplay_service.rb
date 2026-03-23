@@ -1,121 +1,201 @@
 module Posting
   class TechplayService < BaseService
-    LOGIN_URL  = 'https://techplay.jp/signin'
-    MYPAGE_URL = 'https://techplay.jp/'
-    CREATE_URL = -> { ENV.fetch('TECHPLAY_CREATE_URL', 'https://techplay.jp/event/create') }
+    AUTH_URL      = 'https://owner.techplay.jp/auth'
+    DASHBOARD_URL = 'https://owner.techplay.jp/dashboard'
+    EVENT_URL     = 'https://owner.techplay.jp/event'
+    CREATE_URL    = 'https://owner.techplay.jp/event/create'
 
     private
 
     def execute(page, content, ef)
       ensure_login(page)
-      fill_and_submit(page, content, ef)
+      create_event(page, content, ef)
     end
 
+    # ===== ログイン =====
     def ensure_login(page)
-      log("[TechPlay] ログイン確認 → #{MYPAGE_URL}")
-      page.goto(MYPAGE_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_timeout(1000)
+      log('[TechPlay] ログインページへ移動...')
+      page.goto(AUTH_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(2000)
 
-      return log("[TechPlay] ✅ ログイン済み") unless page.url.match?(/login|signin|sign_in/)
+      if page.url.include?('dashboard') || page.url.include?('select_menu')
+        log('[TechPlay] ✅ ログイン済み')
+        return
+      end
 
-      log("[TechPlay] ログイン中 → #{LOGIN_URL}")
-      page.goto(LOGIN_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.fill('input[name="email"]', ENV['TECHPLAY_EMAIL'].to_s)
-      page.fill('input[name="password"]', ENV['TECHPLAY_PASSWORD'].to_s)
-      page.expect_navigation(timeout: 30_000) { page.click('button[type="submit"]') } rescue nil
-      page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
+      page.fill('#email', ENV['TECHPLAY_EMAIL'].to_s)
+      page.fill('#password', ENV['TECHPLAY_PASSWORD'].to_s)
+      page.click("input[type='submit']")
+      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
+      page.wait_for_timeout(3000)
 
-      raise "[TechPlay] ログインに失敗しました" if page.url.match?(/login|signin|sign_in/)
-      log("[TechPlay] ✅ ログイン完了 → #{page.url}")
+      current_url = page.url
+      log("[TechPlay] ログイン後URL: #{current_url}")
+
+      if current_url.include?('/auth') && !current_url.include?('select_menu')
+        raise '[TechPlay] ログイン失敗'
+      end
+
+      log('[TechPlay] ✅ ログイン完了')
     end
 
-    def fill_and_submit(page, content, ef)
-      create_url = CREATE_URL.call
-      log("[TechPlay] 投稿ページへ移動 → #{create_url}")
-      page.goto(create_url, waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
+    # ===== イベント作成 =====
+    def create_event(page, content, ef)
+      # /event ページへ移動して「新規作成」ボタンをクリック
+      log('[TechPlay] イベント一覧ページへ移動...')
+      page.goto(EVENT_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(3000)
 
-      url = page.url
-      raise "[TechPlay] 投稿ページアクセス失敗" if url.match?(/login|signin/)
-      raise "[TechPlay] ページが見つかりません (404)" if (page.title rescue '').include?('404')
+      new_btn = page.locator("a:has-text('新規作成')").first
+      if (new_btn.visible?(timeout: 3000) rescue false)
+        new_btn.click
+        page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
+        page.wait_for_timeout(3000)
+        log('[TechPlay] イベント作成ページへ遷移')
+      else
+        log('[TechPlay] 新規作成ボタン未検出、直接URLへ移動')
+        page.goto(CREATE_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
+        page.wait_for_timeout(3000)
+      end
 
-      # Required fields
-      fields = page.evaluate(<<~JS)
-        [...document.querySelectorAll('input, textarea, select')].map(el => ({
-          tag: el.tagName.toLowerCase(), type: el.type || '',
-          name: el.name || '', id: el.id || '', ph: el.placeholder || '',
-          required: el.required || el.getAttribute('aria-required') === 'true',
-        }))
+      log("[TechPlay] 現在のURL: #{page.url}")
+
+      # ----- タイトル -----
+      title_text = extract_title(ef, content, 100)
+      page.fill('#title', title_text)
+      log("[TechPlay] タイトル入力: #{title_text}")
+
+      # ----- 開催日時 (Vue datetimepicker) -----
+      fill_datetime(page, ef)
+
+      # ----- エリア: オンライン -----
+      # area_types[] の最初のチェックボックスが「オンライン」
+      place = ef['place'].presence || 'オンライン'
+      if place.include?('オンライン')
+        online_cb = page.locator("input[name='area_types[]']").first
+        if (online_cb.visible?(timeout: 2000) rescue false)
+          online_cb.check unless (online_cb.checked? rescue false)
+          log('[TechPlay] エリア: オンラインをチェック')
+        end
+      end
+
+      # ----- 参加枠名 -----
+      slot_name = place
+      page.fill("input[name='attendTypes[0][name]']", slot_name)
+      log("[TechPlay] 参加枠名入力: #{slot_name}")
+
+      # ----- 定員数 -----
+      capacity = ef['capacity'].presence || '50'
+      cap_input = page.locator("input[name='attendTypes[0][capacity]']").first
+      if (cap_input.visible?(timeout: 2000) rescue false)
+        cap_input.fill('')
+        cap_input.fill(capacity.to_s)
+        log("[TechPlay] 定員数入力: #{capacity}")
+      end
+
+      # 申込形式・参加費はデフォルトのまま
+      log('[TechPlay] 申込形式・参加費はデフォルト値を使用')
+
+      # ----- 保存 -----
+      log('[TechPlay] 保存ボタンをクリック...')
+      save_btn = page.locator("button[type='submit']:has-text('保存')").first
+      raise '[TechPlay] 保存ボタンが見つかりません' unless (save_btn.visible?(timeout: 3000) rescue false)
+
+      save_btn.click
+      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
+      page.wait_for_timeout(3000)
+      log("[TechPlay] ✅ 保存完了 → #{page.url}")
+
+      # ----- 公開 -----
+      publish = ef.dig('publishSites', 'TechPlay')
+      if publish
+        log('[TechPlay] 公開設定が有効 → 公開処理を実行')
+        publish_event(page)
+      else
+        log('[TechPlay] 公開設定: 非公開（下書き保存のみ）')
+      end
+
+      log("[TechPlay] ✅ 処理完了 → #{page.url}")
+    end
+
+    # ===== 日時入力 (Vue datetimepicker) =====
+    def fill_datetime(page, ef)
+      start_date = normalize_date(ef['startDate'].presence || default_date_plus(30))
+      start_time = pad_time(ef['startTime'])
+      end_date   = normalize_date(ef['endDate'].presence || start_date)
+      end_time   = pad_time(ef['endTime'])
+
+      # Vue datetimepicker: テキスト入力として値をセット
+      # フォーマット: "YYYY/MM/DD HH:mm" が一般的
+      start_formatted = "#{start_date.gsub('-', '/')} #{start_time}"
+      end_formatted   = "#{end_date.gsub('-', '/')} #{end_time}"
+
+      set_datetimepicker(page, '#v-datetimepicker-start', start_formatted, '開始')
+      set_datetimepicker(page, '#v-datetimepicker-end', end_formatted, '終了')
+    end
+
+    def set_datetimepicker(page, selector, value, label)
+      el = page.locator(selector).first
+      return log("[TechPlay] ⚠️ #{label}日時欄が見つかりません") unless (el.visible?(timeout: 2000) rescue false)
+
+      # input をクリックしてフォーカス
+      el.click
+      page.wait_for_timeout(500)
+
+      # 既存値をクリアして入力（nativeInputValueSetterでVue reactivityをトリガー）
+      js = <<~JS
+        (args) => {
+          var input = document.querySelector(args[0]);
+          if (input) {
+            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeInputValueSetter.call(input, args[1]);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new Event('blur', { bubbles: true }));
+          }
+        }
       JS
+      page.evaluate_handle(js, arg: [selector, value])
 
-      default_date = (Date.today + 30).strftime('%Y-%m-%d')
-      default_datetime = "#{default_date}T10:00"
+      page.wait_for_timeout(500)
+      # カレンダーポップアップが開いていれば閉じる
+      page.keyboard.press('Escape') rescue nil
+      page.wait_for_timeout(300)
 
-      fields.select { |f| f['required'] }.each do |f|
-        sel = f['id'].present? ? "##{f['id']}" : "#{f['tag']}[name=\"#{f['name']}\"]"
-        el = page.locator(sel).first rescue next
-        next unless el.visible?(timeout: 1000) rescue false
-        next if (el.input_value rescue '').present?
+      log("[TechPlay] #{label}日時入力: #{value}")
+    end
 
-        case f['tag']
-        when 'select'
-          page.evaluate("const el = document.querySelector('#{sel.gsub("'", "\\'")}'); const opt = el && [...el.options].find(o => o.value && o.value !== '0' && o.value !== ''); if (opt) el.value = opt.value;") rescue nil
-        else
-          case f['type']
-          when 'datetime-local' then el.fill(default_datetime) rescue nil
-          when 'date'           then el.fill(default_date) rescue nil
-          when 'time'           then el.fill('10:00') rescue nil
-          when 'number'         then el.fill('50') rescue nil
-          when 'text', ''
-            n = "#{f['name']}#{f['id']}#{f['ph']}".downcase
-            val = if n.match?(/place|venue|会場|場所/) then 'オンライン'
-                  elsif n.match?(/url|link/)           then 'https://example.com'
-                  elsif n.match?(/email|mail/)         then ENV['TECHPLAY_EMAIL'].to_s
-                  elsif n.match?(/tel|phone/)          then '000-0000-0000'
-                  else '要確認'
-                  end
-            el.fill(val) rescue nil
+    # ===== 公開 =====
+    def publish_event(page)
+      # 保存後のページで公開ボタンを探す
+      publish_btn = nil
+      ['公開する', '公開'].each do |text|
+        btn = page.locator("button:has-text('#{text}'), a:has-text('#{text}')").first
+        if (btn.visible?(timeout: 2000) rescue false)
+          publish_btn = btn
+          break
+        end
+      end
+
+      if publish_btn
+        publish_btn.click
+        page.wait_for_timeout(2000)
+
+        # 確認ダイアログ
+        ['はい', 'OK', '公開する', '確認'].each do |text|
+          confirm = page.locator("button:has-text('#{text}')").first
+          if (confirm.visible?(timeout: 2000) rescue false)
+            confirm.click
+            page.wait_for_timeout(2000)
+            break
           end
         end
+
+        page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
+        log("[TechPlay] ✅ 公開完了 → #{page.url}")
+      else
+        log('[TechPlay] ⚠️ 公開ボタンが見つかりません')
       end
-
-      # Fill content in textarea
-      textarea_sels = fields.select { |f| f['tag'] == 'textarea' }
-                           .map { |f| f['name'].present? ? "textarea[name=\"#{f['name']}\"]" : (f['id'].present? ? "##{f['id']}" : nil) }
-                           .compact
-      content_sel = find_first_visible(page, *textarea_sels, 'div[contenteditable="true"]', 'textarea')
-      raise "[TechPlay] 本文フィールドが見つかりません" unless content_sel
-      page.fill(content_sel, content)
-
-      # Fill title
-      title_sel = find_first_visible(page, 'input[name="title"]', '#title', 'input[name="name"]', '#name')
-      if title_sel
-        current = page.input_value(title_sel) rescue ''
-        if current.blank?
-          title_text = extract_title(ef, content, 80)
-          page.fill(title_sel, title_text)
-        end
-      end
-
-      # Submit
-      submit_sel = find_first_visible(page,
-        'button[type="submit"]', 'input[type="submit"]',
-        'button:text("投稿")', 'button:text("保存")', 'button:text("公開")',
-      )
-      raise "[TechPlay] 送信ボタンが見つかりません" unless submit_sel
-      log("[TechPlay] 送信: #{submit_sel}")
-      page.expect_navigation(timeout: 30_000) { page.click(submit_sel) } rescue nil
-
-      raise "[TechPlay] ページが見つかりません (404)" if (page.title rescue '').include?('404')
-      log("[TechPlay] ✅ 投稿完了 → #{page.url}")
-    end
-
-    def find_first_visible(page, *selectors)
-      selectors.each do |sel|
-        visible = page.locator(sel).first.visible?(timeout: 1_000) rescue false
-        return sel if visible
-      end
-      nil
     end
   end
 end

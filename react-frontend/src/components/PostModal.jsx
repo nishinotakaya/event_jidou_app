@@ -1,59 +1,36 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting } from '../api.js';
-
-const LS_API_KEY       = 'openai_api_key';
-const LS_DATE          = 'event_gen_date';
-const LS_TIME          = 'event_gen_time';
-const LS_END_TIME      = 'event_gen_end_time';
-const LS_LME_SEND_DATE = 'lme_send_date';
-const LS_LME_SEND_TIME = 'lme_send_time';
-// EditModal と共有する Zoom 関連キー
-const LS_ZOOM_URL      = 'lme_zoom_url';
-const LS_MEETING_ID    = 'lme_meeting_id';
-const LS_PASSCODE      = 'lme_passcode';
+import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting, fetchAppSettings, saveAppSettings } from '../api.js';
 
 // LME 一時非表示（エルメ側で配信ユーザー絞り込み調整中）
 const SITES = ['こくチーズ', 'Peatix', 'connpass', 'TechPlay' /*, 'LME' */];
 
-function getDefaultEventFields() {
-  return {
-    title:        '',
-    startDate:    localStorage.getItem(LS_DATE)         || '',
-    startTime:    localStorage.getItem(LS_TIME)         || '10:00',
-    endDate:      localStorage.getItem(LS_DATE)         || '',
-    endTime:      localStorage.getItem(LS_END_TIME)     || '12:00',
-    place:        'オンライン',
-    zoomTitle:    '',
-    zoomUrl:      localStorage.getItem(LS_ZOOM_URL)   || '',
-    zoomId:       localStorage.getItem(LS_MEETING_ID) || '',
-    zoomPasscode: (() => { const v = localStorage.getItem(LS_PASSCODE) || ''; return /\*/.test(v) ? '' : v; })(),
-    capacity:     '50',
-    tel:          '03-1234-5678',
-    peatixEventId: '',
-    lmeSendDate:  localStorage.getItem(LS_LME_SEND_DATE) || '',
-    lmeSendTime:  localStorage.getItem(LS_LME_SEND_TIME) || localStorage.getItem(LS_TIME) || '10:00',
-  };
-}
+const DEFAULT_EVENT_FIELDS = {
+  title:        '',
+  startDate:    '',
+  startTime:    '10:00',
+  endDate:      '',
+  endTime:      '12:00',
+  place:        'オンライン',
+  zoomTitle:    '',
+  zoomUrl:      '',
+  zoomId:       '',
+  zoomPasscode: '',
+  capacity:     '50',
+  tel:          '03-1234-5678',
+  peatixEventId: '',
+  lmeSendDate:  '',
+  lmeSendTime:  '10:00',
+};
 
 export default function PostModal({ item, onClose, showToast }) {
-  const [selectedSites, setSelectedSites] = useState(() => {
-    try {
-      const saved = localStorage.getItem('post_selected_sites');
-      const sites = saved ? JSON.parse(saved) : ['こくチーズ'];
-      const lmeChecked = localStorage.getItem('lme_gen_checked') === 'true';
-      if (lmeChecked && !sites.includes('LME')) sites.push('LME');
-      return sites;
-    } catch {
-      return ['こくチーズ'];
-    }
-  });
-  const [lmeSubType, setLmeSubType] = useState(
-    () => localStorage.getItem('lme_gen_subtype') || 'taiken'
-  );
-  const [eventFields, setEventFields] = useState(getDefaultEventFields);
+  const [selectedSites, setSelectedSites] = useState(['こくチーズ']);
+  const [lmeSubType, setLmeSubType] = useState('taiken');
+  const [eventFields, setEventFields] = useState({ ...DEFAULT_EVENT_FIELDS });
   const [generateImage, setGenerateImage] = useState(false);
   const [imageStyle, setImageStyle] = useState('cute');
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(LS_API_KEY) || '');
+  const [apiKey, setApiKey] = useState('');
+  const [dalleApiKey, setDalleApiKey] = useState('');
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // 公開/非公開設定（デフォルト: 非公開）
   const [publishSites, setPublishSites] = useState({});
@@ -68,14 +45,36 @@ export default function PostModal({ item, onClose, showToast }) {
   const [zoomDropdownOpen, setZoomDropdownOpen] = useState(false);
   const [zoomSaving, setZoomSaving] = useState(false);
   const [zoomCreating, setZoomCreating] = useState(false);
+  const [zoomAutoCreated, setZoomAutoCreated] = useState(false);
   const [showPasscode, setShowPasscode] = useState(true);
   const [zoomLogs, setZoomLogs] = useState([]);
 
   const logRef = useRef(null);
 
-  // Load Zoom settings from DB on mount
+  // Load all settings from DB on mount
   useEffect(() => {
     fetchZoomSettings().then(setZoomList).catch(() => {});
+    fetchAppSettings().then((s) => {
+      setEventFields((prev) => ({
+        ...prev,
+        startDate:    s.event_gen_date     || prev.startDate,
+        startTime:    s.event_gen_time     || prev.startTime,
+        endDate:      s.event_gen_date     || prev.endDate,
+        endTime:      s.event_gen_end_time || prev.endTime,
+        zoomUrl:      s.lme_zoom_url       || prev.zoomUrl,
+        zoomId:       s.lme_meeting_id     || prev.zoomId,
+        zoomPasscode: (s.lme_passcode && !/\*/.test(s.lme_passcode)) ? s.lme_passcode : prev.zoomPasscode,
+        lmeSendDate:  s.lme_send_date      || prev.lmeSendDate,
+        lmeSendTime:  s.lme_send_time      || prev.lmeSendTime,
+      }));
+      setApiKey(s.openai_api_key || '');
+      setDalleApiKey(s.dalle_api_key || '');
+      if (s.post_selected_sites) {
+        try { setSelectedSites(JSON.parse(s.post_selected_sites)); } catch {}
+      }
+      if (s.lme_gen_subtype) setLmeSubType(s.lme_gen_subtype);
+      setSettingsLoaded(true);
+    }).catch(() => setSettingsLoaded(true));
   }, []);
 
   function handleLoadZoom(setting) {
@@ -86,6 +85,7 @@ export default function PostModal({ item, onClose, showToast }) {
       zoomId: setting.meetingId || '',
       zoomPasscode: (setting.passcode && !/\*/.test(setting.passcode)) ? setting.passcode : '',
     }));
+    setZoomAutoCreated(!!setting.title);
     setZoomDropdownOpen(false);
     showToast(`Zoom設定「${setting.label}」を読み込みました`, 'success');
   }
@@ -151,6 +151,7 @@ export default function PostModal({ item, onClose, showToast }) {
               zoomId: event.data.meetingId || '',
               zoomPasscode: (event.data.passcode && !/\*/.test(event.data.passcode)) ? event.data.passcode : '',
             }));
+            setZoomAutoCreated(true);
             showToast('Zoomミーティングを作成・DB保存し、自動入力しました', 'success');
           }
         }
@@ -188,13 +189,29 @@ export default function PostModal({ item, onClose, showToast }) {
     }
   }, [item]);
 
-  // Persist api key
-  useEffect(() => { localStorage.setItem(LS_API_KEY, apiKey); }, [apiKey]);
-
-  // Persist selected sites
+  // Persist settings to DB (debounced)
+  const saveTimerRef = useRef(null);
   useEffect(() => {
-    localStorage.setItem('post_selected_sites', JSON.stringify(selectedSites));
-  }, [selectedSites]);
+    if (!settingsLoaded) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveAppSettings({
+        event_gen_date:     eventFields.startDate,
+        event_gen_time:     eventFields.startTime,
+        event_gen_end_time: eventFields.endTime,
+        openai_api_key:     apiKey,
+        dalle_api_key:      dalleApiKey,
+        lme_zoom_url:       eventFields.zoomUrl,
+        lme_meeting_id:     eventFields.zoomId,
+        lme_passcode:       eventFields.zoomPasscode,
+        lme_send_date:      eventFields.lmeSendDate,
+        lme_send_time:      eventFields.lmeSendTime,
+        post_selected_sites: JSON.stringify(selectedSites),
+        lme_gen_subtype:    lmeSubType,
+      }).catch(() => {});
+    }, 500);
+    return () => clearTimeout(saveTimerRef.current);
+  }, [settingsLoaded, eventFields.startDate, eventFields.startTime, eventFields.endTime, apiKey, dalleApiKey, eventFields.zoomUrl, eventFields.zoomId, eventFields.zoomPasscode, eventFields.lmeSendDate, eventFields.lmeSendTime, selectedSites, lmeSubType]);
 
   // Auto scroll logs
   useEffect(() => {
@@ -202,15 +219,6 @@ export default function PostModal({ item, onClose, showToast }) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, [logs]);
-
-  // Persist LME send date/time
-  useEffect(() => { localStorage.setItem(LS_LME_SEND_DATE, eventFields.lmeSendDate); }, [eventFields.lmeSendDate]);
-  useEffect(() => { localStorage.setItem(LS_LME_SEND_TIME, eventFields.lmeSendTime); }, [eventFields.lmeSendTime]);
-
-  // Persist Zoom fields (EditModal と共有)
-  useEffect(() => { localStorage.setItem(LS_ZOOM_URL,   eventFields.zoomUrl);      }, [eventFields.zoomUrl]);
-  useEffect(() => { localStorage.setItem(LS_MEETING_ID, eventFields.zoomId);       }, [eventFields.zoomId]);
-  useEffect(() => { localStorage.setItem(LS_PASSCODE,   eventFields.zoomPasscode); }, [eventFields.zoomPasscode]);
 
   // 開始日を変更したら終了日・Zoomタイトルの日付も連動
   function handleStartDateChange(val) {
@@ -286,6 +294,7 @@ export default function PostModal({ item, onClose, showToast }) {
           generateImage,
           imageStyle,
           openaiApiKey: apiKey,
+          dalleApiKey: dalleApiKey || apiKey,
         },
         (event) => {
           if (event.type === 'log') {
@@ -544,15 +553,34 @@ export default function PostModal({ item, onClose, showToast }) {
                   >
                     📥 読み込み
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm zoom-save-btn"
-                    onClick={handleSaveZoom}
-                    disabled={posting || zoomSaving || zoomCreating || !eventFields.zoomUrl}
-                    title="現在のZoom設定をDBに保存"
-                  >
-                    {zoomSaving ? <span className="spinner" /> : '💾'} 保存
-                  </button>
+                  {!zoomAutoCreated && (
+                    <button
+                      type="button"
+                      className="btn btn-sm zoom-save-btn"
+                      onClick={handleSaveZoom}
+                      disabled={posting || zoomSaving || zoomCreating || !eventFields.zoomUrl}
+                      title="現在のZoom設定をDBに保存"
+                    >
+                      {zoomSaving ? <span className="spinner" /> : '💾'} 保存
+                    </button>
+                  )}
+                  {zoomAutoCreated && (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => {
+                        setZoomAutoCreated(false);
+                        setEventFields((prev) => ({
+                          ...prev, zoomTitle: '', zoomUrl: '', zoomId: '', zoomPasscode: '',
+                        }));
+                      }}
+                      disabled={posting || zoomCreating}
+                      title="自動作成されたZoom情報をクリアして手動入力に戻す"
+                      style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5' }}
+                    >
+                      🗑 クリア
+                    </button>
+                  )}
                   {zoomDropdownOpen && (
                     <div className="zoom-dropdown">
                       {zoomList.length === 0 ? (
@@ -591,6 +619,12 @@ export default function PostModal({ item, onClose, showToast }) {
                 </div>
               )}
 
+              {zoomAutoCreated && (
+                <div style={{ marginBottom: '8px', padding: '6px 10px', background: '#dbeafe', borderRadius: '6px', fontSize: '12px', color: '#1e40af' }}>
+                  🔒 自動作成済み — 編集不可（クリアボタンで解除）
+                </div>
+              )}
+
               <div className="form-group">
                 <label className="form-label">Zoom タイトル</label>
                 <input
@@ -599,18 +633,42 @@ export default function PostModal({ item, onClose, showToast }) {
                   onChange={(e) => updateEventField('zoomTitle', e.target.value)}
                   placeholder="例: 3/29 テスト体験会"
                   disabled={posting || zoomCreating}
+                  readOnly={zoomAutoCreated}
+                  style={zoomAutoCreated ? { background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                 />
               </div>
 
               <div className="form-group" style={{ marginTop: '8px' }}>
                 <label className="form-label">Zoom URL</label>
-                <input
-                  className="form-input zoom-url-input"
-                  value={eventFields.zoomUrl}
-                  onChange={(e) => updateEventField('zoomUrl', e.target.value)}
-                  placeholder="https://us02web.zoom.us/j/..."
-                  disabled={posting || zoomCreating}
-                />
+                {zoomAutoCreated && eventFields.zoomUrl ? (
+                  <a
+                    href={eventFields.zoomUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="zoom-url-link"
+                    style={{
+                      display: 'block',
+                      padding: '8px 12px',
+                      background: '#f1f5f9',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      color: '#2563eb',
+                      textDecoration: 'underline',
+                      wordBreak: 'break-all',
+                      fontSize: '13px',
+                    }}
+                  >
+                    {eventFields.zoomUrl}
+                  </a>
+                ) : (
+                  <input
+                    className="form-input zoom-url-input"
+                    value={eventFields.zoomUrl}
+                    onChange={(e) => updateEventField('zoomUrl', e.target.value)}
+                    placeholder="https://us02web.zoom.us/j/..."
+                    disabled={posting || zoomCreating}
+                  />
+                )}
               </div>
 
               <div className="form-row" style={{ marginTop: '8px' }}>
@@ -622,6 +680,8 @@ export default function PostModal({ item, onClose, showToast }) {
                     onChange={(e) => updateEventField('zoomId', e.target.value)}
                     placeholder="123 456 7890"
                     disabled={posting || zoomCreating}
+                    readOnly={zoomAutoCreated}
+                    style={zoomAutoCreated ? { background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                   />
                 </div>
                 <div className="form-group">
@@ -634,6 +694,8 @@ export default function PostModal({ item, onClose, showToast }) {
                       onChange={(e) => updateEventField('zoomPasscode', e.target.value)}
                       placeholder="数字6桁（例: 311071）"
                       disabled={posting || zoomCreating}
+                      readOnly={zoomAutoCreated}
+                      style={zoomAutoCreated ? { background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                     />
                     <button
                       type="button"
@@ -711,15 +773,24 @@ export default function PostModal({ item, onClose, showToast }) {
             )}
           </div>
 
-          {/* API Key */}
+          {/* API Keys */}
           <div className="api-key-section">
-            <p className="api-key-label">OpenAI APIキー（画像生成に使用）</p>
+            <p className="api-key-label">OpenAI APIキー（文章生成・校正・日時調整）</p>
             <input
               className="api-key-input"
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="sk-..."
+              disabled={posting}
+            />
+            <p className="api-key-label" style={{ marginTop: '8px' }}>DALL-E 3 APIキー（画像生成用・未入力時は上のキーを使用）</p>
+            <input
+              className="api-key-input"
+              type="password"
+              value={dalleApiKey}
+              onChange={(e) => setDalleApiKey(e.target.value)}
+              placeholder="sk-...（空欄の場合はOpenAIキーを使用）"
               disabled={posting}
             />
           </div>

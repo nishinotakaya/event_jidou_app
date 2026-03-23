@@ -152,6 +152,79 @@ export async function createZoomMeeting({ title, startDate, startTime, duration 
   });
 }
 
+// ===== App Settings (DB-backed KVS) =====
+export async function fetchAppSettings(keys) {
+  const query = keys ? `?keys=${keys.join(',')}` : '';
+  const res = await fetch(`/api/app_settings${query}`);
+  if (!res.ok) throw new Error('設定の取得に失敗しました');
+  return res.json();
+}
+
+export async function saveAppSettings(pairs) {
+  const res = await fetch('/api/app_settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pairs),
+  });
+  if (!res.ok) throw new Error('設定の保存に失敗しました');
+  return res.json();
+}
+
+// ===== Service Connections =====
+export async function fetchServiceConnections() {
+  const res = await fetch('/api/service_connections');
+  if (!res.ok) throw new Error('接続情報の取得に失敗しました');
+  return res.json();
+}
+
+export async function saveServiceConnection({ serviceName, email, password }) {
+  const res = await fetch('/api/service_connections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ service_name: serviceName, email, password }),
+  });
+  if (!res.ok) throw new Error('接続情報の保存に失敗しました');
+  return res.json();
+}
+
+export async function updateServiceConnection(id, { email, password }) {
+  const res = await fetch(`/api/service_connections/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error('接続情報の更新に失敗しました');
+  return res.json();
+}
+
+export async function deleteServiceConnection(id) {
+  const res = await fetch(`/api/service_connections/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('接続の削除に失敗しました');
+  return res.json();
+}
+
+export async function testServiceConnection(id) {
+  const res = await fetch(`/api/service_connections/${id}/test`, { method: 'POST' });
+  if (!res.ok) throw new Error('接続テストの開始に失敗しました');
+  return res.json();
+}
+
+export async function testNewServiceConnection({ serviceName, email, password }) {
+  const res = await fetch('/api/service_connections/test_new', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ service_name: serviceName, email, password }),
+  });
+  if (!res.ok) throw new Error('接続テストの開始に失敗しました');
+  return res.json();
+}
+
+export async function migrateFromEnv() {
+  const res = await fetch('/api/service_connections/migrate_from_env', { method: 'POST' });
+  if (!res.ok) throw new Error('ENV移行に失敗しました');
+  return res.json();
+}
+
 // ===== AI =====
 export async function aiCorrect({ text, apiKey }) {
   const res = await fetch('/api/ai/correct', {

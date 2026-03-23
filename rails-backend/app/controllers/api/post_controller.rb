@@ -11,6 +11,7 @@ module Api
         'generateImage' => params[:generateImage],
         'imageStyle'   => params[:imageStyle],
         'openaiApiKey' => params[:openaiApiKey].presence || ENV['OPENAI_API_KEY'],
+        'dalleApiKey'  => params[:dalleApiKey].presence,
       }
 
       if payload['sites'].empty?

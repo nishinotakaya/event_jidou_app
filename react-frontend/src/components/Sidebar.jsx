@@ -11,6 +11,7 @@ export default function Sidebar({
   onSelectFolder,
   onFolderChange,
   showToast,
+  onNavigate,
 }) {
   const [showAddFolder, setShowAddFolder] = useState(false);
   const [newFolderParent, setNewFolderParent] = useState('');
@@ -126,6 +127,7 @@ export default function Sidebar({
           </div>
         )}
       </div>
+
     </aside>
   );
 }

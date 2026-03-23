@@ -14,19 +14,20 @@ class PostJob < ApplicationJob
     generate_image = payload['generateImage']
     image_style    = payload['imageStyle'] || 'cute'
     openai_key     = payload['openaiApiKey'].presence || ENV['OPENAI_API_KEY']
+    dalle_key      = payload['dalleApiKey'].presence || AppSetting.get('dalle_api_key') || openai_key
 
     broadcast(job_id, type: 'log', message: '投稿処理を開始します...')
 
     # ===== 画像生成（DALL-E 3） =====
     image_path = nil
     if generate_image
-      if openai_key.blank?
-        broadcast(job_id, type: 'log', message: '⚠️ 画像生成: OpenAI APIキーが未設定のためスキップします')
+      if dalle_key.blank?
+        broadcast(job_id, type: 'log', message: '⚠️ 画像生成: DALL-E APIキーが未設定のためスキップします')
       else
         begin
           broadcast(job_id, type: 'log', message: '🖼️ DALL-E 3で画像生成中...')
           image_title = event_fields['title'].presence || content.split("\n").first.to_s[0, 80]
-          image_path  = generate_dalle_image(openai_key, image_title, image_style, job_id)
+          image_path  = generate_dalle_image(dalle_key, image_title, image_style, job_id)
           broadcast(job_id, type: 'log', message: '🖼️ 画像生成・保存完了')
         rescue => e
           broadcast(job_id, type: 'log', message: "⚠️ 画像生成失敗: #{e.message}")
