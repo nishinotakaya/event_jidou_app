@@ -3,12 +3,23 @@ class User < ApplicationRecord
          :recoverable, :rememberable, :validatable,
          :omniauthable, omniauth_providers: [:google_oauth2]
 
+  has_many :items, dependent: :destroy
+  has_many :folders, dependent: :destroy
   has_many :service_connections, dependent: :destroy
 
   def self.from_omniauth(auth)
     # まずprovider+uidで検索
     user = find_by(provider: auth.provider, uid: auth.uid)
-    return user if user
+    if user
+      # トークンを毎回更新
+      user.update!(
+        google_access_token: auth.credentials&.token,
+        google_refresh_token: auth.credentials&.refresh_token || user.google_refresh_token,
+        google_token_expires_at: auth.credentials&.expires_at ? Time.at(auth.credentials.expires_at) : user.google_token_expires_at,
+        avatar_url: auth.info.image || user.avatar_url,
+      )
+      return user
+    end
 
     # 同じメールアドレスのユーザーがいれば紐付け
     user = find_by(email: auth.info.email)
@@ -18,6 +29,9 @@ class User < ApplicationRecord
         uid: auth.uid,
         name: auth.info.name || user.name,
         avatar_url: auth.info.image,
+        google_access_token: auth.credentials&.token,
+        google_refresh_token: auth.credentials&.refresh_token || user.google_refresh_token,
+        google_token_expires_at: auth.credentials&.expires_at ? Time.at(auth.credentials.expires_at) : nil,
       )
       return user
     end
@@ -30,6 +44,9 @@ class User < ApplicationRecord
       avatar_url: auth.info.image,
       provider: auth.provider,
       uid: auth.uid,
+      google_access_token: auth.credentials&.token,
+      google_refresh_token: auth.credentials&.refresh_token,
+      google_token_expires_at: auth.credentials&.expires_at ? Time.at(auth.credentials.expires_at) : nil,
     )
   end
 end

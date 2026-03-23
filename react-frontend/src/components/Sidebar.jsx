@@ -48,7 +48,7 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <p className="sidebar-title">イベント管理</p>
+        <p className="sidebar-title" onClick={() => { onSelectFolder(null); onTypeChange('event'); }} style={{ cursor: 'pointer' }}>イベント管理</p>
         <div className="type-tabs">
           <button
             className={`type-tab ${activeType === 'event' ? 'active' : ''}`}

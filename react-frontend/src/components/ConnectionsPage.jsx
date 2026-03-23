@@ -5,6 +5,7 @@ import {
   deleteServiceConnection,
   testServiceConnection,
   testNewServiceConnection,
+  browserLogin,
 } from '../api.js';
 
 const SERVICE_LABELS = {
@@ -14,6 +15,7 @@ const SERVICE_LABELS = {
   techplay:  { name: 'TechPlay Owner', icon: '🔵', url: 'https://owner.techplay.jp/' },
   zoom:      { name: 'Zoom', icon: '🎥', url: 'https://zoom.us/' },
   lme:       { name: 'LME（エルメ）', icon: '🟢', url: 'https://page.line-and.me/' },
+  tunagate:  { name: 'つなゲート', icon: '🤝', url: 'https://tunagate.com/', browserLogin: true, loginUrl: 'https://tunagate.com/auth/google?origin=https://tunagate.com' },
 };
 
 const STATUS_LABELS = {
@@ -24,13 +26,14 @@ const STATUS_LABELS = {
   error:        { text: 'エラー', color: '#dc2626', bg: '#fee2e2' },
 };
 
-export default function ConnectionsPage({ showToast, onBack }) {
+export default function ConnectionsPage({ showToast, onBack, inline = false }) {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingService, setEditingService] = useState(null);
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [testing, setTesting] = useState(null);
+  const [showPasswords, setShowPasswords] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -54,7 +57,7 @@ export default function ConnectionsPage({ showToast, onBack }) {
   function handleEdit(conn) {
     setEditingService(conn.serviceName);
     setFormEmail(conn.email || '');
-    setFormPassword('');
+    setFormPassword(conn.password || '');
   }
 
   function handleCancelEdit() {
@@ -132,17 +135,19 @@ export default function ConnectionsPage({ showToast, onBack }) {
   }
 
   return (
-    <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-        <h2 style={{ margin: 0, fontSize: '20px' }}>
-          🔗 サービス接続管理
-        </h2>
-        {onBack && (
-          <button className="btn btn-secondary" onClick={onBack} style={{ fontSize: '13px' }}>
-            ← 戻る
-          </button>
-        )}
-      </div>
+    <div style={{ maxWidth: inline ? '100%' : '900px', width: '100%', margin: '0 auto', padding: inline ? '0' : '20px' }}>
+      {!inline && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <h2 style={{ margin: 0, fontSize: '20px' }}>
+            🔗 サービス接続管理
+          </h2>
+          {onBack && (
+            <button className="btn btn-secondary" onClick={onBack} style={{ fontSize: '13px' }}>
+              ← 戻る
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Google ログイン / ユーザー情報 */}
       <div style={{
@@ -227,6 +232,21 @@ export default function ConnectionsPage({ showToast, onBack }) {
                         📧 {conn.email}
                       </div>
                     )}
+                    {conn.email && !isEditing && (
+                      <div style={{ fontSize: '11px', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        🔑 {showPasswords[conn.serviceName] ? (conn.password || '••••••••') : '••••••••'}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowPasswords(prev => ({ ...prev, [conn.serviceName]: !prev[conn.serviceName] }));
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', padding: '0 2px' }}
+                          title={showPasswords[conn.serviceName] ? 'パスワードを隠す' : 'パスワードを表示'}
+                        >
+                          {showPasswords[conn.serviceName] ? '🙈' : '👁️'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -244,6 +264,42 @@ export default function ConnectionsPage({ showToast, onBack }) {
 
                   {!isEditing && (
                     <>
+                      {label.browserLogin && (
+                        <button
+                          className="btn btn-sm"
+                          onClick={async () => {
+                            // 1. 新タブでつなゲートGoogleログインを開く
+                            const loginUrl = label.loginUrl || `${label.url}users/sign_in`;
+                            const w = window.open(loginUrl, 'tunagate_login', 'width=600,height=700');
+                            showToast(`${label.name} にログインしてください。完了したらウィンドウを閉じてください。`, 'success');
+
+                            // 2. ウィンドウが閉じたらCookie抽出スクリプトを実行
+                            const poll = setInterval(async () => {
+                              if (w && w.closed) {
+                                clearInterval(poll);
+                                showToast('ログイン完了を確認中...', 'info');
+                                try {
+                                  const res = await fetch('/api/service_connections/capture_session', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ service_name: conn.serviceName }),
+                                  });
+                                  const data = await res.json();
+                                  if (data.ok) {
+                                    showToast(`${label.name} のセッション保存完了！`, 'success');
+                                  } else {
+                                    showToast(data.error || 'セッション保存に失敗', 'error');
+                                  }
+                                } catch (err) { showToast(err.message, 'error'); }
+                                await loadConnections();
+                              }
+                            }, 1000);
+                          }}
+                          style={{ fontSize: '11px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
+                        >
+                          🌐 ログイン
+                        </button>
+                      )}
                       {conn.id && (
                         <button
                           className="btn btn-sm"
@@ -297,14 +353,24 @@ export default function ConnectionsPage({ showToast, onBack }) {
                     placeholder="メールアドレス"
                     style={{ fontSize: '13px' }}
                   />
-                  <input
-                    className="form-input"
-                    type="password"
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                    placeholder="パスワード"
-                    style={{ fontSize: '13px' }}
-                  />
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <input
+                      className="form-input"
+                      type={showPasswords[`edit_${conn.serviceName}`] ? 'text' : 'password'}
+                      value={formPassword}
+                      onChange={(e) => setFormPassword(e.target.value)}
+                      placeholder="パスワード"
+                      style={{ fontSize: '13px', flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswords(prev => ({ ...prev, [`edit_${conn.serviceName}`]: !prev[`edit_${conn.serviceName}`] }))}
+                      style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px 8px', cursor: 'pointer', fontSize: '14px' }}
+                      title={showPasswords[`edit_${conn.serviceName}`] ? 'パスワードを隠す' : 'パスワードを表示'}
+                    >
+                      {showPasswords[`edit_${conn.serviceName}`] ? '🙈' : '👁️'}
+                    </button>
+                  </div>
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                     <button className="btn btn-secondary btn-sm" onClick={handleCancelEdit} style={{ fontSize: '12px' }}>
                       キャンセル

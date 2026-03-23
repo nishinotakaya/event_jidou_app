@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_23_112510) do
+ActiveRecord::Schema[7.2].define(version: 2026_03_23_150845) do
   create_table "app_settings", force: :cascade do |t|
     t.string "key"
     t.text "value"
@@ -25,6 +25,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_23_112510) do
     t.string "parent"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "user_id"
+    t.index ["user_id"], name: "index_folders_on_user_id"
   end
 
   create_table "items", id: :string, force: :cascade do |t|
@@ -65,6 +67,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_23_112510) do
     t.string "avatar_url"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.text "google_access_token"
+    t.text "google_refresh_token"
+    t.datetime "google_token_expires_at"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
   end
@@ -79,6 +84,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_23_112510) do
     t.string "title"
   end
 
+  add_foreign_key "folders", "users"
   add_foreign_key "items", "users"
   add_foreign_key "service_connections", "users"
 end

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting, fetchAppSettings, saveAppSettings } from '../api.js';
 
 // LME 一時非表示（エルメ側で配信ユーザー絞り込み調整中）
-const SITES = ['こくチーズ', 'Peatix', 'connpass', 'TechPlay' /*, 'LME' */];
+const SITES = ['こくチーズ', 'Peatix', 'connpass', 'TechPlay', 'つなゲート' /*, 'LME' */];
 
 const DEFAULT_EVENT_FIELDS = {
   title:        '',
@@ -46,6 +46,7 @@ export default function PostModal({ item, onClose, showToast }) {
   const [zoomSaving, setZoomSaving] = useState(false);
   const [zoomCreating, setZoomCreating] = useState(false);
   const [zoomAutoCreated, setZoomAutoCreated] = useState(false);
+  const [zoomEditing, setZoomEditing] = useState(false);
   const [showPasscode, setShowPasscode] = useState(true);
   const [zoomLogs, setZoomLogs] = useState([]);
 
@@ -86,6 +87,7 @@ export default function PostModal({ item, onClose, showToast }) {
       zoomPasscode: (setting.passcode && !/\*/.test(setting.passcode)) ? setting.passcode : '',
     }));
     setZoomAutoCreated(!!setting.title);
+    setZoomEditing(false);
     setZoomDropdownOpen(false);
     showToast(`Zoom設定「${setting.label}」を読み込みました`, 'success');
   }
@@ -152,6 +154,7 @@ export default function PostModal({ item, onClose, showToast }) {
               zoomPasscode: (event.data.passcode && !/\*/.test(event.data.passcode)) ? event.data.passcode : '',
             }));
             setZoomAutoCreated(true);
+            setZoomEditing(false);
             showToast('Zoomミーティングを作成・DB保存し、自動入力しました', 'success');
           }
         }
@@ -619,95 +622,138 @@ export default function PostModal({ item, onClose, showToast }) {
                 </div>
               )}
 
-              {zoomAutoCreated && (
-                <div style={{ marginBottom: '8px', padding: '6px 10px', background: '#dbeafe', borderRadius: '6px', fontSize: '12px', color: '#1e40af' }}>
-                  🔒 自動作成済み — 編集不可（クリアボタンで解除）
-                </div>
-              )}
-
-              <div className="form-group">
-                <label className="form-label">Zoom タイトル</label>
-                <input
-                  className="form-input"
-                  value={eventFields.zoomTitle}
-                  onChange={(e) => updateEventField('zoomTitle', e.target.value)}
-                  placeholder="例: 3/29 テスト体験会"
-                  disabled={posting || zoomCreating}
-                  readOnly={zoomAutoCreated}
-                  style={zoomAutoCreated ? { background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginTop: '8px' }}>
-                <label className="form-label">Zoom URL</label>
-                {zoomAutoCreated && eventFields.zoomUrl ? (
-                  <a
-                    href={eventFields.zoomUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="zoom-url-link"
-                    style={{
-                      display: 'block',
-                      padding: '8px 12px',
-                      background: '#f1f5f9',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      color: '#2563eb',
-                      textDecoration: 'underline',
-                      wordBreak: 'break-all',
-                      fontSize: '13px',
-                    }}
-                  >
-                    {eventFields.zoomUrl}
-                  </a>
-                ) : (
-                  <input
-                    className="form-input zoom-url-input"
-                    value={eventFields.zoomUrl}
-                    onChange={(e) => updateEventField('zoomUrl', e.target.value)}
-                    placeholder="https://us02web.zoom.us/j/..."
-                    disabled={posting || zoomCreating}
-                  />
-                )}
-              </div>
-
-              <div className="form-row" style={{ marginTop: '8px' }}>
-                <div className="form-group">
-                  <label className="form-label">ミーティングID</label>
-                  <input
-                    className="form-input"
-                    value={eventFields.zoomId}
-                    onChange={(e) => updateEventField('zoomId', e.target.value)}
-                    placeholder="123 456 7890"
-                    disabled={posting || zoomCreating}
-                    readOnly={zoomAutoCreated}
-                    style={zoomAutoCreated ? { background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">パスコード</label>
-                  <div className="passcode-input-row">
-                    <input
-                      className="form-input"
-                      type={showPasscode ? 'text' : 'password'}
-                      value={eventFields.zoomPasscode}
-                      onChange={(e) => updateEventField('zoomPasscode', e.target.value)}
-                      placeholder="数字6桁（例: 311071）"
-                      disabled={posting || zoomCreating}
-                      readOnly={zoomAutoCreated}
-                      style={zoomAutoCreated ? { background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
-                    />
+              {/* Zoom URL保存済み & 編集モードでない → 詳細ビュー */}
+              {eventFields.zoomUrl && !zoomEditing && !zoomCreating ? (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e40af' }}>
+                      🎥 Zoom 詳細
+                    </span>
                     <button
                       type="button"
-                      className="btn btn-sm passcode-toggle"
-                      onClick={() => setShowPasscode(!showPasscode)}
-                      title={showPasscode ? 'パスコードを隠す' : 'パスコードを表示'}
+                      className="btn btn-sm"
+                      onClick={() => setZoomEditing(true)}
+                      disabled={posting}
+                      style={{ fontSize: '11px' }}
                     >
-                      {showPasscode ? '🙈' : '👁️'}
+                      ✏️ 編集
                     </button>
                   </div>
+
+                  {eventFields.zoomTitle && (
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                      {eventFields.zoomTitle}
+                    </div>
+                  )}
+
+                  <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ marginBottom: '6px' }}>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>URL</span>
+                      <a
+                        href={eventFields.zoomUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: 'block', color: '#2563eb', fontSize: '13px', wordBreak: 'break-all', textDecoration: 'underline' }}
+                      >
+                        {eventFields.zoomUrl}
+                      </a>
+                    </div>
+                    {eventFields.zoomId && (
+                      <div style={{ marginBottom: '4px' }}>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>ミーティングID: </span>
+                        <span style={{ fontSize: '13px', color: '#334155', fontFamily: 'monospace' }}>{eventFields.zoomId}</span>
+                      </div>
+                    )}
+                    {eventFields.zoomPasscode && (
+                      <div>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>パスコード: </span>
+                        <span style={{ fontSize: '13px', color: '#334155', fontFamily: 'monospace' }}>
+                          {showPasscode ? eventFields.zoomPasscode : '••••••'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowPasscode(!showPasscode)}
+                          style={{ marginLeft: '6px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px' }}
+                        >
+                          {showPasscode ? '🙈' : '👁️'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Zoom URL未保存 or 編集モード → フォーム */
+                <div>
+                  {zoomEditing && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => setZoomEditing(false)}
+                        style={{ fontSize: '11px' }}
+                      >
+                        ← 詳細に戻る
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label className="form-label">Zoom タイトル</label>
+                    <input
+                      className="form-input"
+                      value={eventFields.zoomTitle}
+                      onChange={(e) => updateEventField('zoomTitle', e.target.value)}
+                      placeholder="例: 3/29 テスト体験会"
+                      disabled={posting || zoomCreating}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginTop: '8px' }}>
+                    <label className="form-label">Zoom URL</label>
+                    <input
+                      className="form-input zoom-url-input"
+                      value={eventFields.zoomUrl}
+                      onChange={(e) => updateEventField('zoomUrl', e.target.value)}
+                      placeholder="https://us02web.zoom.us/j/..."
+                      disabled={posting || zoomCreating}
+                    />
+                  </div>
+
+                  <div className="form-row" style={{ marginTop: '8px' }}>
+                    <div className="form-group">
+                      <label className="form-label">ミーティングID</label>
+                      <input
+                        className="form-input"
+                        value={eventFields.zoomId}
+                        onChange={(e) => updateEventField('zoomId', e.target.value)}
+                        placeholder="123 456 7890"
+                        disabled={posting || zoomCreating}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">パスコード</label>
+                      <div className="passcode-input-row">
+                        <input
+                          className="form-input"
+                          type={showPasscode ? 'text' : 'password'}
+                          value={eventFields.zoomPasscode}
+                          onChange={(e) => updateEventField('zoomPasscode', e.target.value)}
+                          placeholder="数字6桁（例: 311071）"
+                          disabled={posting || zoomCreating}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-sm passcode-toggle"
+                          onClick={() => setShowPasscode(!showPasscode)}
+                          title={showPasscode ? 'パスコードを隠す' : 'パスコードを表示'}
+                        >
+                          {showPasscode ? '🙈' : '👁️'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="form-group" style={{ marginTop: '10px' }}>

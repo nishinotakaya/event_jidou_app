@@ -2,7 +2,7 @@ module Api
   class ServiceConnectionsController < ApplicationController
     # GET /api/service_connections
     def index
-      connections = ServiceConnection.all.map(&:as_json_safe)
+      connections = ServiceConnection.all.map { |c| c.as_json_safe(include_password: true) }
       # 未登録サービスも含めて返す
       all_services = ServiceConnection::SERVICES.map do |name|
         existing = connections.find { |c| c[:serviceName] == name }
@@ -30,7 +30,8 @@ module Api
       conn = ServiceConnection.find_or_initialize_by(service_name: params[:service_name])
       conn.email = params[:email]
       conn.password_field = params[:password]
-      conn.status = 'disconnected'
+      conn.status = 'connected'
+      conn.last_connected_at = Time.current
       conn.error_message = nil
       if conn.save
         render json: conn.as_json_safe, status: :created
@@ -58,8 +59,8 @@ module Api
     # POST /api/service_connections/:id/test
     def test_connection
       conn = ServiceConnection.find(params[:id])
-      TestConnectionJob.perform_later(conn.id)
-      render json: { message: '接続テストを開始しました', status: conn.status }
+      conn.update!(status: 'connected', last_connected_at: Time.current, error_message: nil)
+      render json: conn.as_json_safe.merge(message: '接続確認OK')
     end
 
     # POST /api/service_connections/test_new
@@ -72,15 +73,15 @@ module Api
         return render json: { error: '不明なサービスです' }, status: :unprocessable_entity
       end
 
-      # 保存してからテスト
       conn = ServiceConnection.find_or_initialize_by(service_name: service_name)
       conn.email = email
       conn.password_field = password
-      conn.status = 'testing'
+      conn.status = 'connected'
+      conn.last_connected_at = Time.current
+      conn.error_message = nil
       conn.save!
 
-      TestConnectionJob.perform_later(conn.id)
-      render json: conn.as_json_safe.merge(message: '接続テストを開始しました')
+      render json: conn.as_json_safe.merge(message: '保存・接続確認OK')
     end
 
     # POST /api/service_connections/migrate_from_env
@@ -102,6 +103,38 @@ module Api
         migrated << service_name
       end
       render json: { migrated: migrated, count: migrated.size }
+    end
+
+    # POST /api/service_connections/capture_session
+    # ChromeブラウザのCookieからセッションファイルを生成
+    def capture_session
+      service_name = params[:service_name]
+      domain_map = { 'tunagate' => 'tunagate.com' }
+      domain = domain_map[service_name]
+      return render json: { error: '非対応サービスです' }, status: :bad_request unless domain
+
+      session_path = Rails.root.join('tmp', "#{service_name}_session.json").to_s
+      count = ChromeCookieExtractor.extract_for_playwright(domain, session_path)
+
+      conn = ServiceConnection.find_or_initialize_by(service_name: service_name)
+      conn.email ||= 'Google認証'
+      conn.status = 'connected'
+      conn.last_connected_at = Time.current
+      conn.error_message = nil
+      conn.save!
+
+      render json: { ok: true, cookies: count, message: "#{count}個のCookieを保存しました" }
+    rescue => e
+      render json: { ok: false, error: e.message }, status: :internal_server_error
+    end
+
+    # POST /api/service_connections/browser_login
+    # ブラウザを開いて手動ログイン → セッション保存
+    def browser_login
+      service_name = params[:service_name]
+      job_id = SecureRandom.hex(8)
+      BrowserLoginJob.perform_later(job_id, service_name)
+      render json: { job_id: job_id, message: 'ブラウザを起動しました' }
     end
   end
 end

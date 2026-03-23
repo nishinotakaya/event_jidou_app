@@ -66,11 +66,18 @@ class PostJob < ApplicationJob
             'imagePath'  => image_path,
           )
 
-          context = browser.new_context(
+          context_opts = {
             userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
             locale: 'ja-JP',
             viewport: { width: 1280, height: 800 },
-          )
+          }
+          # セッションファイルがあれば復元（つなゲート等）
+          session_file = Rails.root.join('tmp', "#{SITE_TO_SERVICE[site_name]}_session.json").to_s
+          if File.exist?(session_file)
+            context_opts[:storageState] = session_file
+            broadcast(job_id, type: 'log', message: "[#{site_name}] セッション復元")
+          end
+          context = browser.new_context(**context_opts)
           page = context.new_page
 
           broadcast(job_id, type: 'status', site: site_name, status: 'running')
@@ -86,13 +93,17 @@ class PostJob < ApplicationJob
             # LME 一時停止（配信ユーザー絞り込み調整中）
             # when 'LME'        then Posting::LmeService.new.call(page, content, ef, &log_fn)
             when 'TechPlay'   then Posting::TechplayService.new.call(page, content, ef, &log_fn)
+            when 'つなゲート'  then Posting::TunagateService.new.call(page, content, ef, &log_fn)
             else broadcast(job_id, type: 'log', message: "[#{site_name}] 未対応サイトです")
             end
 
             broadcast(job_id, type: 'status', site: site_name, status: 'success')
+            # 投稿成功 → サービス接続を「接続済み」に更新
+            update_connection_status(site_name, 'connected')
           rescue => e
             broadcast(job_id, type: 'log',    message: "[#{site_name}] ❌ エラー: #{e.message}")
             broadcast(job_id, type: 'status', site: site_name, status: 'error')
+            update_connection_status(site_name, 'error', e.message)
           ensure
             context.close rescue nil
           end
@@ -116,6 +127,26 @@ class PostJob < ApplicationJob
 
   def broadcast(job_id, data)
     ActionCable.server.broadcast("post_#{job_id}", data)
+  end
+
+  SITE_TO_SERVICE = {
+    'こくチーズ' => 'kokuchpro',
+    'Peatix'     => 'peatix',
+    'connpass'   => 'connpass',
+    'TechPlay'   => 'techplay',
+    'つなゲート'   => 'tunagate',
+  }.freeze
+
+  def update_connection_status(site_name, status, error_msg = nil)
+    service = SITE_TO_SERVICE[site_name]
+    return unless service
+    conn = ServiceConnection.find_by(service_name: service)
+    return unless conn
+    attrs = { status: status, error_message: error_msg }
+    attrs[:last_connected_at] = Time.current if status == 'connected'
+    conn.update!(attrs)
+  rescue => e
+    Rails.logger.warn("[PostJob] connection status update failed: #{e.message}")
   end
 
   def find_playwright_path

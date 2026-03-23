@@ -1,5 +1,5 @@
 class ServiceConnection < ApplicationRecord
-  SERVICES = %w[kokuchpro connpass peatix techplay zoom lme].freeze
+  SERVICES = %w[kokuchpro connpass peatix techplay zoom lme tunagate].freeze
 
   ENV_KEYS = {
     'kokuchpro' => { email: 'CONPASS__KOKUCIZE_MAIL', password: 'CONPASS_KOKUCIZE_PASSWORD' },
@@ -8,6 +8,7 @@ class ServiceConnection < ApplicationRecord
     'techplay'  => { email: 'TECHPLAY_EMAIL', password: 'TECHPLAY_PASSWORD' },
     'zoom'      => { email: 'ZOOM_EMAIL', password: 'ZOOM_PASSWORD' },
     'lme'       => { email: 'LME_EMAIL', password: 'LME_PASSWORD' },
+    'tunagate'  => { email: 'GOOGLE_EMAIL', password: 'GOOGLE_PASSWORD' },
   }.freeze
 
   belongs_to :user, optional: true
@@ -33,8 +34,8 @@ class ServiceConnection < ApplicationRecord
     end
   end
 
-  def as_json_safe
-    {
+  def as_json_safe(include_password: false)
+    h = {
       id: id,
       serviceName: service_name,
       email: email,
@@ -42,6 +43,8 @@ class ServiceConnection < ApplicationRecord
       lastConnectedAt: last_connected_at&.iso8601,
       errorMessage: error_message,
     }
+    h[:password] = password_field if include_password
+    h
   end
 
   private

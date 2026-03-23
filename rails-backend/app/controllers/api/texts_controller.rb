@@ -1,12 +1,12 @@
 module Api
   class TextsController < ApplicationController
     def index
-      items = Item.where(item_type: params[:type]).order(:created_at)
+      items = current_user.items.where(item_type: params[:type]).order(:created_at)
       render json: items.map { |i| format_item(i) }
     end
 
     def create
-      item = Item.new(
+      item = current_user.items.new(
         item_type: params[:type],
         name:      item_params[:name],
         content:   item_params[:content],
@@ -20,7 +20,7 @@ module Api
     end
 
     def update
-      item = Item.find_by(id: params[:id], item_type: params[:type])
+      item = current_user.items.find_by(id: params[:id], item_type: params[:type])
       return render json: { error: 'Not found' }, status: :not_found unless item
 
       item.assign_attributes(
@@ -34,7 +34,7 @@ module Api
     end
 
     def destroy
-      item = Item.find_by(id: params[:id], item_type: params[:type])
+      item = current_user.items.find_by(id: params[:id], item_type: params[:type])
       return render json: { error: 'Not found' }, status: :not_found unless item
 
       item.destroy

@@ -219,6 +219,16 @@ export async function testNewServiceConnection({ serviceName, email, password })
   return res.json();
 }
 
+export async function browserLogin(serviceName) {
+  const res = await fetch('/api/service_connections/browser_login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ service_name: serviceName }),
+  });
+  if (!res.ok) throw new Error('ブラウザログインの開始に失敗しました');
+  return res.json();
+}
+
 export async function migrateFromEnv() {
   const res = await fetch('/api/service_connections/migrate_from_env', { method: 'POST' });
   if (!res.ok) throw new Error('ENV移行に失敗しました');

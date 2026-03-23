@@ -3,6 +3,7 @@ class Users::OmniauthCallbacksController < ActionController::Base
 
   def google_oauth2
     auth = request.env['omniauth.auth']
+    Rails.logger.info "[OmniAuth] credentials: token=#{auth.credentials&.token.present?} refresh=#{auth.credentials&.refresh_token.present?} expires=#{auth.credentials&.expires_at}"
     @user = User.from_omniauth(auth)
 
     if @user.persisted?

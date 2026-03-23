@@ -39,6 +39,8 @@ Rails.application.routes.draw do
     post   "service_connections/:id/test",           to: "service_connections#test_connection"
     post   "service_connections/test_new",           to: "service_connections#test_new"
     post   "service_connections/migrate_from_env",   to: "service_connections#migrate_from_env"
+    post   "service_connections/browser_login",      to: "service_connections#browser_login"
+    post   "service_connections/capture_session",    to: "service_connections#capture_session"
 
     # 現在のユーザー情報
     get "current_user", to: "sessions#current_user"

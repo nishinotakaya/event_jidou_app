@@ -42,6 +42,8 @@ export default function App() {
   const [editItem, setEditItem] = useState(null); // null = closed, {} = new, item = edit
   const [postItem, setPostItem] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showConnections, setShowConnections] = useState(false);
   const [currentUser, setCurrentUser] = useState(undefined); // undefined=loading, null=guest, object=logged in
 
   const { toasts, showToast, removeToast } = useToasts();
@@ -102,6 +104,7 @@ export default function App() {
   // ===== Folder change =====
   function handleSelectFolder(folder) {
     setSelectedFolder(folder);
+    setSearchQuery('');
     setPage(1);
   }
 
@@ -148,24 +151,6 @@ export default function App() {
       <LoginPage onLogin={(user) => {
         if (user) setCurrentUser(user);
       }} />
-    );
-  }
-
-  if (activePage === 'connections') {
-    return (
-      <div className="app-shell" style={{ justifyContent: 'center' }}>
-        <ConnectionsPage
-          showToast={showToast}
-          onBack={() => setActivePage('main')}
-        />
-        <div className="toast-container">
-          {toasts.map((toast) => (
-            <div key={toast.id} className={`toast ${toast.type}`} onClick={() => removeToast(toast.id)} style={{ cursor: 'pointer' }}>
-              {toast.message}
-            </div>
-          ))}
-        </div>
-      </div>
     );
   }
 
@@ -216,11 +201,18 @@ export default function App() {
             )}
             <button
               className="btn"
-              onClick={() => setActivePage('connections')}
-              title="サービス接続管理"
-              style={{ background: '#eef2ff', color: '#4f46e5', border: '1.5px solid #c7d2fe', fontWeight: 600 }}
+              onClick={() => setShowConnections(!showConnections)}
+              title={showConnections ? 'サービス接続管理を隠す' : 'サービス接続管理を表示'}
+              style={{
+                background: showConnections ? '#4f46e5' : '#eef2ff',
+                color: showConnections ? '#fff' : '#4f46e5',
+                border: showConnections ? '1.5px solid #4f46e5' : '1.5px solid #c7d2fe',
+                fontWeight: 600,
+                transition: 'all 0.2s',
+                boxShadow: showConnections ? '0 2px 8px rgba(79,70,229,0.3)' : 'none',
+              }}
             >
-              🔗 接続管理
+              {showConnections ? '👁️ 接続管理 ▲' : '🔗 接続管理 ▼'}
             </button>
             <button
               className="btn btn-secondary"
@@ -238,6 +230,39 @@ export default function App() {
           </div>
         </div>
 
+        {/* Service Connections (toggle) */}
+        {showConnections && (
+          <div style={{ padding: '0 24px', marginBottom: '16px' }}>
+            <div style={{ borderRadius: '12px', border: '1.5px solid #e2d9f3', background: '#faf8ff', padding: '16px' }}>
+              <ConnectionsPage
+                showToast={showToast}
+                onBack={() => setShowConnections(false)}
+                inline
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Search */}
+        <div className="search-bar">
+          <span className="search-icon">🔍</span>
+          <input
+            className="search-input"
+            type="text"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+            placeholder="タイトル・内容で検索..."
+          />
+          {searchQuery && (
+            <button
+              className="search-clear"
+              onClick={() => { setSearchQuery(''); setPage(1); }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
         {/* Item List */}
         <ItemList
           items={items}
@@ -245,6 +270,7 @@ export default function App() {
           type={activeType}
           folders={folders}
           selectedFolder={selectedFolder}
+          searchQuery={searchQuery}
           onEdit={(item) => setEditItem(item)}
           onDelete={(item) => setDeleteConfirm(item)}
           onPost={(item) => setPostItem(item)}

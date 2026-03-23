@@ -1,35 +1,13 @@
 import ItemCard from './ItemCard.jsx';
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 9;
 
-function Pagination({ page, totalPages, onPageChange }) {
+function Pagination({ page, totalPages, totalItems, onPageChange }) {
   if (totalPages <= 1) return null;
 
-  const pages = [];
-  for (let i = 1; i <= totalPages; i++) {
-    pages.push(i);
-  }
-
-  // Truncate if many pages
   const renderPages = () => {
-    if (totalPages <= 7) return pages.map(renderBtn);
     const items = [];
-    if (page > 3) {
-      items.push(renderBtn(1));
-      if (page > 4) items.push(<span key="el1" className="pagination-ellipsis">…</span>);
-    }
-    const start = Math.max(1, page - 2);
-    const end = Math.min(totalPages, page + 2);
-    for (let i = start; i <= end; i++) items.push(renderBtn(i));
-    if (page < totalPages - 2) {
-      if (page < totalPages - 3) items.push(<span key="el2" className="pagination-ellipsis">…</span>);
-      items.push(renderBtn(totalPages));
-    }
-    return items;
-  };
-
-  function renderBtn(i) {
-    return (
+    const addBtn = (i) => items.push(
       <button
         key={i}
         className={`pagination-btn ${i === page ? 'active' : ''}`}
@@ -38,24 +16,44 @@ function Pagination({ page, totalPages, onPageChange }) {
         {i}
       </button>
     );
-  }
+    const addEllipsis = (key) => items.push(
+      <span key={key} className="pagination-ellipsis">...</span>
+    );
+
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) addBtn(i);
+    } else {
+      addBtn(1);
+      if (page > 3) addEllipsis('el1');
+      const start = Math.max(2, page - 1);
+      const end = Math.min(totalPages - 1, page + 1);
+      for (let i = start; i <= end; i++) addBtn(i);
+      if (page < totalPages - 2) addEllipsis('el2');
+      addBtn(totalPages);
+    }
+    return items;
+  };
+
+  const from = (page - 1) * PAGE_SIZE + 1;
+  const to = Math.min(page * PAGE_SIZE, totalItems);
 
   return (
     <div className="pagination">
+      <span className="pagination-info">{from}-{to} / {totalItems}件</span>
       <button
-        className="pagination-btn"
+        className="pagination-btn nav"
         onClick={() => onPageChange(page - 1)}
         disabled={page === 1}
       >
-        ＜前
+        ← 前
       </button>
       {renderPages()}
       <button
-        className="pagination-btn"
+        className="pagination-btn nav"
         onClick={() => onPageChange(page + 1)}
         disabled={page === totalPages}
       >
-        次＞
+        次 →
       </button>
     </div>
   );
@@ -75,11 +73,20 @@ export default function ItemList({
   showToast,
   page,
   onPageChange,
+  searchQuery = '',
 }) {
-  // Filter items by selected folder
-  const filtered = selectedFolder
+  // Filter items by selected folder + search query
+  let filtered = selectedFolder
     ? items.filter((item) => (item.folder || '') === selectedFolder)
     : items;
+
+  if (searchQuery.trim()) {
+    const q = searchQuery.trim().toLowerCase();
+    filtered = filtered.filter((item) =>
+      (item.name || '').toLowerCase().includes(q) ||
+      (item.content || '').toLowerCase().includes(q)
+    );
+  }
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const safePage = Math.min(page, Math.max(1, totalPages));
@@ -132,6 +139,7 @@ export default function ItemList({
       <Pagination
         page={safePage}
         totalPages={totalPages}
+        totalItems={filtered.length}
         onPageChange={onPageChange}
       />
     </>
