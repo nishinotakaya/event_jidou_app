@@ -68,6 +68,7 @@ Rails.application.routes.draw do
     get    "onclass/students", to: "onclass#students"
     get    "onclass/students_list", to: "onclass#students_list"
     delete "onclass/students/:id", to: "onclass#destroy_student"
+    post   "onclass/sync", to: "onclass#sync"
     post   "onclass/sync_sidekiq", to: "onclass#sync_sidekiq"
     post   "onclass/upload_image", to: "onclass#upload_image"
 

@@ -37,15 +37,20 @@ class ZoomJob < ApplicationJob
         ],
       )
 
-      # Restore saved session if available
+      # DBからセッション復元
       context_opts = {
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
         locale: 'ja-JP',
         viewport: { width: 1280, height: 800 },
       }
-      if File.exist?(STORAGE_STATE_PATH)
-        context_opts[:storageState] = STORAGE_STATE_PATH
-        broadcast(job_id, type: 'log', message: '保存済みセッションを復元中...')
+      zoom_conn = ServiceConnection.find_by(service_name: 'zoom')
+      if zoom_conn&.session_data.present?
+        begin
+          context_opts[:storageState] = JSON.parse(zoom_conn.session_data)
+          broadcast(job_id, type: 'log', message: 'DBから保存済みセッションを復元中...')
+        rescue JSON::ParserError
+          broadcast(job_id, type: 'log', message: 'セッションデータ破損 - 新規ログインします')
+        end
       end
 
       context = browser.new_context(**context_opts)
@@ -62,9 +67,14 @@ class ZoomJob < ApplicationJob
         duration_minutes: duration,
       )
 
-      # Save session for next time
-      context.storage_state(path: STORAGE_STATE_PATH)
-      broadcast(job_id, type: 'log', message: 'セッションを保存しました')
+      # セッションをDBに保存
+      begin
+        state = context.storage_state
+        zoom_conn&.update!(session_data: state.to_json) if zoom_conn
+        broadcast(job_id, type: 'log', message: 'セッションをDBに保存しました')
+      rescue => e
+        broadcast(job_id, type: 'log', message: "セッション保存失敗: #{e.message}")
+      end
 
       context.close rescue nil
       browser.close rescue nil

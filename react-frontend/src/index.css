@@ -2091,6 +2091,42 @@ summary.event-fields-title {
   background: #bae6fd;
 }
 
+/* タブ */
+.students-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0;
+  overflow-x: auto;
+}
+
+.students-tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s;
+  border-radius: 6px 6px 0 0;
+}
+
+.students-tab:hover {
+  color: #6d28d9;
+  background: #faf5ff;
+}
+
+.students-tab.active {
+  color: #6d28d9;
+  border-bottom-color: #6d28d9;
+  background: #faf5ff;
+}
+
 /* 検索 + 統計 */
 .students-toolbar {
   display: flex;
@@ -2237,6 +2273,20 @@ summary.event-fields-title {
   padding: 48px 16px;
   color: #9ca3af;
   font-size: 14px;
+}
+
+.students-sync-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  background: #ede9fe;
+  color: #6d28d9;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #c4b5fd;
 }
 
 .students-footer {

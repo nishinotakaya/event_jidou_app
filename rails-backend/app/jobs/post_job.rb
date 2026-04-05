@@ -77,11 +77,22 @@ class PostJob < ApplicationJob
             locale: 'ja-JP',
             viewport: { width: 1280, height: 800 },
           }
-          # セッションファイルがあれば復元（つなゲート等）
-          session_file = Rails.root.join('tmp', "#{SITE_TO_SERVICE[site_name]}_session.json").to_s
-          if File.exist?(session_file)
+          # DBからセッション復元
+          service_key = SITE_TO_SERVICE[site_name]
+          svc_conn = ServiceConnection.find_by(service_name: service_key)
+          if svc_conn&.session_data.present?
+            begin
+              context_opts[:storageState] = JSON.parse(svc_conn.session_data)
+              broadcast(job_id, type: 'log', message: "[#{site_name}] DBセッション復元")
+            rescue JSON::ParserError
+              broadcast(job_id, type: 'log', message: "[#{site_name}] セッション破損 - 新規ログイン")
+            end
+          end
+          # ファイルセッションもフォールバックとして確認
+          session_file = Rails.root.join('tmp', "#{service_key}_session.json").to_s
+          if !context_opts[:storageState] && File.exist?(session_file)
             context_opts[:storageState] = session_file
-            broadcast(job_id, type: 'log', message: "[#{site_name}] セッション復元")
+            broadcast(job_id, type: 'log', message: "[#{site_name}] ファイルセッション復元")
           end
           context = browser.new_context(**context_opts)
           page = context.new_page
@@ -127,6 +138,8 @@ class PostJob < ApplicationJob
             broadcast(job_id, type: 'log', message: "[#{site_name}] 📌 イベントURL: #{event_url}") if event_url.present?
             update_connection_status(site_name, 'connected')
             save_posting_history(item_id, site_name, 'success', event_url, ef.dig('publishSites', site_name))
+            # セッションをDBに保存
+            save_session_to_db(context, service_key)
           rescue => e
             broadcast(job_id, type: 'log',    message: "[#{site_name}] ❌ エラー: #{e.message}")
             broadcast(job_id, type: 'status', site: site_name, status: 'error')
@@ -292,6 +305,16 @@ class PostJob < ApplicationJob
     end
   rescue => e
     Rails.logger.warn("[PostJob] posting history save failed: #{e.message}")
+  end
+
+  def save_session_to_db(context, service_key)
+    return unless service_key
+    conn = ServiceConnection.find_by(service_name: service_key)
+    return unless conn
+    state = context.storage_state
+    conn.update!(session_data: state.to_json)
+  rescue => e
+    Rails.logger.warn("[PostJob] セッションDB保存失敗: #{e.message}")
   end
 
   def update_connection_status(site_name, status, error_msg = nil)

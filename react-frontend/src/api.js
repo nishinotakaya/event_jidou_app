@@ -548,11 +548,40 @@ export async function uploadOnclassImage(file) {
   return res.json();
 }
 
-export async function fetchOnclassStudents(refresh = false) {
-  const url = refresh ? '/api/onclass/students?refresh=true' : '/api/onclass/students';
-  const res = await fetch(url);
+export async function fetchOnclassStudents() {
+  const res = await fetch('/api/onclass/students');
   if (!res.ok) throw new Error('受講生の取得に失敗しました');
   return res.json();
+}
+
+export async function syncOnclassStudents(onEvent) {
+  const res = await fetch('/api/onclass/sync', { method: 'POST' });
+  if (!res.ok) throw new Error('同期開始に失敗しました');
+  const { job_id } = await res.json();
+
+  const cableUrl = import.meta.env.VITE_CABLE_URL || '/cable';
+  const consumer = createConsumer(cableUrl);
+
+  return new Promise((resolve, reject) => {
+    const subscription = consumer.subscriptions.create(
+      { channel: 'PostChannel', job_id },
+      {
+        received(data) {
+          onEvent(data);
+          if (data.type === 'done' || data.type === 'error') {
+            subscription.unsubscribe();
+            consumer.disconnect();
+            if (data.type === 'error') reject(new Error(data.message));
+            else resolve(data);
+          }
+        },
+        rejected() {
+          consumer.disconnect();
+          reject(new Error('ActionCable接続が拒否されました'));
+        },
+      }
+    );
+  });
 }
 
 // ===== Post (ActionCable) =====

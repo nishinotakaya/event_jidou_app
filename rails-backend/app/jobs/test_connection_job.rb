@@ -112,6 +112,13 @@ class TestConnectionJob < ApplicationJob
 
       if config[:success_check].call(page)
         result = { status: 'connected', error: nil }
+        # セッションをDBに保存（次回のJob実行で復元用）
+        begin
+          state = context.storage_state
+          conn.update!(session_data: state.to_json)
+        rescue => e
+          Rails.logger.warn "[TestConnection] セッション保存失敗: #{e.message}"
+        end
       else
         result = { status: 'error', error: "ログイン失敗（URL: #{page.url}）" }
       end

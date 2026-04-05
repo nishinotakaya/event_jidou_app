@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { syncOnclassStudents } from '../api.js';
 
 const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1hODzl2TYkFZCRi7GOhkF5XbQgU0a__Tun8LYdegIaBk/edit?gid=625149784#gid=625149784';
 
@@ -7,7 +8,9 @@ export default function StudentsPage({ showToast }) {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncingOnclass, setSyncingOnclass] = useState(false);
+  const [syncLog, setSyncLog] = useState('');
   const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
 
   useEffect(() => { loadStudents(); }, []);
 
@@ -26,17 +29,24 @@ export default function StudentsPage({ showToast }) {
 
   async function handleSyncOnclass() {
     setSyncingOnclass(true);
+    setSyncLog('同期開始...');
     try {
-      const res = await fetch('/api/onclass/students?refresh=true');
-      const data = await res.json();
-      if (data.error) {
-        showToast(`同期エラー: ${data.error}`, 'error');
-      } else {
-        showToast(`オンクラスから${data.students.length}名を同期しました`, 'success');
-        await loadStudents();
-      }
+      await syncOnclassStudents((event) => {
+        if (event.type === 'log') {
+          setSyncLog(event.message);
+          showToast(event.message, 'info');
+        } else if (event.type === 'done') {
+          setSyncLog('');
+          showToast(event.message, 'success');
+          loadStudents();
+        } else if (event.type === 'error') {
+          setSyncLog('');
+          showToast(event.message, 'error');
+        }
+      });
     } catch (e) {
       showToast(e.message, 'error');
+      setSyncLog('');
     } finally {
       setSyncingOnclass(false);
     }
@@ -74,15 +84,30 @@ export default function StudentsPage({ showToast }) {
     }
   }
 
-  // コース別にグループ化
+  // コース一覧を取得
+  const courses = [...new Set(students.map(s => s.course))].sort();
+
+  // 検索フィルタ
   const filtered = search
     ? students.filter((s) => s.name.includes(search) || s.course.includes(search))
     : students;
 
-  const filteredByCourse = {};
+  // タブでフィルタ
+  const displayed = activeTab === 'all'
+    ? filtered
+    : filtered.filter(s => s.course === activeTab);
+
+  // 表示用のコース別グループ
+  const displayedByCourse = {};
+  displayed.forEach((s) => {
+    if (!displayedByCourse[s.course]) displayedByCourse[s.course] = [];
+    displayedByCourse[s.course].push(s);
+  });
+
+  // コース別の人数（検索フィルタ適用後）
+  const countByCourse = {};
   filtered.forEach((s) => {
-    if (!filteredByCourse[s.course]) filteredByCourse[s.course] = [];
-    filteredByCourse[s.course].push(s);
+    countByCourse[s.course] = (countByCourse[s.course] || 0) + 1;
   });
 
   return (
@@ -116,7 +141,33 @@ export default function StudentsPage({ showToast }) {
         </div>
       </div>
 
-      {/* 検索 + 統計 */}
+      {/* 同期進捗 */}
+      {syncingOnclass && syncLog && (
+        <div className="students-sync-progress">
+          <span className="spinner" style={{ width: 14, height: 14 }} /> {syncLog}
+        </div>
+      )}
+
+      {/* タブ */}
+      <div className="students-tabs">
+        <button
+          className={`students-tab ${activeTab === 'all' ? 'active' : ''}`}
+          onClick={() => setActiveTab('all')}
+        >
+          全て ({filtered.length})
+        </button>
+        {courses.map(course => (
+          <button
+            key={course}
+            className={`students-tab ${activeTab === course ? 'active' : ''}`}
+            onClick={() => setActiveTab(course)}
+          >
+            {course.replace('コース', '')} ({countByCourse[course] || 0})
+          </button>
+        ))}
+      </div>
+
+      {/* 検索 */}
       <div className="students-toolbar">
         <div className="students-search-wrap">
           <input
@@ -130,14 +181,7 @@ export default function StudentsPage({ showToast }) {
             <button className="students-search-clear" onClick={() => setSearch('')}>✕</button>
           )}
         </div>
-        <div className="students-stats">
-          <span className="stat-badge stat-total">{filtered.length}名</span>
-          {Object.entries(filteredByCourse).map(([course, list]) => (
-            <span key={course} className="stat-badge stat-course">
-              {course.replace('コース', '')}: {list.length}
-            </span>
-          ))}
-        </div>
+        <span className="stat-badge stat-total">{displayed.length}名表示</span>
       </div>
 
       {/* 一覧 */}
@@ -145,14 +189,16 @@ export default function StudentsPage({ showToast }) {
         <div className="students-loading">
           <span className="spinner" /> 読み込み中...
         </div>
-      ) : filtered.length === 0 ? (
+      ) : displayed.length === 0 ? (
         <div className="students-empty">
           {search ? '該当する受講生が見つかりません' : '受講生データがありません。「オンクラスと同期」で取得してください。'}
         </div>
       ) : (
-        Object.entries(filteredByCourse).map(([course, list]) => (
+        Object.entries(displayedByCourse).map(([course, list]) => (
           <div key={course} className="students-course-group">
-            <h3 className="course-heading">{course}（{list.length}名）</h3>
+            {activeTab === 'all' && (
+              <h3 className="course-heading">{course}（{list.length}名）</h3>
+            )}
             <div className="students-grid">
               {list.map((s) => (
                 <div key={s.id} className="student-card">
