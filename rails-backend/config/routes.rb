@@ -51,8 +51,47 @@ Rails.application.routes.draw do
     # Zoomミーティング自動作成
     post "zoom/create_meeting", to: "zoom_settings#create_meeting"
 
+    # 投稿履歴
+    get  "posting_histories",                      to: "posting_histories#index"
+    get  "posting_histories/latest",               to: "posting_histories#latest"
+    post "posting_histories/check_registrations",   to: "posting_histories#check_registrations"
+    post "posting_histories/sync",                  to: "posting_histories#sync"
+    post "posting_histories/check_participants",    to: "posting_histories#check_participants"
+
     # 投稿（ActionCable + Sidekiq バックグラウンドジョブ）
     post "post", to: "post#create"
+    delete "post/:item_id/remote", to: "post#delete_remote"
+    post   "post/:item_id/cancel", to: "post#cancel_remote"
+    post   "post/:item_id/publish_all", to: "post#publish_all"
+
+    # オンクラス
+    get    "onclass/students", to: "onclass#students"
+    get    "onclass/students_list", to: "onclass#students_list"
+    delete "onclass/students/:id", to: "onclass#destroy_student"
+    post   "onclass/sync_sidekiq", to: "onclass#sync_sidekiq"
+    post   "onclass/upload_image", to: "onclass#upload_image"
+
+    # GitHubレビュー
+    get    "github_reviews",                     to: "github_reviews#index"
+    get    "github_reviews/:id",                 to: "github_reviews#show"
+    put    "github_reviews/:id",                 to: "github_reviews#update"
+    post   "github_reviews/:id/approve",         to: "github_reviews#approve"
+    post   "github_reviews/:id/post_to_github",  to: "github_reviews#post_to_github"
+    post   "github_reviews/:id/re_review",       to: "github_reviews#re_review"
+    post   "github_reviews/:id/open_local",      to: "github_reviews#open_local"
+    post   "github_reviews/scan",                to: "github_reviews#scan"
+
+    # 日時重複チェック
+    post "check_duplicate_event", to: "texts#check_duplicate"
+
+    # 画像アップロード（汎用）
+    post "upload_image", to: "images#upload"
+
+    # Googleカレンダー
+    get  "calendar/events",   to: "calendar#events"
+    post "calendar/events",   to: "calendar#create_event"
+    put    "calendar/events/:event_id", to: "calendar#update_event"
+    delete "calendar/events/:event_id", to: "calendar#delete_event"
 
     # AI
     post "ai/correct",        to: "ai#correct"

@@ -10,6 +10,31 @@ class BrowserLoginJob < ApplicationJob
       session_path: -> { Rails.root.join('tmp', 'tunagate_session.json').to_s },
       success_check: ->(url) { url.include?('tunagate.com') && !url.include?('sign_in') },
     },
+    'luma' => {
+      url: 'https://lu.ma/signin',
+      session_path: -> { Rails.root.join('tmp', 'luma_session.json').to_s },
+      success_check: ->(url) { url.include?('luma.com') && !url.include?('/signin') },
+    },
+    'passmarket' => {
+      url: 'https://passmarket.yahoo.co.jp/',
+      session_path: -> { Rails.root.join('tmp', 'passmarket_session.json').to_s },
+      success_check: ->(url) { url.include?('passmarket.yahoo.co.jp') && (url.include?('/mypage') || url.include?('/event')) },
+    },
+    'jimoty' => {
+      url: 'https://jmty.jp/login',
+      session_path: -> { Rails.root.join('tmp', 'jimoty_session.json').to_s },
+      success_check: ->(url) { url.include?('jmty.jp') && !url.include?('/login') && !url.include?('/sign_up') },
+    },
+    'twitter' => {
+      url: 'https://x.com/i/flow/login',
+      session_path: -> { Rails.root.join('tmp', 'twitter_session.json').to_s },
+      success_check: ->(url) { url.include?('x.com/home') || (url.include?('x.com') && !url.include?('login') && !url.include?('flow')) },
+    },
+    'instagram' => {
+      url: 'https://www.instagram.com/accounts/login/',
+      session_path: -> { Rails.root.join('tmp', 'instagram_session.json').to_s },
+      success_check: ->(url) { url.include?('instagram.com') && !url.include?('/login') && !url.include?('/accounts/login') },
+    },
   }.freeze
 
   def perform(job_id, service_name)

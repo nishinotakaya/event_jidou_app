@@ -11,6 +11,7 @@ import * as peatix from './peatix.js';
 import * as techplay from './techplay.js';
 import * as connpass from './connpass.js';
 import * as lme from './lme.js';
+import * as eventbank from './eventbank.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '..');
@@ -60,11 +61,11 @@ app.get('/api/texts/:type', async (req, res) => res.json(await load(req.params.t
 
 app.post('/api/texts/:type', async (req, res) => {
   const { type } = req.params;
-  const { name, content, folder = '', eventDate, eventTime, eventEndTime, lmeSendDate, lmeSendTime, lmeAccount, lmeZoomUrl, lmeMeetingId, lmePasscode } = req.body;
+  const { name, content, folder = '', eventDate, eventTime, eventEndTime, lmeSendDate, lmeSendTime, lmeAccount } = req.body;
   const data = await load(type);
   const now = today();
   const eventMeta = eventDate ? { eventDate, eventTime, eventEndTime } : {};
-  const lmeMeta = lmeSendDate ? { lmeSendDate, lmeSendTime, lmeAccount, lmeZoomUrl, lmeMeetingId, lmePasscode } : {};
+  const lmeMeta = lmeSendDate ? { lmeSendDate, lmeSendTime, lmeAccount } : {};
   const item = { id: nextId(data, type), name, type, content, folder, ...eventMeta, ...lmeMeta, createdAt: now, updatedAt: now };
   data.push(item);
   await save(type, data);
@@ -73,12 +74,12 @@ app.post('/api/texts/:type', async (req, res) => {
 
 app.put('/api/texts/:type/:id', async (req, res) => {
   const { type, id } = req.params;
-  const { name, content, folder, eventDate, eventTime, eventEndTime, lmeSendDate, lmeSendTime, lmeAccount, lmeZoomUrl, lmeMeetingId, lmePasscode } = req.body;
+  const { name, content, folder, eventDate, eventTime, eventEndTime, lmeSendDate, lmeSendTime, lmeAccount } = req.body;
   const data = await load(type);
   const idx = data.findIndex(d => d.id === id);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
   const eventMeta = eventDate !== undefined ? { eventDate, eventTime, eventEndTime } : {};
-  const lmeMeta = lmeSendDate !== undefined ? { lmeSendDate, lmeSendTime, lmeAccount, lmeZoomUrl, lmeMeetingId, lmePasscode } : {};
+  const lmeMeta = lmeSendDate !== undefined ? { lmeSendDate, lmeSendTime, lmeAccount } : {};
   data[idx] = { ...data[idx], name, content, ...(folder !== undefined && { folder }), ...eventMeta, ...lmeMeta, updatedAt: today() };
   await save(type, data);
   res.json(data[idx]);
@@ -187,6 +188,7 @@ const SITE_HANDLERS = {
   'connpass':   connpass,
   'techplay':   techplay,
   'LME':        lme,
+  'EventBank':  eventbank,
 };
 
 // ===== SSEで投稿実行（headless・バックグラウンド） =====
@@ -317,7 +319,7 @@ app.post('/api/ai/correct', async (req, res) => {
 
 app.post('/api/ai/generate', async (req, res) => {
   try {
-    const { title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType, zoomUrl, meetingId, passcode } = req.body;
+    const { title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType } = req.body;
     console.log(`[generate] eventDate="${eventDate}" eventTime="${eventTime}" eventEndTime="${eventEndTime}" eventSubType="${eventSubType}"`);
     const key = apiKey || process.env.OPENAI_API_KEY;
     if (!key) return res.status(400).json({ error: 'OpenAI APIキーを入力してください' });
@@ -347,9 +349,47 @@ app.post('/api/ai/generate', async (req, res) => {
       systemPrompt = 'あなたは受講生サポートのメッセージ作成プロです。タイトルに沿って、受講生に寄り添う温かみのあるサポートメッセージを生成してください。押し付けがましくなく、励ましや次のステップを示す内容にしてください。';
       userPrompt = `以下のタイトルに沿った文章を生成してください：\n\n${title}`;
     } else if (!eventSubType) {
-      // LME未チェック：汎用イベント告知プロンプト
-      systemPrompt = `あなたはイベント告知文の作成プロです。タイトルに沿って、魅力的で読みやすいイベント告知文を生成してください。構成: 開催日時、開催形式、参加費、内容、得られること。プレーンテキストで、改行を適切に使い、見出しは■で区切ってください。【重要】開催日時は必ず「${dateStr}」をそのまま使用してください。それ以外の日付・時刻を記載しないでください。`;
-      userPrompt = `【開催日時】${dateStr}\n\n上記の開催日時を文章中に必ず記載してください。日付・時刻を変えないでください。\n\nタイトル：${title}`;
+      // LME未チェック：汎用イベント告知プロンプト（スマホ向けフォーマット）
+      systemPrompt = `あなたはイベント告知文の作成プロです。タイトルに沿って、スマホで読みやすい告知文を生成してください。告知文本文のみを返し、余計な説明は不要です。マークダウン記法は使わないでください。
+
+【スマホ向け文章ルール】
+- スマホで読まれる文章です。1行は短く端的に（目安：全角20〜25文字以内）
+- 長い一文は途中で改行せず、最初から短い文に分けて書く
+- リスト項目（・✅📌）は1行で収まる長さにする。収まらない場合は内容を絞って短くする
+- 読者がスクロールせず一目で把握できる密度を意識する
+- 各セクションの間は必ず1行の空行を入れること
+
+【出力フォーマット（この通りの改行・空行で出力すること）】
+{キャッチコピー1行目}
+{キャッチコピー2行目（任意）}
+
+こんな悩みはありませんか？
+
+・{悩み1}
+・{悩み2}
+・{悩み3}
+・{悩み4}
+・{悩み5}
+
+放置するとこんなリスクが…
+✅ {リスク1}
+✅ {リスク2}
+✅ {リスク3}
+✅ {リスク4}
+
+今回のセミナーで得られること
+📌 {得られること1}
+📌 {得られること2}
+📌 {得られること3}
+
+{クロージング1〜2文}
+
+開催概要
+日時：${dateStr}
+対象：プログラミングに興味がある方・初学者の方
+
+👉 {CTA}`;
+      userPrompt = `タイトル：${title}\n\n開催日時は必ず「${dateStr}」をそのまま使用してください。`;
     } else if (eventSubType === 'taiken') {
       // 体験会（セミナー）テンプレート
       systemPrompt = `あなたはLINE配信用のイベント告知文の作成プロです。「体験会（セミナー）」の告知文を以下の構成・形式で生成してください。告知文本文のみを返し、余計な説明は不要です。マークダウン記法は使わないでください。
@@ -388,10 +428,6 @@ app.post('/api/ai/generate', async (req, res) => {
 開催概要
 日時：${dateStr}
 対象：プログラミングに興味がある方・初学者の方
-参加URL： ${zoomUrl || '（後ほど共有）'}
-
-ミーティング ID: ${meetingId || '（後ほど共有）'}
-パスコード: ${passcode || '（後ほど共有）'}
 
 👉 {CTA}`;
       userPrompt = `タイトル：${title}\n\n開催日時は必ず「${dateStr}」をそのまま使用してください。`;
@@ -433,10 +469,6 @@ app.post('/api/ai/generate', async (req, res) => {
 開催概要
 日時：${dateStr}
 対象：プロアカ受講生
-参加URL： ${zoomUrl || '（後ほど共有）'}
-
-ミーティング ID: ${meetingId || '（後ほど共有）'}
-パスコード: ${passcode || '（後ほど共有）'}
 
 👉 {CTA}`;
       userPrompt = `タイトル：${title}\n\n開催日時は必ず「${dateStr}」をそのまま使用してください。`;
@@ -499,10 +531,24 @@ app.post('/api/ai/agent', async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'あなたは文章作成のアシスタントです。ユーザーの現在のテキストに対して、ユーザーの指示に従って修正・改善した結果を返してください。結果のテキストのみを返し、余分な説明は不要です。' },
+        {
+          role: 'system',
+          content: `あなたはイベント告知文の専門ライターです。
+
+## 基本ルール
+- ユーザーの指示に忠実に従い、テキスト全体を書き換えてください
+- 「ペルソナ変更」「ターゲット変更」「〇〇向けに」等の指示があった場合は、イベントの基本情報（日時・場所・URL等）は保持しつつ、タイトル・キャッチコピー・本文・訴求ポイントをターゲットに最適化して全面的に書き直してください
+- 部分的な修正ではなく、指示の意図を汲んで大胆に書き換えることを優先してください
+- 結果のテキストのみを返してください。説明・補足・コメントは一切不要です
+
+## ペルソナ別の訴求ポイント例
+- ITを学びたい人向け: スキルアップ、キャリアチェンジ、実践的な学び、初心者歓迎
+- 未経験から収入を増やしたい人向け: 副業・転職、年収アップ、未経験OK、成功事例
+- AIエンジニア養成学校向け: 最先端技術、実務スキル、即戦力、カリキュラムの充実`,
+        },
         { role: 'user', content: `【現在のテキスト】\n${text || '(空)'}\n\n【指示】\n${prompt}` },
       ],
-      temperature: 0.5,
+      temperature: 0.8,
     });
     const result = completion.choices[0]?.message?.content?.trim() || '';
     res.json({ result });
@@ -512,6 +558,6 @@ app.post('/api/ai/agent', async (req, res) => {
 });
 
 if (!process.env.VERCEL) {
-  app.listen(3000, () => console.log('✅ サーバー起動: http://localhost:3000'));
+  app.listen(3003, () => console.log('✅ サーバー起動: http://localhost:3003'));
 }
 export default app;

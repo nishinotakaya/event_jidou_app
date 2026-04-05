@@ -7,7 +7,7 @@
 | 項目         | 内容                                                                |
 | ------------ | ------------------------------------------------------------------- |
 | アプリ名     | イベント告知アプリ                                                  |
-| 起動         | `npm run web` → http://localhost:3000                               |
+| 起動         | `npm run web` → http://localhost:3003                               |
 | 技術スタック | Node.js ESModules / Express / Playwright / Claude API / 画像生成API |
 | データ保存   | JSONファイル（`texts/event.json` / `texts/student.json`）           |
 

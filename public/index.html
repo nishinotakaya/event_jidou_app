@@ -76,6 +76,15 @@
 
       <!-- メインコンテンツ -->
       <main class="main-content">
+        <div class="list-toolbar">
+          <input type="text" id="search-input" class="search-input" placeholder="🔍 検索（タイトル・内容・日付）" />
+          <select id="sort-select" class="sort-select">
+            <option value="eventDate-desc">📅 開催日（新しい順）</option>
+            <option value="eventDate-asc">📅 開催日（古い順）</option>
+            <option value="updatedAt-desc">🕐 更新日（新しい順）</option>
+            <option value="name-asc">🔤 名前順</option>
+          </select>
+        </div>
         <ul class="text-list" id="text-list"></ul>
         <p class="empty" id="empty-msg" hidden>
           <span class="empty-icon">🌸</span><br>
@@ -130,18 +139,6 @@
             <input type="date" id="field-gen-lme-send-date" class="lme-send-date" />
             <input type="time" id="field-gen-lme-send-time" class="lme-send-time" value="10:00" />
           </div>
-          <div class="gen-zoom-row" id="gen-zoom-row" hidden>
-            <span class="lme-senddate-label">Zoom URL</span>
-            <input type="url" id="field-gen-zoom-url" class="gen-zoom-input" placeholder="https://zoom.us/j/..." />
-          </div>
-          <div class="gen-zoom-row" id="gen-meeting-row" hidden>
-            <span class="lme-senddate-label">ミーティング ID</span>
-            <input type="text" id="field-gen-meeting-id" class="gen-zoom-input" placeholder="123 456 7890" />
-          </div>
-          <div class="gen-zoom-row" id="gen-passcode-row" hidden>
-            <span class="lme-senddate-label">パスコード</span>
-            <input type="text" id="field-gen-passcode" class="gen-zoom-input" placeholder="abc123" />
-          </div>
         </div>
       </div>
       <label id="folder-select-row">フォルダ
@@ -189,6 +186,7 @@
         <label class="site-check"><input type="checkbox" value="Peatix" checked /><span>Peatix</span></label>
         <label class="site-check"><input type="checkbox" value="connpass" checked /><span>connpass</span></label>
         <!-- <label class="site-check"><input type="checkbox" value="techplay" checked /><span>techplay</span></label> -->
+        <label class="site-check"><input type="checkbox" value="EventBank" /><span>EventBank（30メディア配信）</span></label>
         <div class="site-check-lme" id="site-check-lme-wrap">
           <label class="site-check-lme-label"><input type="checkbox" value="LME" id="check-lme" /><span>LME（LINE配信）</span></label>
           <div class="lme-account-row" id="lme-account-row">
@@ -261,9 +259,6 @@
               <input type="number" id="field-capacity" value="50" min="1" placeholder="50" />
             </label>
           </div>
-          <label>Zoom URL <span class="field-optional">（オンライン開催の場合）</span>
-            <input type="url" id="field-zoom-url" placeholder="https://us06web.zoom.us/j/..." />
-          </label>
           <label>連絡先TEL
             <input type="tel" id="field-tel" value="03-1234-5678" placeholder="03-1234-5678（ハイフン必須）" />
           </label>

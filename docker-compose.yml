@@ -1,6 +1,17 @@
 version: '3.9'
 
 services:
+  # ── MySQL (開発DB) ──────────────────────────────────────
+  db:
+    image: mysql:8.0
+    ports:
+      - "${MYSQL_PORT_ON_HOST:-3009}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-myapp_development}
+    volumes:
+      - mysql_data:/var/lib/mysql
+
   # ── Redis (ActionCable + Sidekiq) ───────────────────────
   redis:
     image: redis:7-alpine
@@ -72,13 +83,13 @@ services:
       api:
         condition: service_healthy
 
-  # ── 既存 Express アプリ（port 3000）───────────────────
+  # ── 既存 Express アプリ（port 3003）───────────────────
   legacy:
     image: node:20-alpine
     working_dir: /app
     command: node api/server.js
     ports:
-      - "3000:3000"
+      - "3003:3003"
     volumes:
       - .:/app
     env_file:
@@ -87,6 +98,7 @@ services:
       - legacy                                   # 明示的に起動するときだけ: --profile legacy
 
 volumes:
+  mysql_data:
   rails_db:
   bundle_cache:
   redis_data:

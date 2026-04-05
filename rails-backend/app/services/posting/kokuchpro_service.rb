@@ -704,5 +704,92 @@ module Posting
       return '03-1234-5678' if raw.blank?
       raw =~ /^\d{2,4}-\d{4}-\d{4}$/ ? raw : '03-1234-5678'
     end
+
+    # --- 削除・中止 ---
+
+    def perform_delete(page, event_url)
+      kokuchpro_ensure_login(page)
+      admin_url = event_url.include?('/admin/') ? event_url : event_url.sub('/event/', '/admin/')
+      page.goto(admin_url, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(2000)
+
+      # ログインリダイレクトされたら再ログイン
+      if page.url.include?('login') || page.url.include?('signin')
+        kokuchpro_ensure_login(page)
+        page.goto(admin_url, waitUntil: 'domcontentloaded', timeout: 30_000)
+        page.wait_for_timeout(2000)
+      end
+
+      log('[こくチーズ] 削除ボタンを探索中...')
+      page.on('dialog', ->(d) { d.accept }) rescue nil
+      deleted = page.evaluate(<<~'JS')
+        (() => {
+          const links = [...document.querySelectorAll('a, button, input[type="submit"]')];
+          const del = links.find(el => /削除|delete/i.test(el.textContent || el.value || ''));
+          if (del) { del.click(); return { found: true, text: (del.textContent || del.value || '').trim() }; }
+          return { found: false, available: links.filter(el => el.offsetParent).slice(0, 15).map(el => (el.textContent || '').trim().substring(0, 30)) };
+        })()
+      JS
+
+      if deleted['found']
+        log("[こくチーズ] 「#{deleted['text']}」クリック")
+        page.wait_for_timeout(3000)
+        confirm = page.locator('button:has-text("削除"), button:has-text("OK"), button:has-text("はい"), a:has-text("削除")').first
+        confirm.click if (confirm.visible?(timeout: 3000) rescue false)
+        page.wait_for_timeout(3000)
+        log('[こくチーズ] ✅ イベント削除完了')
+      else
+        log("[こくチーズ] 利用可能なボタン: #{deleted['available']&.reject(&:blank?)&.join(', ')}")
+        raise '[こくチーズ] 削除ボタンが見つかりません'
+      end
+    end
+
+    def perform_cancel(page, event_url)
+      kokuchpro_ensure_login(page)
+      admin_url = event_url.include?('/admin/') ? event_url : event_url.sub('/event/', '/admin/')
+      page.goto(admin_url, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(2000)
+
+      if page.url.include?('login') || page.url.include?('signin')
+        kokuchpro_ensure_login(page)
+        page.goto(admin_url, waitUntil: 'domcontentloaded', timeout: 30_000)
+        page.wait_for_timeout(2000)
+      end
+
+      log('[こくチーズ] 中止ボタンを探索中...')
+      page.on('dialog', ->(d) { d.accept }) rescue nil
+      cancelled = page.evaluate(<<~'JS')
+        (() => {
+          const links = [...document.querySelectorAll('a, button')];
+          const btn = links.find(el => /中止|キャンセル|cancel/i.test(el.textContent));
+          if (btn) { btn.click(); return { found: true, text: btn.textContent.trim() }; }
+          return { found: false };
+        })()
+      JS
+
+      if cancelled['found']
+        log("[こくチーズ] 「#{cancelled['text']}」クリック")
+        page.wait_for_timeout(3000)
+        confirm = page.locator('button:has-text("中止"), button:has-text("OK"), button:has-text("はい")').first
+        confirm.click if (confirm.visible?(timeout: 3000) rescue false)
+        page.wait_for_timeout(3000)
+        log('[こくチーズ] ✅ イベント中止完了')
+      else
+        raise '[こくチーズ] 中止ボタンが見つかりません'
+      end
+    end
+
+    def kokuchpro_ensure_login(page)
+      page.goto('https://www.kokuchpro.com/auth/login/', waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(1000)
+      return unless page.url.include?('login') || page.url.include?('signin')
+      creds = ServiceConnection.credentials_for('kokuchpro')
+      page.fill('#LoginFormEmail', creds[:email])
+      page.fill('#LoginFormPassword', creds[:password])
+      page.click('#UserLoginForm button[type="submit"]') rescue nil
+      page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
+      page.wait_for_timeout(2000)
+      log('[こくチーズ] ✅ ログイン完了')
+    end
   end
 end

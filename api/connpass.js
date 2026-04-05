@@ -94,14 +94,10 @@ export async function post(page, content, eventFields = {}, log) {
     ? lines.slice(1).join('\n').replace(/^\n+/, '')
     : content;
 
-  // Zoom URLがあれば本文末尾に追記
-  const zoomLine = ef.zoomUrl ? `\n\n■ Zoom URL\n${ef.zoomUrl}` : '';
-  const bodyWithZoom = body + zoomLine;
-
   const putBody = {
     ...created,
-    description_input: bodyWithZoom,
-    description: bodyWithZoom,
+    description_input: body,
+    description: body,
     status: 'draft',
     place: null,  // placeはnull（会場名は description に含める）
     start_datetime: startDatetime,

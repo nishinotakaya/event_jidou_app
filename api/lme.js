@@ -334,30 +334,6 @@ async function updateTaikenTemplate(activePage, eventFields, log) {
   });
   log(`${L} タグアクション更新結果: ${JSON.stringify(tagActionRes).slice(0, 200)}`);
 
-  // 7. テキストアクション更新（Zoom URL）
-  const zoomUrl = eventFields.lmeZoomUrl || '';
-  if (zoomUrl) {
-    const textContent = `以下のzoom URLで開催します！\n時間の5分前になりましたら入室してください👍\n\n\n${zoomUrl}`;
-    const textActionDetail = [{
-      type: 'text',
-      active: true,
-      is_edit_content: false,
-      change_filter: 0,
-      data: { content: textContent, urls: [], number_action_url_redirect: 1, use_preview_url: 1, is_shorten_url: 1 },
-    }];
-
-    log(`${L} テキストアクション更新中 (Zoom URL)...`);
-    const textActionRes = await lmeFetch(activePage, '/ajax/action/save', {
-      body: new URLSearchParams({
-        action_detail: JSON.stringify(textActionDetail),
-        type: 'button_v2',
-        id: TAIKEN_ACTION_ID,
-      }).toString(),
-      contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
-    });
-    log(`${L} テキストアクション更新結果: ${JSON.stringify(textActionRes).slice(0, 200)}`);
-  }
-
   log(`${L} ✅ テンプレート更新完了 (tagId=${tagId}, tagName="${tagName}")`);
 }
 

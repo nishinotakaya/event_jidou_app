@@ -1,3 +1,4 @@
 node_modules/
 .env
 kokuchpro-post-debug.json
+docs/database-info.md

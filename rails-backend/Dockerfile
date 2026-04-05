@@ -3,10 +3,10 @@ FROM ruby:$RUBY_VERSION-slim
 
 WORKDIR /rails
 
-# System packages (Ruby build + PostgreSQL + SQLite + Chromium deps)
+# System packages (Ruby build + MySQL + SQLite + Chromium deps)
 RUN apt-get update -qq && apt-get install --no-install-recommends -y \
     build-essential \
-    libpq-dev \
+    default-libmysqlclient-dev \
     libsqlite3-dev \
     libyaml-dev \
     pkg-config \
@@ -32,7 +32,7 @@ COPY package.json ./
 RUN npm install
 
 # Install Chromium browser via Playwright
-RUN npx playwright install chromium --with-deps 2>/dev/null || true
+RUN npx playwright install chromium --with-deps
 
 # Application code
 COPY . .

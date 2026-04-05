@@ -57,14 +57,9 @@ module Posting
 
       # ===== Step2: API でカテゴリ・説明文を設定 =====
       log("[Peatix] PATCH /v4/events/#{event_id} カテゴリ・説明文更新中...")
-      zoom_info = ''
-      zoom_info += "\n\n■ Zoom参加情報" if zoom_url.present?
-      zoom_info += "\n参加URL: #{zoom_url}" if zoom_url.present?
-      zoom_info += "\nミーティングID: #{zoom_id}" if zoom_id.present?
-      zoom_info += "\nパスコード: #{zoom_passcode}" if zoom_passcode.present?
-
       # 改行を <br> に変換（Peatixの詳細欄はリッチテキスト/HTML）
-      description_html = (body_text + zoom_info).gsub("\n", "<br>\n")
+      # ※ Zoom情報は告知文には含めない（配信URL欄・参加方法欄で設定）
+      description_html = body_text.gsub("\n", "<br>\n")
 
       patch_body = {
         details: { description: description_html },
@@ -420,6 +415,71 @@ module Posting
 
       # 「進む」をクリック
       click_next_button(page, 'tickets')
+    end
+
+    # --- 削除・中止 ---
+
+    def perform_delete(page, event_url)
+      bearer = login_and_get_bearer(page)
+      event_id = event_url[/event\/(\d+)/, 1]
+      raise '[Peatix] イベントIDが取得できません' unless event_id
+
+      log("[Peatix] イベント削除中... ID=#{event_id}")
+      # PeatixはDELETEが405なのでPATCHでステータスをdraftに戻す
+      result = page.evaluate(<<~JS, arg: { eventId: event_id, bearer: bearer })
+        async ({ eventId, bearer }) => {
+          const res = await fetch(`https://peatix-api.com/v4/events/${eventId}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json', 'authorization': `Bearer ${bearer}`,
+                       'origin': 'https://peatix.com', 'x-requested-with': 'XMLHttpRequest' },
+            body: JSON.stringify({ status: 'draft' }),
+          });
+          if (!res.ok) {
+            // API失敗時はブラウザ操作でeditページから削除
+            return { ok: false, status: res.status, fallback: true };
+          }
+          return { ok: true, status: res.status };
+        }
+      JS
+      if result['ok']
+        log('[Peatix] ✅ イベントを下書きに戻しました')
+      elsif result['fallback']
+        # ブラウザ操作フォールバック
+        page.goto("https://peatix.com/event/#{event_id}/edit/basics", waitUntil: 'domcontentloaded', timeout: 30_000)
+        page.wait_for_timeout(3000)
+        del_btn = page.locator('button:has-text("削除"), a:has-text("削除"), button:has-text("Delete")').first
+        if (del_btn.visible?(timeout: 5000) rescue false)
+          del_btn.click
+          page.wait_for_timeout(2000)
+          confirm = page.locator('button:has-text("削除"), button:has-text("OK"), button:has-text("Delete")').first
+          confirm.click if (confirm.visible?(timeout: 3000) rescue false)
+          page.wait_for_timeout(3000)
+          log('[Peatix] ✅ ブラウザ操作でイベント削除完了')
+        else
+          raise "[Peatix] 削除失敗: API=#{result['status']}, ブラウザ操作も失敗"
+        end
+      end
+    end
+
+    def perform_cancel(page, event_url)
+      bearer = login_and_get_bearer(page)
+      event_id = event_url[/event\/(\d+)/, 1]
+      raise '[Peatix] イベントIDが取得できません' unless event_id
+
+      log("[Peatix] イベント中止中... ID=#{event_id}")
+      result = page.evaluate(<<~JS, arg: { eventId: event_id, bearer: bearer })
+        async ({ eventId, bearer }) => {
+          const res = await fetch(`https://peatix-api.com/v4/events/${eventId}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json', 'authorization': `Bearer ${bearer}`,
+                       'origin': 'https://peatix.com', 'x-requested-with': 'XMLHttpRequest' },
+            body: JSON.stringify({ status: 'cancelled' }),
+          });
+          return { ok: res.ok, status: res.status, text: await res.text() };
+        }
+      JS
+      raise "[Peatix] 中止失敗: #{result['status']}" unless result['ok']
+      log('[Peatix] ✅ イベント中止完了')
     end
 
     # ===== ヘルパーメソッド =====

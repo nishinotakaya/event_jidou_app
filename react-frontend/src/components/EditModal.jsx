@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { createText, updateText, aiCorrect, aiGenerate, aiAlignDatetime, aiAgent, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, fetchAppSettings, saveAppSettings } from '../api.js';
+import { createText, updateText, aiCorrect, aiGenerate, aiAlignDatetime, aiAgent, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, fetchAppSettings, saveAppSettings, createZoomMeeting, fetchServiceConnections } from '../api.js';
 
 function buildFolderOptions(folders) {
   const opts = [{ value: '', label: '未分類' }];
@@ -45,6 +45,9 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
   const [zoomList, setZoomList] = useState([]);
   const [zoomDropdownOpen, setZoomDropdownOpen] = useState(false);
   const [zoomSaving, setZoomSaving] = useState(false);
+  const [autoCreateZoom, setAutoCreateZoom] = useState(true); // 新規時Zoom自動作成
+  const [zoomConnected, setZoomConnected] = useState(false);
+  const zoomConnectedRef = useRef(false);
 
   // Voice
   const [isRecording, setIsRecording] = useState(false);
@@ -56,6 +59,13 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
   // Load all settings from DB on mount
   useEffect(() => {
     fetchZoomSettings().then(setZoomList).catch(() => {});
+    fetchServiceConnections().then((conns) => {
+      const zoom = conns.find(c => c.serviceName === 'zoom');
+      if (zoom && zoom.status === 'connected') {
+        setZoomConnected(true);
+        zoomConnectedRef.current = true;
+      }
+    }).catch(() => {});
     fetchAppSettings().then((s) => {
       if (s.event_gen_date)     setGenDate(s.event_gen_date);
       if (s.event_gen_time)     setGenTime(s.event_gen_time);
@@ -65,9 +75,12 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
       if (s.lme_gen_subtype)    setEventSubType(s.lme_gen_subtype);
       if (s.lme_send_date)      setLmeSendDate(s.lme_send_date);
       if (s.lme_send_time)      setLmeSendTime(s.lme_send_time);
-      if (s.lme_zoom_url)       setZoomUrl(s.lme_zoom_url);
-      if (s.lme_meeting_id)     setMeetingId(s.lme_meeting_id);
-      if (s.lme_passcode && !/\*/.test(s.lme_passcode)) setPasscode(s.lme_passcode);
+      // 新規作成時はZoom情報を復元しない（自動作成するため）
+      if (isEdit) {
+        if (s.lme_zoom_url)       setZoomUrl(s.lme_zoom_url);
+        if (s.lme_meeting_id)     setMeetingId(s.lme_meeting_id);
+        if (s.lme_passcode && !/\*/.test(s.lme_passcode)) setPasscode(s.lme_passcode);
+      }
       setSettingsLoaded(true);
     }).catch(() => setSettingsLoaded(true));
   }, []);
@@ -137,6 +150,9 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
     setSaving(true);
     try {
       let finalContent = content;
+      let currentZoomUrl = zoomUrl;
+      let currentMeetingId = meetingId;
+      let currentPasscode = passcode;
 
       // イベントタイプかつ日付・APIキーがある場合、日時を自動調整
       if (type === 'event' && genDate && apiKey && finalContent.trim()) {
@@ -146,10 +162,61 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
         } catch (_) { /* 失敗しても保存続行 */ }
       }
 
+      // 新規作成時 + Zoom自動作成ON + Zoom接続済み + 開催日あり + ZoomURL未設定
+      const isZoomConnected = zoomConnected || zoomConnectedRef.current;
+      console.log('[Zoom自動作成] 条件チェック:', { isEdit, autoCreateZoom, isZoomConnected, genDate, currentZoomUrl });
+      if (!isEdit && autoCreateZoom && isZoomConnected && genDate && !currentZoomUrl) {
+        showToast('Zoomミーティングを自動作成中...', 'success');
+        try {
+          await createZoomMeeting(
+            {
+              title: name.trim(),
+              startDate: genDate,
+              startTime: genTime || '10:00',
+              duration: 120,
+            },
+            (event) => {
+              if (event.type === 'result' && event.data) {
+                currentZoomUrl = event.data.zoomUrl || '';
+                currentMeetingId = event.data.meetingId || '';
+                currentPasscode = (event.data.passcode && !/\*/.test(event.data.passcode)) ? event.data.passcode : '';
+                setZoomUrl(currentZoomUrl);
+                setMeetingId(currentMeetingId);
+                setPasscode(currentPasscode);
+              }
+            }
+          );
+          if (currentZoomUrl) {
+            showToast('Zoomミーティング作成完了', 'success');
+            // Zoom設定リスト更新
+            fetchZoomSettings().then(setZoomList).catch(() => {});
+            // AppSettingsにも保存（PostModalで投稿時に参照される）
+            saveAppSettings({
+              lme_zoom_url:   currentZoomUrl,
+              lme_meeting_id: currentMeetingId,
+              lme_passcode:   currentPasscode,
+            }).catch(() => {});
+          }
+        } catch (err) {
+          showToast(`Zoom自動作成失敗: ${err.message}（保存は続行します）`, 'error');
+        }
+      }
+
       // Zoom URL等のプレースホルダーを置換
-      if (zoomUrl)   finalContent = finalContent.replace(/参加URL：\s*（後ほど共有）/g,        `参加URL： ${zoomUrl}`);
-      if (meetingId) finalContent = finalContent.replace(/ミーティング ID:\s*（後ほど共有）/g, `ミーティング ID: ${meetingId}`);
-      if (passcode)  finalContent = finalContent.replace(/パスコード:\s*（後ほど共有）/g,      `パスコード: ${passcode}`);
+      if (currentZoomUrl)   finalContent = finalContent.replace(/参加URL[：:]\s*（後ほど共有）/g,        `参加URL： ${currentZoomUrl}`);
+      if (currentMeetingId) finalContent = finalContent.replace(/ミーティング\s*ID[：:]\s*（後ほど共有）/g, `ミーティング ID: ${currentMeetingId}`);
+      if (currentPasscode)  finalContent = finalContent.replace(/パスコード[：:]\s*（後ほど共有）/g,      `パスコード: ${currentPasscode}`);
+
+      // Zoom情報が本文に含まれていなければ末尾に追加
+      if (currentZoomUrl && !finalContent.includes(currentZoomUrl)) {
+        const zoomBlock = [
+          '\n\n■ Zoom参加情報',
+          `参加URL: ${currentZoomUrl}`,
+          currentMeetingId ? `ミーティングID: ${currentMeetingId}` : '',
+          currentPasscode ? `パスコード: ${currentPasscode}` : '',
+        ].filter(Boolean).join('\n');
+        finalContent += zoomBlock;
+      }
 
       if (isEdit) {
         await updateText(type, item.id, { name: name.trim(), content: finalContent, folder });
@@ -165,7 +232,7 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
     } finally {
       setSaving(false);
     }
-  }, [isEdit, type, item, name, content, folder, genDate, genTime, genEndTime, apiKey, zoomUrl, meetingId, passcode, onSaved, onClose, showToast]);
+  }, [isEdit, type, item, name, content, folder, genDate, genTime, genEndTime, apiKey, zoomUrl, meetingId, passcode, autoCreateZoom, zoomConnected, onSaved, onClose, showToast]);
 
   // AI Correct
   const handleCorrect = useCallback(async () => {
@@ -359,6 +426,23 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
                 />
               </div>
             </div>
+
+            {/* Zoom自動作成チェックボックス */}
+            {type === 'event' && zoomConnected && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0 4px', padding: '8px 12px', background: '#f0f7ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#1e40af' }}>
+                  <input
+                    type="checkbox"
+                    checked={autoCreateZoom}
+                    onChange={(e) => setAutoCreateZoom(e.target.checked)}
+                  />
+                  🎥 保存時にZoomミーティングを自動作成
+                </label>
+                {zoomUrl && (
+                  <span style={{ fontSize: '11px', color: '#16a34a' }}>✅ Zoom設定済み</span>
+                )}
+              </div>
+            )}
 
             {/* LME settings - 一時コメントアウト（エルメ側で配信ユーザー絞り込み調整中） */}
             {/* {type === 'event' && (

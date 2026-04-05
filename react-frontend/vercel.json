@@ -1,3 +1,9 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://announcement-d656a48fc066.herokuapp.com/api/:path*" },
+    { "source": "/users/:path*", "destination": "https://announcement-d656a48fc066.herokuapp.com/users/:path*" },
+    { "source": "/auth/:path*", "destination": "https://announcement-d656a48fc066.herokuapp.com/auth/:path*" },
+    { "source": "/cable", "destination": "https://announcement-d656a48fc066.herokuapp.com/cable" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

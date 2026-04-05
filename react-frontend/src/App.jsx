@@ -4,8 +4,10 @@ import ItemList from './components/ItemList.jsx';
 import EditModal from './components/EditModal.jsx';
 import PostModal from './components/PostModal.jsx';
 import ConnectionsPage from './components/ConnectionsPage.jsx';
+import CalendarView from './components/CalendarView.jsx';
 import LoginPage from './components/LoginPage.jsx';
-import { fetchTexts, fetchFolders, deleteText, createText } from './api.js';
+import StudentsPage from './components/StudentsPage.jsx';
+import { fetchTexts, fetchFolders, deleteText, createText, deleteRemoteEvents, cancelRemoteEvents, fetchPostingHistory, scanGithubReviews } from './api.js';
 import './index.css';
 
 // ===== Toast Hook =====
@@ -43,7 +45,10 @@ export default function App() {
   const [postItem, setPostItem] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState('eventDate-desc');
   const [showConnections, setShowConnections] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(true);
+  const [showStudents, setShowStudents] = useState(false);
   const [currentUser, setCurrentUser] = useState(undefined); // undefined=loading, null=guest, object=logged in
 
   const { toasts, showToast, removeToast } = useToasts();
@@ -106,18 +111,70 @@ export default function App() {
     setSelectedFolder(folder);
     setSearchQuery('');
     setPage(1);
+    setShowConnections(false);
+    setShowCalendar(false);
+    setShowStudents(false);
   }
 
   // ===== Delete =====
-  async function handleDeleteConfirmed() {
+  const [deleteRemoteRunning, setDeleteRemoteRunning] = useState(false);
+  const [deleteRemoteLogs, setDeleteRemoteLogs] = useState([]);
+  const [cancelRunning, setCancelRunning] = useState(false);
+  const [cancelLogs, setCancelLogs] = useState([]);
+
+  // ローカルのみ削除
+  async function handleDeleteLocalOnly() {
     if (!deleteConfirm) return;
     try {
       await deleteText(activeType, deleteConfirm.id);
-      showToast('削除しました', 'success');
+      showToast('削除しました（ローカルのみ）', 'success');
       setDeleteConfirm(null);
       await loadItems();
     } catch (err) {
       showToast(err.message, 'error');
+    }
+  }
+
+  // ポータルサイトも含めて削除
+  async function handleDeleteWithRemote() {
+    if (!deleteConfirm) return;
+    setDeleteRemoteRunning(true);
+    setDeleteRemoteLogs([]);
+    try {
+      await deleteRemoteEvents(deleteConfirm.id, (event) => {
+        if (event.type === 'log' || event.type === 'error') {
+          setDeleteRemoteLogs((prev) => [...prev, event.message]);
+        }
+      });
+      // リモート削除完了後にローカルも削除
+      await deleteText(activeType, deleteConfirm.id);
+      showToast('全サイトから削除しました', 'success');
+      setDeleteConfirm(null);
+      setDeleteRemoteLogs([]);
+      await loadItems();
+    } catch (err) {
+      showToast(`削除エラー: ${err.message}`, 'error');
+    } finally {
+      setDeleteRemoteRunning(false);
+    }
+  }
+
+  // 一斉中止
+  async function handleCancelAll(item) {
+    setCancelRunning(true);
+    setCancelLogs([]);
+    try {
+      await cancelRemoteEvents(item.id, (event) => {
+        if (event.type === 'log' || event.type === 'error') {
+          setCancelLogs((prev) => [...prev, event.message]);
+        }
+      });
+      showToast('全サイトのイベントを中止しました', 'success');
+      setCancelLogs([]);
+    } catch (err) {
+      showToast(`中止エラー: ${err.message}`, 'error');
+    } finally {
+      setCancelRunning(false);
     }
   }
 
@@ -134,6 +191,28 @@ export default function App() {
     } catch (err) {
       showToast(err.message, 'error');
     }
+  }
+
+  // ===== Bulk Delete =====
+  async function handleBulkDelete(ids, mode) {
+    if (!ids.length) return;
+    const label = mode === 'remote' ? 'ポータルサイトも含めて' : 'ローカルのみ';
+    if (!confirm(`${ids.length}件を${label}削除しますか？`)) return;
+
+    for (const id of ids) {
+      try {
+        if (mode === 'remote') {
+          try {
+            await deleteRemoteEvents(id, () => {});
+          } catch (_) {}
+        }
+        await deleteText(activeType, id);
+      } catch (err) {
+        showToast(`${id}: ${err.message}`, 'error');
+      }
+    }
+    showToast(`${ids.length}件を削除しました`, 'success');
+    await loadItems();
   }
 
   // ===== Labels =====
@@ -201,7 +280,36 @@ export default function App() {
             )}
             <button
               className="btn"
-              onClick={() => setShowConnections(!showConnections)}
+              onClick={() => { setShowStudents(!showStudents); if (!showStudents) { setShowCalendar(false); setShowConnections(false); } }}
+              style={{
+                background: showStudents ? '#7c3aed' : '#faf5ff',
+                color: showStudents ? '#fff' : '#7c3aed',
+                border: showStudents ? '1.5px solid #7c3aed' : '1.5px solid #e9d5ff',
+                fontWeight: 600,
+                transition: 'all 0.2s',
+                boxShadow: showStudents ? '0 2px 8px rgba(124,58,237,0.3)' : 'none',
+              }}
+            >
+              🎓 受講生一覧
+            </button>
+            <button
+              className="btn"
+              onClick={() => { setShowCalendar(!showCalendar); if (!showCalendar) { setShowConnections(false); setShowStudents(false); } }}
+              title={showCalendar ? 'カレンダーを隠す' : 'カレンダーを表示'}
+              style={{
+                background: showCalendar ? '#16a34a' : '#f0fdf4',
+                color: showCalendar ? '#fff' : '#16a34a',
+                border: showCalendar ? '1.5px solid #16a34a' : '1.5px solid #bbf7d0',
+                fontWeight: 600,
+                transition: 'all 0.2s',
+                boxShadow: showCalendar ? '0 2px 8px rgba(22,163,74,0.3)' : 'none',
+              }}
+            >
+              {showCalendar ? '📋 一覧表示' : '📅 カレンダー'}
+            </button>
+            <button
+              className="btn"
+              onClick={() => { setShowConnections(!showConnections); if (!showConnections) setShowCalendar(false); }}
               title={showConnections ? 'サービス接続管理を隠す' : 'サービス接続管理を表示'}
               style={{
                 background: showConnections ? '#4f46e5' : '#eef2ff',
@@ -212,14 +320,7 @@ export default function App() {
                 boxShadow: showConnections ? '0 2px 8px rgba(79,70,229,0.3)' : 'none',
               }}
             >
-              {showConnections ? '👁️ 接続管理 ▲' : '🔗 接続管理 ▼'}
-            </button>
-            <button
-              className="btn btn-secondary"
-              onClick={loadAll}
-              title="更新"
-            >
-              更新
+              {showConnections ? '📋 イベント一覧 ▲' : '🔗 接続管理 ▼'}
             </button>
             <button
               className="btn btn-primary"
@@ -237,13 +338,45 @@ export default function App() {
               <ConnectionsPage
                 showToast={showToast}
                 onBack={() => setShowConnections(false)}
+                onGoToList={() => setShowConnections(false)}
                 inline
               />
             </div>
           </div>
         )}
 
-        {/* Search */}
+        {/* Students Page */}
+        {showStudents && (
+          <StudentsPage showToast={showToast} />
+        )}
+
+        {/* Calendar View */}
+        {showCalendar && (
+          <CalendarView
+            items={items}
+            onEditItem={(item) => setEditItem(item)}
+            onShowInList={(item) => {
+              setShowCalendar(false);
+              if (item.folder) setSelectedFolder(item.folder);
+              setSearchQuery(item.name || '');
+              setPage(1);
+            }}
+            onNewEvent={(date) => {
+              setActiveType('event');
+              setShowCalendar(false);
+              setEditItem({ eventDate: date });
+            }}
+            onNewStudent={(date) => {
+              setActiveType('student');
+              setShowCalendar(false);
+              setEditItem({ eventDate: date });
+            }}
+            showToast={showToast}
+          />
+        )}
+
+        {/* Search + Sort + Item List (接続管理・カレンダー表示中は非表示) */}
+        {!showConnections && !showCalendar && !showStudents && (<>
         <div className="search-bar">
           <span className="search-icon">🔍</span>
           <input
@@ -251,7 +384,7 @@ export default function App() {
             type="text"
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-            placeholder="タイトル・内容で検索..."
+            placeholder="タイトル・内容・日付で検索..."
           />
           {searchQuery && (
             <button
@@ -261,9 +394,18 @@ export default function App() {
               ✕
             </button>
           )}
+          <select
+            className="sort-select"
+            value={sortOrder}
+            onChange={(e) => { setSortOrder(e.target.value); setPage(1); }}
+          >
+            <option value="eventDate-desc">📅 開催日（新しい順）</option>
+            <option value="eventDate-asc">📅 開催日（古い順）</option>
+            <option value="updatedAt-desc">🕐 更新日（新しい順）</option>
+            <option value="name-asc">🔤 名前順</option>
+          </select>
         </div>
 
-        {/* Item List */}
         <ItemList
           items={items}
           loading={loadingItems}
@@ -271,34 +413,49 @@ export default function App() {
           folders={folders}
           selectedFolder={selectedFolder}
           searchQuery={searchQuery}
+          sortOrder={sortOrder}
           onEdit={(item) => setEditItem(item)}
           onDelete={(item) => setDeleteConfirm(item)}
+          onBulkDelete={handleBulkDelete}
           onPost={(item) => setPostItem(item)}
           onDuplicate={handleDuplicate}
+          onCancel={handleCancelAll}
           onRefresh={loadItems}
           showToast={showToast}
           page={page}
           onPageChange={setPage}
+          onScanGithub={async () => {
+            showToast('🔍 GitHubスキャン開始...', 'info');
+            try {
+              await scanGithubReviews((event) => {
+                if (event.type === 'log') showToast(event.message, 'info');
+                else if (event.type === 'done') { showToast(event.message, 'success'); loadAll(); }
+                else if (event.type === 'error') showToast(event.message, 'error');
+              });
+            } catch (e) { showToast(e.message, 'error'); }
+          }}
         />
+        </>)}
       </div>
 
-      {/* Edit / Create Modal */}
+      {/* Edit / Create / Post — 統合モーダル */}
       {editItem !== null && (
-        <EditModal
+        <PostModal
           item={editItem && editItem.id ? editItem : null}
-          type={activeType}
           folders={folders}
+          activeType={activeType}
           onClose={() => setEditItem(null)}
-          onSaved={loadItems}
+          onSaved={loadAll}
           showToast={showToast}
         />
       )}
-
-      {/* Post Modal */}
-      {postItem && (
+      {postItem && !editItem && (
         <PostModal
           item={postItem}
+          folders={folders}
+          activeType={activeType}
           onClose={() => setPostItem(null)}
+          onSaved={loadAll}
           showToast={showToast}
         />
       )}
@@ -307,27 +464,73 @@ export default function App() {
       {deleteConfirm && (
         <div
           className="modal-overlay"
-          onClick={(e) => { if (e.target === e.currentTarget) setDeleteConfirm(null); }}
+          onClick={(e) => { if (e.target === e.currentTarget && !deleteRemoteRunning) setDeleteConfirm(null); }}
         >
-          <div className="modal" style={{ maxWidth: '420px' }}>
+          <div className="modal" style={{ maxWidth: '500px' }}>
             <div className="modal-header">
               <h2 className="modal-title">削除の確認</h2>
-              <button className="modal-close" onClick={() => setDeleteConfirm(null)}>✕</button>
+              <button className="modal-close" onClick={() => !deleteRemoteRunning && setDeleteConfirm(null)}>✕</button>
             </div>
             <div className="modal-body">
               <p className="confirm-message">
                 「{deleteConfirm.name}」を削除しますか？
-                <br />
-                この操作は元に戻せません。
               </p>
+              <p style={{ fontSize: '13px', color: '#666', marginTop: '8px' }}>
+                連携されているポータルサイトのイベントも同時に削除できます。
+              </p>
+              {deleteRemoteLogs.length > 0 && (
+                <div style={{ background: '#1a1a2e', color: '#e0e0e0', borderRadius: '6px', padding: '10px', marginTop: '12px', maxHeight: '200px', overflowY: 'auto', fontSize: '12px', fontFamily: 'monospace' }}>
+                  {deleteRemoteLogs.map((msg, i) => (
+                    <div key={i} style={{ padding: '2px 0' }}>{msg}</div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>
+            <div className="modal-footer" style={{ flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                <button
+                  className="btn btn-danger"
+                  style={{ flex: 1 }}
+                  onClick={handleDeleteWithRemote}
+                  disabled={deleteRemoteRunning}
+                >
+                  {deleteRemoteRunning ? '削除中...' : 'ポータルサイトも削除'}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ flex: 1 }}
+                  onClick={handleDeleteLocalOnly}
+                  disabled={deleteRemoteRunning}
+                >
+                  ローカルのみ削除
+                </button>
+              </div>
+              <button
+                className="btn btn-secondary"
+                style={{ width: '100%' }}
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleteRemoteRunning}
+              >
                 キャンセル
               </button>
-              <button className="btn btn-danger" onClick={handleDeleteConfirmed}>
-                削除する
-              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel All Dialog */}
+      {cancelRunning && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2 className="modal-title">一斉中止処理中...</h2>
+            </div>
+            <div className="modal-body">
+              <div style={{ background: '#1a1a2e', color: '#e0e0e0', borderRadius: '6px', padding: '10px', maxHeight: '300px', overflowY: 'auto', fontSize: '12px', fontFamily: 'monospace' }}>
+                {cancelLogs.map((msg, i) => (
+                  <div key={i} style={{ padding: '2px 0' }}>{msg}</div>
+                ))}
+              </div>
             </div>
           </div>
         </div>

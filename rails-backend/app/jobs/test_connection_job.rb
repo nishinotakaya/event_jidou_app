@@ -47,6 +47,27 @@ class TestConnectionJob < ApplicationJob
       submit_sel: 'button[type="submit"]',
       success_check: ->(page) { !page.url.include?('/login') && !page.url.include?('/signin') },
     },
+    'doorkeeper' => {
+      url: 'https://manage.doorkeeper.jp/user/sign_in',
+      email_sel: 'input[name="user[email]"]',
+      pass_sel: 'input[name="user[password]"]',
+      submit_sel: 'input[type="submit"],button[type="submit"]',
+      success_check: ->(page) { !page.url.include?('/sign_in') },
+    },
+    'seminars' => {
+      url: 'https://seminars.jp/login',
+      email_sel: 'input[name="email"],input[type="email"],#email',
+      pass_sel: 'input[name="password"],input[type="password"],#password',
+      submit_sel: 'button[type="submit"],input[type="submit"]',
+      success_check: ->(page) { !page.url.include?('/login') },
+    },
+    'onclass' => {
+      url: 'https://manager.the-online-class.com/sign_in',
+      email_sel: 'input[name="email"]',
+      pass_sel: 'input[name="password"]',
+      submit_sel: 'button:has-text("ログインする")',
+      success_check: ->(page) { !page.url.include?('/sign_in') },
+    },
   }.freeze
 
   def perform(connection_id)

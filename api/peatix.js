@@ -75,7 +75,6 @@ export async function post(page, content, eventFields = {}, log) {
 
   const startUtc = toUtc(ef.startDate, ef.startTime);
   const endUtc   = toUtc(ef.endDate || ef.startDate, ef.endTime || ef.startTime);
-  const zoomLine = ef.zoomUrl ? `\n\n■ Zoom URL\n${ef.zoomUrl}` : '';
 
   // ===== Step1: イベント作成 =====
   const createBody = {
@@ -128,7 +127,7 @@ export async function post(page, content, eventFields = {}, log) {
         body: JSON.stringify({ details: { description } }),
       });
       return { ok: res.ok, status: res.status, text: await res.text() };
-    }, { eventId, bearer, description: bodyText + zoomLine });
+    }, { eventId, bearer, description: bodyText });
 
     if (patchResult.ok) {
       log(`[Peatix] ✅ 説明文更新完了`);

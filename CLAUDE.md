@@ -15,7 +15,7 @@
 ## よく使うコマンド
 
 ```bash
-npm run web        # Expressサーバー起動（http://localhost:3000）
+npm run web        # Expressサーバー起動（http://localhost:3003）
 npm run event      # イベント投稿CUI（inquirer対話型）
 npm run student    # 受講生サポートメッセージ自動送信
 npm run texts      # テキスト管理CUI

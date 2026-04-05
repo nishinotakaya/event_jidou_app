@@ -39,11 +39,10 @@ module Posting
       lines      = content.split("\n")
       first_line = lines.first.to_s.gsub(/\A[#\s「『【]+/, '').gsub(/[】』」\s]+\z/, '').strip
       body       = (first_line.present? && title.include?(first_line)) ? lines.drop(1).join("\n").lstrip : content
-      zoom_line  = ef['zoomUrl'].present? ? "\n\n■ Zoom URL\n#{ef['zoomUrl']}" : ''
 
       put_body = created.merge(
-        'description_input' => body + zoom_line,
-        'description'       => body + zoom_line,
+        'description_input' => body,
+        'description'       => body,
         'status'            => 'draft',
         'place'             => nil,
         'start_datetime'    => start_dt,
@@ -170,6 +169,55 @@ module Posting
       rescue => e
         log("[connpass] ⚠️ 公開処理失敗: #{e.message}")
       end
+    end
+
+    # --- 削除・中止 ---
+
+    def perform_delete(page, event_url)
+      csrftoken = ensure_login(page)
+      event_id = event_url[/event\/(\d+)/, 1]
+      raise '[connpass] イベントIDが取得できません' unless event_id
+
+      log("[connpass] イベント削除中... ID=#{event_id}")
+      result = page.evaluate(<<~JS, arg: { eventId: event_id, csrftoken: csrftoken })
+        async ({ eventId, csrftoken }) => {
+          const res = await fetch(`/api/event/${eventId}`, {
+            method: 'DELETE',
+            headers: { 'x-csrftoken': csrftoken, 'x-requested-with': 'XMLHttpRequest' },
+            credentials: 'include',
+          });
+          return { ok: res.ok, status: res.status, text: await res.text() };
+        }
+      JS
+      raise "[connpass] 削除失敗: #{result['status']}" unless result['ok']
+      log('[connpass] ✅ イベント削除完了')
+    end
+
+    def perform_cancel(page, event_url)
+      csrftoken = ensure_login(page)
+      event_id = event_url[/event\/(\d+)/, 1]
+      raise '[connpass] イベントIDが取得できません' unless event_id
+
+      log("[connpass] イベント中止中... ID=#{event_id}")
+      # ステータスを cancelled に変更
+      result = page.evaluate(<<~JS, arg: { eventId: event_id, csrftoken: csrftoken })
+        async ({ eventId, csrftoken }) => {
+          const getRes = await fetch(`/api/event/${eventId}`, {
+            headers: { 'x-requested-with': 'XMLHttpRequest' }, credentials: 'include'
+          });
+          const event = await getRes.json();
+          event.status = 'cancelled';
+          const putRes = await fetch(`/api/event/${eventId}`, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json', 'x-csrftoken': csrftoken, 'x-requested-with': 'XMLHttpRequest' },
+            credentials: 'include',
+            body: JSON.stringify(event),
+          });
+          return { ok: putRes.ok, status: putRes.status };
+        }
+      JS
+      raise "[connpass] 中止失敗: #{result['status']}" unless result['ok']
+      log('[connpass] ✅ イベント中止完了')
     end
 
     def ensure_login(page)

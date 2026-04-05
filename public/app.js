@@ -7,6 +7,8 @@ let allFolders = [];
 let editingId = null;
 let deletingId = null;
 let postingItem = null;
+let searchQuery = '';
+let sortOrder = 'eventDate-desc'; // default: 開催日新しい順
 
 const list = document.getElementById('text-list');
 const emptyMsg = document.getElementById('empty-msg');
@@ -43,8 +45,8 @@ const api = {
     if (!r.ok) throw new Error(j.error || `エラー ${r.status}`);
     return j;
   },
-  aiGenerate: async (title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType, zoomUrl, meetingId, passcode) => {
-    const r = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType, zoomUrl, meetingId, passcode }) });
+  aiGenerate: async (title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType) => {
+    const r = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, type, apiKey, eventDate, eventTime, eventEndTime, eventSubType }) });
     const ct = r.headers.get('content-type') || '';
     if (!ct.includes('application/json')) {
       const t = await r.text();
@@ -248,11 +250,36 @@ function renderList() {
   list.innerHTML = '';
 
   // フォルダフィルタ
-  const filtered = currentFolder === null
+  let filtered = currentFolder === null
     ? allItems
     : currentFolder.includes('/')
       ? allItems.filter(i => (i.folder || '') === currentFolder)
       : allItems.filter(i => (i.folder || '') === currentFolder || (i.folder || '').startsWith(currentFolder + '/'));
+
+  // 検索フィルタ
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filtered = filtered.filter(i =>
+      (i.name || '').toLowerCase().includes(q) ||
+      (i.content || '').toLowerCase().includes(q) ||
+      (i.eventDate || '').includes(q) ||
+      (i.folder || '').toLowerCase().includes(q)
+    );
+  }
+
+  // ソート
+  filtered = [...filtered].sort((a, b) => {
+    if (sortOrder === 'eventDate-desc') {
+      return (b.eventDate || '').localeCompare(a.eventDate || '');
+    } else if (sortOrder === 'eventDate-asc') {
+      return (a.eventDate || '').localeCompare(b.eventDate || '');
+    } else if (sortOrder === 'updatedAt-desc') {
+      return (b.updatedAt || '').localeCompare(a.updatedAt || '');
+    } else if (sortOrder === 'name-asc') {
+      return (a.name || '').localeCompare(b.name || '');
+    }
+    return 0;
+  });
 
   if (filtered.length === 0) {
     emptyMsg.hidden = false;
@@ -278,6 +305,11 @@ function renderList() {
       ? `<span class="card-folder-badge">📁 ${esc(item.folder)}</span>`
       : '';
 
+    // 開催日バッジ
+    const eventDateBadge = item.eventDate
+      ? `<span class="card-event-date">📅 ${item.eventDate}${item.eventTime ? ' ' + item.eventTime : ''}${item.eventEndTime ? '〜' + item.eventEndTime : ''}</span>`
+      : '';
+
     let folderOptions = `<option value="">── 未分類 ──</option>`;
     allFolders.forEach(f => {
       folderOptions += `<option value="${esc(f.name)}"${f.name === (item.folder||'') ? ' selected':''}>📁 ${esc(f.name)}</option>`;
@@ -290,6 +322,7 @@ function renderList() {
     li.innerHTML = `
       <div class="card-body">
         <div class="card-name">${esc(item.name)}${folderBadge}</div>
+        ${eventDateBadge}
         <div class="card-preview">${esc(item.content)}</div>
         <div class="card-meta">更新日: ${item.updatedAt}</div>
       </div>
@@ -380,12 +413,6 @@ function openModal(mode, item = null) {
     if (subtypeRadio) subtypeRadio.checked = true;
     document.getElementById('field-gen-lme-send-date').value = item?.lmeSendDate || '';
     document.getElementById('field-gen-lme-send-time').value = item?.lmeSendTime || '10:00';
-    document.getElementById('gen-zoom-row').hidden = !savedLme;
-    document.getElementById('gen-meeting-row').hidden = !savedLme;
-    document.getElementById('gen-passcode-row').hidden = !savedLme;
-    document.getElementById('field-gen-zoom-url').value   = isEdit ? (item?.lmeZoomUrl   || '') : (localStorage.getItem('lme_zoom_url')   || '');
-    document.getElementById('field-gen-meeting-id').value = isEdit ? (item?.lmeMeetingId || '') : (localStorage.getItem('lme_meeting_id') || '');
-    document.getElementById('field-gen-passcode').value   = isEdit ? (item?.lmePasscode  || '') : (localStorage.getItem('lme_passcode')   || '');
   } else {
     dtRow.hidden = true;
   }
@@ -516,7 +543,6 @@ async function runPost() {
           endDate:        document.getElementById('field-end-date').value,
           endTime:        document.getElementById('field-end-time').value || '12:00',
           place:          document.getElementById('field-place').value || 'オンライン',
-          zoomUrl:        document.getElementById('field-zoom-url').value.trim(),
           capacity:       document.getElementById('field-capacity').value || '50',
           tel:            document.getElementById('field-tel').value || '03-1234-5678',
           peatixEventId:  document.getElementById('field-peatix-event-id').value.trim(),
@@ -620,13 +646,6 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     }
   }
 
-  // Zoom URL が入力済みの場合、内容中のプレースホルダーを実際のURLに置換
-  const zoomUrlVal   = document.getElementById('field-gen-zoom-url')?.value.trim()  || '';
-  const meetingIdVal = document.getElementById('field-gen-meeting-id')?.value.trim() || '';
-  const passcodeVal  = document.getElementById('field-gen-passcode')?.value.trim()   || '';
-  if (zoomUrlVal)   { content = content.replace(/参加URL：\s*（後ほど共有）/g,        `参加URL： ${zoomUrlVal}`);   localStorage.setItem('lme_zoom_url',   zoomUrlVal); }
-  if (meetingIdVal) { content = content.replace(/ミーティング ID:\s*（後ほど共有）/g, `ミーティング ID: ${meetingIdVal}`); localStorage.setItem('lme_meeting_id', meetingIdVal); }
-  if (passcodeVal)  { content = content.replace(/パスコード:\s*（後ほど共有）/g,      `パスコード: ${passcodeVal}`);  localStorage.setItem('lme_passcode',   passcodeVal); }
 
   // 開催日時をテキストごとに保存（他テキストに影響しないよう per-text で管理）
   const eventMeta = currentType === 'event' ? {
@@ -640,9 +659,6 @@ document.getElementById('btn-save').addEventListener('click', async () => {
     lmeSendDate:  document.getElementById('field-gen-lme-send-date')?.value || '',
     lmeSendTime:  document.getElementById('field-gen-lme-send-time')?.value || '10:00',
     lmeAccount:   document.querySelector('input[name="event-subtype"]:checked')?.value || 'benkyokai',
-    lmeZoomUrl:   zoomUrlVal,
-    lmeMeetingId: meetingIdVal,
-    lmePasscode:  passcodeVal,
   } : {};
 
   if (editingId) {
@@ -689,9 +705,6 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
   const eventEndTime = document.getElementById('field-gen-end-time')?.value || localStorage.getItem('event_gen_end_time') || '12:00';
   const lmeChecked = document.getElementById('check-gen-lme')?.checked;
   const eventSubType = lmeChecked ? (document.querySelector('input[name="event-subtype"]:checked')?.value || 'benkyokai') : null;
-  const zoomUrl   = lmeChecked ? (document.getElementById('field-gen-zoom-url')?.value.trim()  || '') : '';
-  const meetingId = lmeChecked ? (document.getElementById('field-gen-meeting-id')?.value.trim() || '') : '';
-  const passcode  = lmeChecked ? (document.getElementById('field-gen-passcode')?.value.trim()   || '') : '';
   if (!eventDate) {
     alert('開催日時（文章生成用）の日付を入力してください。');
     btn.disabled = false;
@@ -699,7 +712,7 @@ document.getElementById('btn-generate').addEventListener('click', async () => {
     return;
   }
   try {
-    const res = await api.aiGenerate(title, currentType, apiKey, eventDate, eventTime, eventEndTime, eventSubType, zoomUrl, meetingId, passcode);
+    const res = await api.aiGenerate(title, currentType, apiKey, eventDate, eventTime, eventEndTime, eventSubType);
     if (res.error) throw new Error(res.error);
     textarea.value = res.content;
   } catch (err) {
@@ -805,6 +818,18 @@ document.getElementById('btn-delete-cancel').addEventListener('click', closeDele
 document.getElementById('btn-post-cancel').addEventListener('click', closePostModal);
 document.getElementById('btn-post-run').addEventListener('click', runPost);
 
+// ===== 検索・ソート =====
+document.getElementById('search-input').addEventListener('input', (e) => {
+  searchQuery = e.target.value.trim();
+  currentPage = 1;
+  renderList();
+});
+document.getElementById('sort-select').addEventListener('change', (e) => {
+  sortOrder = e.target.value;
+  currentPage = 1;
+  renderList();
+});
+
 document.getElementById('btn-delete-ok').addEventListener('click', async () => {
   await api.delete(currentType, deletingId);
   closeDeleteModal();
@@ -827,16 +852,9 @@ document.getElementById('check-gen-lme').addEventListener('change', (e) => {
 document.querySelectorAll('input[name="event-subtype"]').forEach((r) => {
   r.addEventListener('change', (e) => {
     const lmeChecked = document.getElementById('check-gen-lme').checked;
-    document.getElementById('gen-zoom-row').hidden = !lmeChecked;
-    document.getElementById('gen-meeting-row').hidden = !lmeChecked;
-    document.getElementById('gen-passcode-row').hidden = !lmeChecked;
     localStorage.setItem('lme_gen_subtype', e.target.value);
   });
 });
-
-document.getElementById('field-gen-zoom-url')?.addEventListener('change',   (e) => { localStorage.setItem('lme_zoom_url',   e.target.value.trim()); });
-document.getElementById('field-gen-meeting-id')?.addEventListener('change', (e) => { localStorage.setItem('lme_meeting_id', e.target.value.trim()); });
-document.getElementById('field-gen-passcode')?.addEventListener('change',   (e) => { localStorage.setItem('lme_passcode',   e.target.value.trim()); });
 
 // ===== 開催日時フィールドの変更を localStorage に保存 =====
 ['field-gen-date', 'field-gen-time', 'field-gen-end-time'].forEach((id) => {

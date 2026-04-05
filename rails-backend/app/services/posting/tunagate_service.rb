@@ -18,17 +18,17 @@ module Posting
     def ensure_login(page)
       log('[つなゲート] ログイン確認...')
 
-      # セッションファイルがあれば使用（PostJobで設定済み）
       page.goto(MENU_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
       page.wait_for_timeout(3000)
 
-      unless page.url.include?('sign_in')
+      # ログイン済みチェック（つなゲートのメニューページが表示されればOK）
+      if page.url.include?('tunagate.com') && !page.url.include?('sign_in') && !page.url.include?('accounts.google')
         log('[つなゲート] ✅ ログイン済み')
         return
       end
 
       # Googleログイン試行
-      log('[つなゲート] Googleログイン...')
+      log('[つなゲート] Googleログイン開始...')
       page.goto(SIGN_IN_URL, waitUntil: 'networkidle', timeout: 30_000)
       page.wait_for_timeout(2000)
 
@@ -37,60 +37,86 @@ module Posting
       google_btn.click
       page.wait_for_timeout(5000)
 
-      # Googleアカウント画面
       if page.url.include?('accounts.google.com')
         log('[つなゲート] Googleアカウント認証中...')
+
         # メール入力
         email_input = page.locator("input[type='email']").first
         if (email_input.visible?(timeout: 5000) rescue false)
           email_input.fill(ENV['GOOGLE_EMAIL'].to_s)
-          page.wait_for_timeout(1000)
-          page.locator('#identifierNext').first.click rescue nil
-          page.wait_for_timeout(3000)
+          page.locator('#identifierNext').first.click
+          page.wait_for_timeout(4000)
+          log('[つなゲート] メール入力完了')
 
-          # パスワード
+          # パスワード入力
           pass_input = page.locator("input[type='password']").first
           if (pass_input.visible?(timeout: 5000) rescue false)
             pass_input.fill(ENV['GOOGLE_PASSWORD'].to_s)
-            page.wait_for_timeout(1000)
-            page.locator('#passwordNext').first.click rescue nil
+            page.locator('#passwordNext').first.click
+            page.wait_for_timeout(5000)
+            log('[つなゲート] パスワード入力完了')
           end
         end
 
-        # リダイレクト待機（最大60秒）
-        30.times do
-          sleep 2
+        # 2FA対応
+        if page.url.include?('challenge')
+          log('[つなゲート] 2段階認証...')
+          tap_option = page.locator('[data-challengetype="39"]').first
+          if (tap_option.visible?(timeout: 3000) rescue false)
+            tap_option.click
+            page.wait_for_timeout(2000)
+            log('[つなゲート] 📱 スマートフォンで「はい」をタップしてください...')
+            60.times do |i|
+              page.wait_for_timeout(2000)
+              break unless page.url.include?('challenge')
+              log("[つなゲート] ⏳ 承認待ち... (#{(i + 1) * 2}秒)") if i % 10 == 9
+            end
+          end
+        end
+
+        # OAuth同意画面の「次へ」クリック
+        page.wait_for_timeout(2000)
+        if page.url.include?('consent') || page.url.include?('oauth/id')
+          log('[つなゲート] OAuth同意画面...')
+          next_btn = page.locator('button:has-text("次へ"), button:has-text("Continue"), button:has-text("許可")').first
+          if (next_btn.visible?(timeout: 5000) rescue false)
+            next_btn.click
+            page.wait_for_timeout(8000)
+            log('[つなゲート] 「次へ」クリック完了')
+          end
+        end
+
+        # つなゲートへのリダイレクト待機
+        10.times do
+          page.wait_for_timeout(2000)
           break if page.url.include?('tunagate.com') && !page.url.include?('sign_in')
         end
       end
 
       page.wait_for_timeout(2000)
       if page.url.include?('tunagate.com') && !page.url.include?('sign_in')
-        log("[つなゲート] ✅ ログイン成功")
+        # セッション保存
+        page.context.storage_state(path: SESSION_PATH) rescue nil
+        log("[つなゲート] ✅ ログイン成功 → #{page.url}")
       else
-        raise "[つなゲート] ログイン失敗。告知アプリの接続管理から「🌐 ログイン」でブラウザログインしてください。"
+        raise "[つなゲート] ログイン失敗。接続管理から「ブラウザログイン」でログインしてください。"
       end
     end
 
     def create_event(page, content, ef)
-      log("[つなゲート] メニュー: #{page.url}")
-
-      create_btn = page.locator("a:has-text('イベント作成'), button:has-text('イベント作成')").first
-      raise '[つなゲート] イベント作成ボタンが見つかりません' unless (create_btn.visible?(timeout: 5000) rescue false)
-
-      create_btn.click
+      # サークルIDを取得（AppSettingまたはデフォルト）
+      circle_id = AppSetting.get('tunagate_circle_id').presence || '220600'
+      create_url = "https://tunagate.com/events/new/#{circle_id}"
+      log("[つなゲート] イベント作成ページへ移動: #{create_url}")
+      page.goto(create_url, waitUntil: 'domcontentloaded', timeout: 30_000)
       page.wait_for_timeout(3000)
-      log('[つなゲート] イベント作成ページ')
-      dump_form(page)
 
-      # 新規サークルで追加
-      new_circle = page.locator("text=新規サークル").first
-      if (new_circle.visible?(timeout: 3000) rescue false)
-        new_circle.click
-        page.wait_for_timeout(2000)
-        log('[つなゲート] 新規サークルで追加')
-        dump_form(page)
+      if page.url.include?('sign_in')
+        raise '[つなゲート] ログインが必要です'
       end
+
+      log("[つなゲート] イベント作成ページ → #{page.url}")
+      dump_form(page)
 
       # イベント名（最初の空のテキストinput）
       title = extract_title(ef, content, 100)
@@ -126,7 +152,17 @@ module Posting
       end
 
       page.wait_for_timeout(3000)
-      log("[つなゲート] ✅ 完了 → #{page.url}")
+
+      # イベントURLを取得（ページ内のリンクから探す）
+      event_url = page.evaluate(<<~JS) rescue nil
+        () => {
+          const links = [...document.querySelectorAll('a[href*="/events/"]')];
+          const match = links.find(a => /circle\/\\d+\/events\/\\d+/.test(a.href));
+          return match ? match.href : null;
+        }
+      JS
+      event_url ||= page.url
+      log("[つなゲート] ✅ 完了 → #{event_url}")
     end
 
     # --- helpers ---
@@ -200,6 +236,48 @@ module Posting
       JSON.parse(fields).each { |f| log("  [#{f['tag']}] name=#{f['name']} type=#{f['type']} ph=#{f['ph']} text=#{f['text']}") }
     rescue => e
       log("  [dump] #{e.message}")
+    end
+
+    # --- 削除・中止 ---
+
+    def perform_delete(page, event_url)
+      ensure_login(page)
+      page.goto(event_url, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(2000)
+
+      log('[つなゲート] 削除ボタンを探索中...')
+      page.on('dialog', ->(d) { d.accept }) rescue nil
+      del_btn = page.locator('a:has-text("削除"), button:has-text("削除"), a:has-text("Delete"), button:has-text("Delete")').first
+      if (del_btn.visible?(timeout: 5000) rescue false)
+        del_btn.click
+        page.wait_for_timeout(2000)
+        confirm = page.locator('button:has-text("削除"), button:has-text("OK"), button:has-text("はい"), button:has-text("Yes"), button:has-text("Delete")').first
+        confirm.click if (confirm.visible?(timeout: 3000) rescue false)
+        page.wait_for_timeout(3000)
+        log('[つなゲート] ✅ イベント削除完了')
+      else
+        raise '[つなゲート] 削除ボタンが見つかりません'
+      end
+    end
+
+    def perform_cancel(page, event_url)
+      ensure_login(page)
+      page.goto(event_url, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(2000)
+
+      log('[つなゲート] 中止処理中...')
+      page.on('dialog', ->(d) { d.accept }) rescue nil
+      cancel_btn = page.locator('a:has-text("中止"), button:has-text("中止"), a:has-text("キャンセル"), button:has-text("Cancel"), a:has-text("Cancel")').first
+      if (cancel_btn.visible?(timeout: 5000) rescue false)
+        cancel_btn.click
+        page.wait_for_timeout(2000)
+        confirm = page.locator('button:has-text("中止"), button:has-text("OK"), button:has-text("はい"), button:has-text("Yes")').first
+        confirm.click if (confirm.visible?(timeout: 3000) rescue false)
+        page.wait_for_timeout(3000)
+        log('[つなゲート] ✅ イベント中止完了')
+      else
+        raise '[つなゲート] 中止ボタンが見つかりません'
+      end
     end
   end
 end

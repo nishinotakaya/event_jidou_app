@@ -3,7 +3,7 @@ source "https://rubygems.org"
 gem "rails", "~> 7.2.3"
 gem "dotenv-rails", "~> 3.0"
 gem "sqlite3", ">= 1.4"        # local / Docker dev
-gem "pg", "~> 1.1"             # Heroku production (DATABASE_URL)
+gem "mysql2", "~> 0.5"         # Heroku production (JawsDB MySQL)
 gem "puma", ">= 5.0"
 gem "rack-cors"
 gem "redis", ">= 4.0.1"       # ActionCable (production) + Sidekiq
@@ -11,6 +11,8 @@ gem "sidekiq", "~> 7.0"       # background jobs (production)
 gem "playwright-ruby-client", "~> 1.49"  # Playwright Ruby binding
 gem "devise", "~> 4.9"
 gem "omniauth-google-oauth2", "~> 1.1"
+gem "google-apis-gmail_v1", "~> 0.35"
+gem "google-apis-calendar_v3", "~> 0.40"
 # gem "omniauth-rails_csrf_protection"  # APIモードでは不要（OmniAuth自体のCSRF保護を使用）
 gem "attr_encrypted", "~> 4.0"
 

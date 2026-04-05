@@ -579,6 +579,7 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .item-card-name {
@@ -586,14 +587,19 @@ body {
   font-weight: 700;
   color: #2d1b52;
   line-height: 1.3;
-  flex: 1;
+  flex: 1 1 100%;
   min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .item-card-actions {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .item-card-folder-badge {
@@ -606,6 +612,29 @@ body {
   border-radius: 20px;
   border: 1px solid #e2d9f3;
 }
+
+.item-card-event-date {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7c3aed;
+  background: linear-gradient(135deg, #ede9fe, #fce7f3);
+  padding: 3px 10px;
+  border-radius: 12px;
+  margin: 4px 0 6px;
+}
+.sort-select {
+  padding: 6px 10px;
+  border: 1px solid #e2d9f3;
+  border-radius: 8px;
+  font-size: 13px;
+  background: white;
+  color: #4a3f6b;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+}
+.sort-select:focus { border-color: #9878cc; }
 
 .item-card-content {
   font-size: 11px;
@@ -816,6 +845,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-bottom: 12px;
+}
+.form-group:last-child {
+  margin-bottom: 0;
 }
 
 .form-label {
@@ -834,6 +867,8 @@ body {
 .form-input,
 .form-select,
 .form-textarea {
+  width: 100%;
+  box-sizing: border-box;
   padding: 9px 12px;
   border: 1.5px solid #ddd5f0;
   border-radius: 8px;
@@ -874,6 +909,9 @@ body {
   grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
 }
+.form-row-3 .form-group {
+  margin-bottom: 0;
+}
 
 /* ===== AI Buttons area ===== */
 .ai-buttons {
@@ -884,6 +922,7 @@ body {
   background: linear-gradient(135deg, #f8f4ff, #fff0f9);
   border-radius: 8px;
   border: 1px solid #e8e0f8;
+  margin-bottom: 12px;
 }
 
 .ai-btn {
@@ -946,6 +985,7 @@ body {
   display: flex;
   gap: 6px;
   margin-top: 6px;
+  margin-bottom: 12px;
 }
 
 .agent-input {
@@ -968,6 +1008,7 @@ body {
   border: 1.5px solid #e8e0f8;
   border-radius: 8px;
   padding: 12px;
+  margin-bottom: 12px;
 }
 
 .datetime-section-label {
@@ -979,18 +1020,18 @@ body {
 
 /* ===== Post Modal ===== */
 .post-modal {
-  max-width: 760px;
+  max-width: 860px;
 }
 
 .site-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
 }
 
 .site-card {
   border: 1.5px solid #e2d9f3;
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.15s;
 }
@@ -1003,16 +1044,17 @@ body {
 .site-card-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 6px;
+  padding: 6px 8px;
   cursor: pointer;
   user-select: none;
+  font-size: 12px;
 }
 
 /* Publish toggle */
 .publish-toggle {
-  padding: 2px 8px;
-  font-size: 10px;
+  padding: 1px 5px;
+  font-size: 9px;
   font-weight: 700;
   border-radius: 4px;
   border: 1.5px solid;
@@ -1042,22 +1084,22 @@ body {
 }
 
 .site-checkbox {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   accent-color: #a855f7;
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .site-name {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 700;
   color: #2d1b52;
 }
 
 .site-status {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   padding: 2px 10px;
   border-radius: 20px;
@@ -1348,15 +1390,109 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
+  /* サイドバー非表示 */
   .sidebar {
-    width: 220px;
+    display: none;
   }
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  /* メインヘッダー */
+  .main-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 12px 8px;
+  }
+  .main-header-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+  .main-header-actions .btn {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+
+  /* カレンダー */
+  .calendar-view {
+    padding: 0 8px 16px;
+  }
+  .calendar-app-desc {
+    padding: 10px 12px;
+  }
+  .calendar-app-desc h2 {
+    font-size: 13px !important;
+  }
+  .calendar-app-desc p {
+    font-size: 11px !important;
+  }
+  .calendar-header {
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .calendar-title {
+    font-size: 16px;
+    min-width: auto;
+  }
+  .calendar-cell {
+    min-height: 70px;
+    padding: 3px 2px 2px;
+  }
+  .calendar-day {
+    font-size: 12px;
+  }
+  .calendar-weekday {
+    font-size: 12px;
+    padding: 6px 2px;
+  }
+  .calendar-dot {
+    font-size: 9px;
+    padding: 1px 2px;
+    line-height: 1.2;
+  }
+
+  /* モーダル */
+  .modal-overlay {
+    padding: 8px;
+  }
+  .modal {
+    max-width: 100% !important;
+    max-height: 90vh !important;
+    margin: 0;
+    border-radius: 12px;
+  }
+  .modal-body {
+    padding: 12px;
+  }
+
+  /* カレンダーモーダル内 */
+  .calendar-event-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .calendar-event-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  /* アイテムリスト */
   .item-grid {
     grid-template-columns: 1fr;
   }
   .form-row,
   .form-row-3 {
     grid-template-columns: 1fr;
+  }
+  .search-bar {
+    padding: 8px 12px;
+  }
+
+  /* 接続管理 */
+  .site-cards {
+    grid-template-columns: 1fr !important;
   }
 }
 
@@ -1645,4 +1781,467 @@ summary.event-fields-title {
 }
 .passcode-toggle:hover {
   background: #ede5ff;
+}
+
+/* ===== Calendar View ===== */
+.calendar-view {
+  padding: 0 24px 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.calendar-view > * {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.calendar-app-desc {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #f0fdf4 100%);
+  border: 1px solid #e0f2fe;
+  border-radius: 10px;
+}
+
+.calendar-legend {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.calendar-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.calendar-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2d1b52;
+  margin: 0;
+  min-width: 120px;
+  text-align: center;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  table-layout: fixed;
+}
+
+.calendar-weekday {
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.calendar-cell {
+  min-height: 100px;
+  padding: 6px 4px 4px;
+  border-right: 1px solid #f3f4f6;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.calendar-cell:hover {
+  background: #f5f3ff;
+}
+
+.calendar-cell.other-month {
+  background: #fafafa;
+  opacity: 0.5;
+}
+
+.calendar-cell.today {
+  background: #eff6ff;
+}
+
+.calendar-cell.today .calendar-day {
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-cell.selected {
+  background: #f0e6ff;
+  box-shadow: inset 0 0 0 2px #7c3aed;
+}
+
+.calendar-day {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  display: inline-block;
+}
+
+.calendar-dots {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.calendar-dot {
+  font-size: 11px;
+  line-height: 1.3;
+  padding: 2px 4px;
+  border-radius: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.calendar-dot.app {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.calendar-dot.gcal {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+/* カレンダー詳細パネル */
+.calendar-detail {
+  margin-top: 16px;
+  padding: 16px;
+  background: #fff;
+  border: 1.5px solid #e2d9f3;
+  border-radius: 12px;
+}
+
+.calendar-detail-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2d1b52;
+  margin: 0 0 12px;
+}
+
+.calendar-detail-section {
+  margin-bottom: 12px;
+}
+
+.calendar-detail-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 0 8px;
+}
+
+.calendar-event-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.calendar-event-card.app {
+  background: #faf8ff;
+  border: 1px solid #e9e5f0;
+}
+
+.calendar-event-card.gcal {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.calendar-event-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.calendar-event-info strong {
+  font-size: 13px;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-event-time {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.calendar-event-location {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.calendar-event-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ===== StudentsPage ===== */
+.students-page {
+  padding: 0 24px 24px;
+  max-width: 960px;
+}
+
+.students-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.students-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #2d1b52;
+}
+
+.students-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all .15s;
+  white-space: nowrap;
+}
+
+.btn-action:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.btn-onclass {
+  background: #ede9fe;
+  color: #6d28d9;
+  border-color: #c4b5fd;
+}
+
+.btn-onclass:hover:not(:disabled) {
+  background: #ddd6fe;
+}
+
+.btn-spreadsheet {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-color: #a5d6a7;
+}
+
+.btn-spreadsheet:hover {
+  background: #c8e6c9;
+}
+
+.btn-sidekiq {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #7dd3fc;
+}
+
+.btn-sidekiq:hover:not(:disabled) {
+  background: #bae6fd;
+}
+
+/* 検索 + 統計 */
+.students-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.students-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+}
+
+.students-search {
+  width: 100%;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color .15s;
+}
+
+.students-search:focus {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, .15);
+}
+
+.students-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.students-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.stat-total {
+  background: #f0f9ff;
+  color: #0c4a6e;
+  border: 1px solid #bae6fd;
+}
+
+.stat-course {
+  background: #faf5ff;
+  color: #5b21b6;
+  border: 1px solid #e9d5ff;
+}
+
+/* コースグループ */
+.students-course-group {
+  margin-bottom: 20px;
+}
+
+.course-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.students-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.student-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.student-card:hover {
+  border-color: #c4b5fd;
+  box-shadow: 0 1px 4px rgba(109, 40, 217, .08);
+}
+
+.student-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e1b2e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-delete {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #d1d5db;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all .15s;
+  opacity: 0;
+}
+
+.student-card:hover .student-delete {
+  opacity: 1;
+}
+
+.student-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* 状態表示 */
+.students-loading,
+.students-empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.students-footer {
+  margin-top: 16px;
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: right;
 }

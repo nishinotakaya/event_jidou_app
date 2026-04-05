@@ -274,6 +274,42 @@ body {
   -webkit-box-orient: vertical;
 }
 
+.card-event-date {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7c3aed;
+  background: linear-gradient(135deg, #ede9fe, #fce7f3);
+  padding: 3px 10px;
+  border-radius: 12px;
+  margin: 4px 0 6px;
+}
+.list-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+.search-input {
+  flex: 1;
+  padding: 8px 14px;
+  border: 2px solid #e9d5ff;
+  border-radius: 12px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-input:focus { border-color: var(--purple); }
+.sort-select {
+  padding: 8px 12px;
+  border: 2px solid #e9d5ff;
+  border-radius: 12px;
+  font-size: 13px;
+  background: white;
+  cursor: pointer;
+  outline: none;
+}
+.sort-select:focus { border-color: var(--purple); }
 .card-meta {
   font-size: 11px;
   color: #c4b5fd;
@@ -677,20 +713,6 @@ body {
   border-radius: 6px;
   flex: 0 0 80px;
   width: 80px;
-}
-
-.gen-zoom-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-.gen-zoom-input {
-  font-size: 12px;
-  padding: 2px 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  flex: 1 1 auto;
 }
 
 /* ===== 編集モーダル LMEカード（投稿モーダルの site-check-lme と同スタイル） ===== */

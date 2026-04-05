@@ -197,5 +197,51 @@ module Posting
         log('[TechPlay] ⚠️ 公開ボタンが見つかりません')
       end
     end
+
+    # --- 削除・中止 ---
+
+    def perform_delete(page, event_url)
+      ensure_login(page)
+      # TechPlayは限定公開→下書きにしてから削除扱い
+      # editページへ遷移
+      edit_url = event_url.sub(/\/edit\/?$/, '') + '/edit'
+      page.goto(edit_url, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(2000)
+
+      log('[TechPlay] イベント削除中...')
+      page.on('dialog', ->(d) { d.accept }) rescue nil
+
+      # ページ下部にスクロールして削除ボタンを探す
+      page.evaluate('() => window.scrollTo(0, document.body.scrollHeight)')
+      page.wait_for_timeout(1000)
+
+      del_btn = page.locator('button:has-text("削除"), a:has-text("削除"), button:has-text("Delete")').first
+      if (del_btn.visible?(timeout: 3000) rescue false)
+        del_btn.click
+        page.wait_for_timeout(2000)
+        confirm = page.locator('button:has-text("削除"), button:has-text("OK"), button:has-text("はい")').first
+        confirm.click if (confirm.visible?(timeout: 3000) rescue false)
+        page.wait_for_timeout(3000)
+        log('[TechPlay] ✅ イベント削除完了')
+      else
+        # 削除がなければ「限定公開にする」で非公開に
+        limited = page.locator('button:has-text("限定公開にする")').first
+        if (limited.visible?(timeout: 3000) rescue false)
+          limited.click
+          page.wait_for_timeout(2000)
+          confirm = page.locator('button:has-text("OK"), button:has-text("はい"), button:has-text("限定公開")').first
+          confirm.click if (confirm.visible?(timeout: 3000) rescue false)
+          page.wait_for_timeout(3000)
+          log('[TechPlay] ✅ 限定公開（非公開）に変更完了')
+        else
+          raise '[TechPlay] 削除/非公開ボタンが見つかりません'
+        end
+      end
+    end
+
+    def perform_cancel(page, event_url)
+      # TechPlayは「限定公開にする」で実質中止
+      perform_delete(page, event_url)
+    end
   end
 end
