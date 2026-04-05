@@ -34,8 +34,10 @@ class ZoomService
 
     log("[Zoom] セッションが切れています。ログイン中...")
 
-    email    = ENV['ZOOM_EMAIL'].to_s
-    password = ENV['ZOOM_PASSWORD'].to_s
+    # ServiceConnectionから取得、なければENVフォールバック
+    zoom_conn = ServiceConnection.find_by(service_name: 'zoom')
+    email    = zoom_conn&.email.presence || ENV['ZOOM_EMAIL'].to_s
+    password = zoom_conn&.password_field.presence || ENV['ZOOM_PASSWORD'].to_s
     raise 'ZOOM_EMAIL が未設定です' if email.blank?
     raise 'ZOOM_PASSWORD が未設定です' if password.blank?
 
@@ -53,17 +55,172 @@ class ZoomService
     pass_input.wait_for(state: 'visible', timeout: 10_000)
     pass_input.fill(password)
 
+    # CAPTCHA検出 → 2CAPTCHA API で自動解決
+    solve_captcha_if_present(page)
+
     signin_btn = page.locator('button:has-text("サインイン"), button:has-text("Sign In"), button:has-text("ログイン"), button[type="submit"]').first
     signin_btn.click
     page.wait_for_timeout(3000)
     page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
 
+    # ログイン後にもCAPTCHAが出る場合がある
+    if page.url.include?('/signin') || page.url.include?('/login')
+      solve_captcha_if_present(page)
+      page.wait_for_timeout(3000)
+    end
+
     if page.url.include?('/signin') || page.url.include?('/login')
       error_text = page.evaluate("document.querySelector('.error-message, [role=\"alert\"]')?.textContent?.trim() || ''") rescue ''
-      raise "Zoomログイン失敗: #{error_text.presence || 'CAPTCHAの可能性。rake zoom:login で手動ログインしてください'}"
+      raise "Zoomログイン失敗: #{error_text.presence || 'CAPTCHA解決後もログインできませんでした'}"
     end
 
     log("[Zoom] ✅ ログイン完了")
+  end
+
+  # ===== CAPTCHA解決（2CAPTCHA API）=====
+  def solve_captcha_if_present(page)
+    api_key = ENV['API2CAPTCHA_KEY'].to_s
+    return if api_key.blank?
+
+    captcha_info = page.evaluate(<<~'JS')
+      (() => {
+        // reCAPTCHA v2 visible
+        const recaptcha = document.querySelector('.g-recaptcha, [data-sitekey]');
+        if (recaptcha) {
+          return { type: 'recaptcha_v2', sitekey: recaptcha.dataset.sitekey };
+        }
+        // reCAPTCHA v2 invisible / v3
+        const scripts = [...document.querySelectorAll('script[src*="recaptcha"]')];
+        if (scripts.length > 0) {
+          const sitekey = document.querySelector('[data-sitekey]')?.dataset?.sitekey || '';
+          if (sitekey) return { type: 'recaptcha_v2', sitekey };
+        }
+        // hCaptcha
+        const hcaptcha = document.querySelector('.h-captcha, [data-hcaptcha-sitekey]');
+        if (hcaptcha) {
+          return { type: 'hcaptcha', sitekey: hcaptcha.dataset.sitekey || hcaptcha.dataset.hcaptchaSitekey };
+        }
+        // Cloudflare Turnstile
+        const turnstile = document.querySelector('.cf-turnstile, [data-sitekey]');
+        if (turnstile && turnstile.classList.contains('cf-turnstile')) {
+          return { type: 'turnstile', sitekey: turnstile.dataset.sitekey };
+        }
+        return { type: 'none' };
+      })()
+    JS
+
+    return if captcha_info['type'] == 'none'
+    log("[Zoom] CAPTCHA検出: #{captcha_info['type']} — 2CAPTCHAで解決中...")
+
+    sitekey  = captcha_info['sitekey'].to_s
+    page_url = page.url
+
+    case captcha_info['type']
+    when 'recaptcha_v2'
+      token = solve_with_2captcha(api_key, method: 'userrecaptcha', googlekey: sitekey, pageurl: page_url)
+      if token
+        page.evaluate(<<~JS, arg: token)
+          (token) => {
+            const textarea = document.getElementById('g-recaptcha-response') || document.querySelector('[name="g-recaptcha-response"]');
+            if (textarea) { textarea.style.display = 'block'; textarea.value = token; }
+            if (typeof window.___grecaptcha_cfg !== 'undefined') {
+              const clients = window.___grecaptcha_cfg.clients;
+              for (const key in clients) {
+                const client = clients[key];
+                for (const k2 in client) {
+                  const v = client[k2];
+                  if (v && typeof v === 'object') {
+                    for (const k3 in v) {
+                      if (v[k3] && typeof v[k3].callback === 'function') {
+                        v[k3].callback(token);
+                        return;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        JS
+        log("[Zoom] ✅ reCAPTCHA解決完了")
+      end
+
+    when 'hcaptcha'
+      token = solve_with_2captcha(api_key, method: 'hcaptcha', sitekey: sitekey, pageurl: page_url)
+      if token
+        page.evaluate(<<~JS, arg: token)
+          (token) => {
+            const textarea = document.querySelector('[name="h-captcha-response"], [name="g-recaptcha-response"]');
+            if (textarea) { textarea.value = token; }
+            const iframe = document.querySelector('iframe[data-hcaptcha-widget-id]');
+            const widgetId = iframe?.dataset?.hcaptchaWidgetId;
+            if (widgetId && window.hcaptcha) {
+              window.hcaptcha.execute(widgetId, { async: false });
+            }
+          }
+        JS
+        log("[Zoom] ✅ hCaptcha解決完了")
+      end
+
+    when 'turnstile'
+      token = solve_with_2captcha(api_key, method: 'turnstile', sitekey: sitekey, pageurl: page_url)
+      if token
+        page.evaluate(<<~JS, arg: token)
+          (token) => {
+            const input = document.querySelector('[name="cf-turnstile-response"]');
+            if (input) input.value = token;
+            const cb = document.querySelector('.cf-turnstile')?.dataset?.callback;
+            if (cb && typeof window[cb] === 'function') window[cb](token);
+          }
+        JS
+        log("[Zoom] ✅ Turnstile解決完了")
+      end
+    end
+
+    page.wait_for_timeout(1000)
+  rescue => e
+    log("[Zoom] ⚠️ CAPTCHA解決失敗: #{e.message}")
+  end
+
+  def solve_with_2captcha(api_key, params)
+    require 'net/http'
+    require 'json'
+
+    # リクエスト送信
+    uri = URI('https://2captcha.com/in.php')
+    req_params = params.merge(key: api_key, json: 1)
+    uri.query = URI.encode_www_form(req_params)
+    res = Net::HTTP.get_response(uri)
+    data = JSON.parse(res.body) rescue {}
+
+    unless data['status'] == 1
+      log("[Zoom] 2CAPTCHA送信失敗: #{data['request']}")
+      return nil
+    end
+
+    captcha_id = data['request']
+    log("[Zoom] 2CAPTCHA ID: #{captcha_id} — 解決待ち...")
+
+    # ポーリング（最大120秒）
+    result_uri = URI('https://2captcha.com/res.php')
+    24.times do |i|
+      sleep 5
+      result_uri.query = URI.encode_www_form(key: api_key, action: 'get', id: captcha_id, json: 1)
+      r = Net::HTTP.get_response(result_uri)
+      rd = JSON.parse(r.body) rescue {}
+
+      if rd['status'] == 1
+        log("[Zoom] 2CAPTCHA解決成功（#{(i + 1) * 5}秒）")
+        return rd['request']
+      elsif rd['request'] != 'CAPCHA_NOT_READY'
+        log("[Zoom] 2CAPTCHAエラー: #{rd['request']}")
+        return nil
+      end
+      log("[Zoom] 2CAPTCHA待機中... #{(i + 1) * 5}秒") if (i + 1) % 4 == 0
+    end
+
+    log("[Zoom] 2CAPTCHAタイムアウト")
+    nil
   end
 
   # ===== SCHEDULE =====
