@@ -162,32 +162,41 @@ class ZoomService
       if token
         page.evaluate(<<~JS, arg: token)
           (token) => {
-            // g-recaptcha-response に設定
-            document.querySelectorAll('[name="g-recaptcha-response"], #g-recaptcha-response').forEach(el => {
-              el.style.display = 'block';
+            // g-recaptcha-response textarea に設定
+            document.querySelectorAll('textarea[name="g-recaptcha-response"]').forEach(el => {
+              el.innerHTML = token;
               el.value = token;
             });
-            // コールバック実行
-            if (typeof ___grecaptcha_cfg !== 'undefined') {
-              const clients = ___grecaptcha_cfg.clients;
-              for (const key in clients) {
-                const client = clients[key];
-                const traverse = (obj) => {
-                  if (!obj || typeof obj !== 'object') return;
-                  for (const k in obj) {
-                    if (obj[k] && typeof obj[k].callback === 'function') {
-                      obj[k].callback(token);
-                      return;
-                    }
-                    if (typeof obj[k] === 'object') traverse(obj[k]);
+            // hidden input にも設定
+            document.querySelectorAll('input[name="g-recaptcha-response"]').forEach(el => {
+              el.value = token;
+            });
+            // grecaptcha.enterprise コールバック（深さ制限付き）
+            try {
+              if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {
+                const seen = new WeakSet();
+                const find = (obj, depth) => {
+                  if (depth > 5 || !obj || typeof obj !== 'object' || seen.has(obj)) return false;
+                  seen.add(obj);
+                  for (const k of Object.keys(obj)) {
+                    try {
+                      if (obj[k] && typeof obj[k].callback === 'function') {
+                        obj[k].callback(token);
+                        return true;
+                      }
+                      if (typeof obj[k] === 'object' && find(obj[k], depth + 1)) return true;
+                    } catch(e) {}
                   }
+                  return false;
                 };
-                traverse(client);
+                for (const cid of Object.keys(___grecaptcha_cfg.clients)) {
+                  if (find(___grecaptcha_cfg.clients[cid], 0)) break;
+                }
               }
-            }
+            } catch(e) {}
           }
         JS
-        log("[Zoom] ✅ reCAPTCHA invisible 解決完了")
+        log("[Zoom] ✅ reCAPTCHA invisible トークン設定完了")
       end
 
     when 'recaptcha_v2'
