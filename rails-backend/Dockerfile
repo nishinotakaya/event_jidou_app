@@ -33,8 +33,10 @@ RUN npm install
 
 # Install Chromium browser via Playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/rails/.cache/ms-playwright
-RUN npx playwright install chromium --with-deps && \
-    ls -la /rails/.cache/ms-playwright/
+RUN npx playwright install chromium && \
+    ls -la /rails/.cache/ms-playwright/ || \
+    (npx playwright install-deps chromium && npx playwright install chromium && \
+     ls -la /rails/.cache/ms-playwright/)
 
 # Application code
 COPY . .
