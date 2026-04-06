@@ -112,11 +112,26 @@ class ZoomService
         if (recaptcha) {
           return { type: 'recaptcha_v2', sitekey: recaptcha.dataset.sitekey };
         }
-        // reCAPTCHA v2 invisible / v3
+        // reCAPTCHA v2 invisible / v3 — script タグまたはページテキストから検出
         const scripts = [...document.querySelectorAll('script[src*="recaptcha"]')];
-        if (scripts.length > 0) {
-          const sitekey = document.querySelector('[data-sitekey]')?.dataset?.sitekey || '';
-          if (sitekey) return { type: 'recaptcha_v2', sitekey };
+        const bodyText = document.body.innerText || '';
+        const hasRecaptchaText = bodyText.includes('reCAPTCHA') || bodyText.includes('recaptcha');
+        if (scripts.length > 0 || hasRecaptchaText) {
+          // data-sitekey を探す
+          let sitekey = document.querySelector('[data-sitekey]')?.dataset?.sitekey || '';
+          // グローバル変数から探す
+          if (!sitekey && typeof gRecaptchaInvisible !== 'undefined') sitekey = gRecaptchaInvisible;
+          if (!sitekey && typeof gRecaptchaVisible !== 'undefined') sitekey = gRecaptchaVisible;
+          // scriptタグのrender パラメータから探す
+          if (!sitekey) {
+            for (const s of scripts) {
+              const match = (s.src || '').match(/render=([^&]+)/);
+              if (match) { sitekey = match[1]; break; }
+            }
+          }
+          // Zoom既知のサイトキー（フォールバック）
+          if (!sitekey) sitekey = '6LdZ7KgaAAAAACd71H_lz76FwfcJpc4OQ1J7MDWA';
+          if (sitekey) return { type: 'recaptcha_v2_invisible', sitekey };
         }
         // hCaptcha
         const hcaptcha = document.querySelector('.h-captcha, [data-hcaptcha-sitekey]');
@@ -124,8 +139,8 @@ class ZoomService
           return { type: 'hcaptcha', sitekey: hcaptcha.dataset.sitekey || hcaptcha.dataset.hcaptchaSitekey };
         }
         // Cloudflare Turnstile
-        const turnstile = document.querySelector('.cf-turnstile, [data-sitekey]');
-        if (turnstile && turnstile.classList.contains('cf-turnstile')) {
+        const turnstile = document.querySelector('.cf-turnstile');
+        if (turnstile) {
           return { type: 'turnstile', sitekey: turnstile.dataset.sitekey };
         }
         return { type: 'none' };
@@ -142,6 +157,39 @@ class ZoomService
     page_url = page.url
 
     case captcha_info['type']
+    when 'recaptcha_v2_invisible'
+      token = solve_with_2captcha(api_key, method: 'userrecaptcha', googlekey: sitekey, pageurl: page_url, invisible: 1)
+      if token
+        page.evaluate(<<~JS, arg: token)
+          (token) => {
+            // g-recaptcha-response に設定
+            document.querySelectorAll('[name="g-recaptcha-response"], #g-recaptcha-response').forEach(el => {
+              el.style.display = 'block';
+              el.value = token;
+            });
+            // コールバック実行
+            if (typeof ___grecaptcha_cfg !== 'undefined') {
+              const clients = ___grecaptcha_cfg.clients;
+              for (const key in clients) {
+                const client = clients[key];
+                const traverse = (obj) => {
+                  if (!obj || typeof obj !== 'object') return;
+                  for (const k in obj) {
+                    if (obj[k] && typeof obj[k].callback === 'function') {
+                      obj[k].callback(token);
+                      return;
+                    }
+                    if (typeof obj[k] === 'object') traverse(obj[k]);
+                  }
+                };
+                traverse(client);
+              }
+            }
+          }
+        JS
+        log("[Zoom] ✅ reCAPTCHA invisible 解決完了")
+      end
+
     when 'recaptcha_v2'
       token = solve_with_2captcha(api_key, method: 'userrecaptcha', googlekey: sitekey, pageurl: page_url)
       if token
