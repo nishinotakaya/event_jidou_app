@@ -64,7 +64,8 @@ class ZoomJob < ApplicationJob
       JS
 
       log_fn = ->(msg) {
-        Rails.logger.info("[ZoomJob] #{msg}")
+        $stdout.puts("[ZoomJob] #{msg}")
+        $stdout.flush
         broadcast(job_id, type: 'log', message: msg)
       }
 
@@ -112,7 +113,8 @@ class ZoomJob < ApplicationJob
 
     broadcast(job_id, type: 'done')
   rescue => e
-    Rails.logger.error("[ZoomJob] ERROR: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}")
+    $stdout.puts("[ZoomJob] ERROR: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}")
+    $stdout.flush
     broadcast(job_id, type: 'error', message: e.message)
     broadcast(job_id, type: 'done')
   end
