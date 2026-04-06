@@ -1,6 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import { updateText, fetchPostingHistory, checkRegistrations, checkParticipants, syncPostingHistory, publishAllEvents, fetchGithubReviews, approveGithubReview, postGithubComment, openLocalRepo, reReviewGithub } from '../api.js';
 
+// 管理URL → 公開URL変換（viewer向け）
+function toPublicUrl(url, siteName) {
+  if (!url) return null;
+  // こくチーズ: /admin/e-XXX/d-YYY/ → /event/XXX/
+  if (siteName === 'kokuchpro' || url.includes('kokuchpro.com/admin/')) {
+    const m = url.match(/\/e-([a-f0-9]+)\//);
+    return m ? `https://www.kokuchpro.com/event/${m[1]}/` : url;
+  }
+  // TechPlay: /event/XXX/edit → techplay.jp/event/XXX
+  if (siteName === 'techplay' || url.includes('owner.techplay.jp')) {
+    const m = url.match(/\/event\/(\d+)/);
+    return m ? `https://techplay.jp/event/${m[1]}` : url;
+  }
+  // Doorkeeper: /manage/.../events/XXX → doorkeeper.jp/events/XXX
+  if (siteName === 'doorkeeper' || url.includes('manage.doorkeeper.jp')) {
+    const m = url.match(/\/events\/(\d+)/);
+    return m ? `https://www.doorkeeper.jp/events/${m[1]}` : url;
+  }
+  // connpass, Peatix等はそのまま公開URL
+  return url;
+}
+
 function buildFolderOptions(folders) {
   const opts = [{ value: '', label: '未分類' }];
   folders.forEach((parent) => {
@@ -218,10 +240,10 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
           {postingHistory.map((h) => (
             <a
               key={h.siteName}
-              href={h.eventUrl || '#'}
-              target={h.eventUrl ? '_blank' : undefined}
+              href={userRole === 'viewer' ? (h.published ? toPublicUrl(h.eventUrl, h.siteName) : null) || '#' : h.eventUrl || '#'}
+              target={(userRole === 'viewer' ? h.published : h.eventUrl) ? '_blank' : undefined}
               rel="noopener noreferrer"
-              onClick={(e) => { if (!h.eventUrl) e.preventDefault(); }}
+              onClick={(e) => { if (userRole === 'viewer' ? !h.published : !h.eventUrl) e.preventDefault(); }}
               title={`${h.siteLabel}${h.status === 'not_found' ? '（存在しない）' : h.status === 'ended' ? '（終了）' : h.status === 'cancelled' ? '（中止）' : h.status === 'deleted' ? '（削除済み）' : h.published ? '（公開済み）' : '（下書き）'}${h.registrations != null ? `\n申し込み: ${h.registrations}人` : ''}${h.eventUrl ? '\nクリックで詳細ページへ' : ''}\n投稿日: ${h.postedAt ? new Date(h.postedAt).toLocaleString('ja-JP') : ''}`}
               style={{
                 display: 'inline-flex',
