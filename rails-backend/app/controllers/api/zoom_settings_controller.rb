@@ -37,19 +37,50 @@ module Api
     end
 
     # POST /api/zoom/create_meeting
-    # Enqueues ZoomJob → ActionCable でリアルタイムログ配信
+    # Zoom OAuth API で同期的にミーティング作成（0.5秒で完了）
     def create_meeting
-      job_id = SecureRandom.hex(8)
+      raw_title  = params[:title].to_s.presence || 'ミーティング'
+      start_date = params[:startDate].to_s
+      start_time = params[:startTime].to_s.presence || '10:00'
+      duration   = (params[:duration] || 120).to_i
 
-      payload = {
-        'title'     => params[:title].to_s,
-        'startDate' => params[:startDate].to_s,
-        'startTime' => params[:startTime].to_s,
-        'duration'  => params[:duration] || 120,
+      date_label = begin
+        d = Date.parse(start_date)
+        "#{d.month}/#{d.day}"
+      rescue
+        ''
+      end
+      title = date_label.present? ? "#{date_label} #{raw_title}" : raw_title
+
+      service = ZoomService.new
+      result = service.create_meeting(
+        title: title,
+        start_date: start_date,
+        start_time: start_time,
+        duration_minutes: duration,
+      )
+
+      setting = ZoomSetting.create!(
+        label: title,
+        title: title,
+        zoom_url: result[:zoom_url],
+        meeting_id: result[:meeting_id],
+        passcode: result[:passcode],
+      )
+
+      render json: {
+        ok: true,
+        data: {
+          id: setting.id,
+          label: setting.label,
+          title: setting.title,
+          zoomUrl: setting.zoom_url,
+          meetingId: setting.meeting_id,
+          passcode: setting.passcode,
+        },
       }
-
-      ZoomJob.perform_later(job_id, payload)
-      render json: { job_id: job_id }
+    rescue => e
+      render json: { ok: false, error: e.message }, status: :unprocessable_entity
     end
 
     # DELETE /api/zoom_settings/:id

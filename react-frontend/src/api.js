@@ -122,42 +122,21 @@ export async function deleteZoomSetting(id) {
 }
 
 export async function createZoomMeeting({ title, startDate, startTime, duration }, onEvent) {
+  onEvent({ type: 'log', message: 'Zoomミーティング作成中...' });
   const res = await fetch('/api/zoom/create_meeting', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, startDate, startTime, duration }),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || 'Zoomミーティング作成に失敗しました');
+  const data = await res.json();
+  if (!res.ok || !data.ok) {
+    onEvent({ type: 'error', message: data.error || 'Zoomミーティング作成に失敗しました' });
+    onEvent({ type: 'done' });
+    throw new Error(data.error || 'Zoomミーティング作成に失敗しました');
   }
-  const { job_id } = await res.json();
-
-  const cableUrl = import.meta.env.VITE_CABLE_URL || '/cable';
-  const { createConsumer } = await import('@rails/actioncable');
-  const consumer = createConsumer(cableUrl);
-
-  return new Promise((resolve, reject) => {
-    const subscription = consumer.subscriptions.create(
-      { channel: 'PostChannel', job_id },
-      {
-        received(data) {
-          onEvent(data);
-          if (data.type === 'done') {
-            subscription.unsubscribe();
-            consumer.disconnect();
-            resolve();
-          } else if (data.type === 'error') {
-            // error の後に done が来るので done で解決する
-          }
-        },
-        rejected() {
-          consumer.disconnect();
-          reject(new Error('ActionCable接続が拒否されました'));
-        },
-      }
-    );
-  });
+  onEvent({ type: 'log', message: '✅ ミーティング作成完了' });
+  onEvent({ type: 'result', data: data.data });
+  onEvent({ type: 'done' });
 }
 
 // ===== App Settings (DB-backed KVS) =====
