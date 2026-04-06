@@ -268,7 +268,7 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
               {h.status === 'not_found' ? <span>❌</span> : h.status === 'ended' ? <span>❌ 終了</span> : h.status === 'cancelled' ? <span>🚫 中止</span> : h.status === 'deleted' ? <span>🗑️</span> : h.status === 'error' ? <span>❌</span> : h.published ? <span>✅</span> : <span>📝</span>}
             </a>
           ))}
-          <button
+          {userRole !== 'viewer' && <button
             onClick={handleCheckRegistrations}
             disabled={checkingRegs}
             style={{
@@ -280,8 +280,8 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
             title="各サイトの申し込み数を確認"
           >
             {checkingRegs ? '⏳' : '🔄'} 申し込み確認
-          </button>
-          <button
+          </button>}
+          {userRole !== 'viewer' && <button
             onClick={handleCheckParticipants}
             disabled={checkingParticipants}
             style={{
@@ -293,9 +293,9 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
             title="各サイトの参加者名・メールアドレスを取得"
           >
             {checkingParticipants ? '⏳ 取得中...' : '👥 参加者確認'}
-          </button>
+          </button>}
         </>)}
-        <button
+        {userRole !== 'viewer' && <button
           onClick={handleSync}
           disabled={syncing}
           style={{
@@ -307,7 +307,7 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
           title="各ポータルサイトのイベント生存確認"
         >
           {syncing ? '⏳' : '🔄'} 同期
-        </button>
+        </button>}
       </div>}
       </div>
 
