@@ -55,23 +55,46 @@ class ZoomService
     pass_input.wait_for(state: 'visible', timeout: 10_000)
     pass_input.fill(password)
 
-    # CAPTCHA検出 → 2CAPTCHA API で自動解決
+    # サインインボタン前にCAPTCHAがある場合
     solve_captcha_if_present(page)
 
     signin_btn = page.locator('button:has-text("サインイン"), button:has-text("Sign In"), button:has-text("ログイン"), button[type="submit"]').first
     signin_btn.click
-    page.wait_for_timeout(3000)
+    page.wait_for_timeout(5000)
     page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
 
-    # ログイン後にもCAPTCHAが出る場合がある
-    if page.url.include?('/signin') || page.url.include?('/login')
-      solve_captcha_if_present(page)
-      page.wait_for_timeout(3000)
+    # サインイン後にCAPTCHAが表示される場合（最大2回リトライ）
+    2.times do |attempt|
+      break unless page.url.include?('/signin') || page.url.include?('/login')
+
+      log("[Zoom] ログインページに留まっています（試行#{attempt + 1}）— CAPTCHA確認中...")
+      page.screenshot(path: Rails.root.join('tmp', "zoom_captcha_attempt_#{attempt}.png").to_s) rescue nil
+
+      solved = solve_captcha_if_present(page)
+      if solved
+        # CAPTCHA解決後に再度サインインボタンを押す
+        page.wait_for_timeout(1000)
+        begin
+          signin_btn2 = page.locator('button:has-text("サインイン"), button:has-text("Sign In"), button:has-text("ログイン"), button[type="submit"]').first
+          signin_btn2.click
+          page.wait_for_timeout(5000)
+          page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
+        rescue => e
+          log("[Zoom] 再サインインボタン押下失敗: #{e.message}")
+        end
+      else
+        log("[Zoom] CAPTCHAが検出されませんでした")
+        break
+      end
     end
 
     if page.url.include?('/signin') || page.url.include?('/login')
+      # スクリーンショット保存
+      page.screenshot(path: Rails.root.join('tmp', 'zoom_login_failed.png').to_s) rescue nil
       error_text = page.evaluate("document.querySelector('.error-message, [role=\"alert\"]')?.textContent?.trim() || ''") rescue ''
-      raise "Zoomログイン失敗: #{error_text.presence || 'CAPTCHA解決後もログインできませんでした'}"
+      page_text = page.evaluate("document.body.innerText.substring(0, 500)") rescue ''
+      log("[Zoom] ページテキスト: #{page_text}")
+      raise "Zoomログイン失敗: #{error_text.presence || 'ログインページから遷移できませんでした'}"
     end
 
     log("[Zoom] ✅ ログイン完了")
@@ -109,7 +132,10 @@ class ZoomService
       })()
     JS
 
-    return if captcha_info['type'] == 'none'
+    if captcha_info['type'] == 'none'
+      log("[Zoom] CAPTCHAなし")
+      return false
+    end
     log("[Zoom] CAPTCHA検出: #{captcha_info['type']} — 2CAPTCHAで解決中...")
 
     sitekey  = captcha_info['sitekey'].to_s
@@ -178,8 +204,10 @@ class ZoomService
     end
 
     page.wait_for_timeout(1000)
+    return true
   rescue => e
     log("[Zoom] ⚠️ CAPTCHA解決失敗: #{e.message}")
+    return false
   end
 
   def solve_with_2captcha(api_key, params)
