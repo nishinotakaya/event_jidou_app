@@ -157,7 +157,7 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
           >
             複製
           </button>}
-          {postingHistory.length > 0 && postingHistory.some(h => !h.published && h.status === 'success') && (
+          {userRole !== 'viewer' && postingHistory.length > 0 && postingHistory.some(h => !h.published && h.status === 'success') && (
             <button
               className="btn btn-sm"
               style={{ background: '#16a34a', color: '#fff', border: 'none' }}
@@ -168,7 +168,7 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
               {publishing ? '⏳' : '📢'} 全公開
             </button>
           )}
-          {postingHistory.length > 0 && (
+          {userRole !== 'viewer' && postingHistory.length > 0 && (
             <button
               className="btn btn-sm"
               style={{ background: '#f59e0b', color: '#fff', border: 'none' }}
