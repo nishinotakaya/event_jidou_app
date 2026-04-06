@@ -79,6 +79,7 @@ export default function ItemList({
   searchQuery = '',
   sortOrder = 'eventDate-desc',
   onScanGithub,
+  userRole = 'admin',
 }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectMode, setSelectMode] = useState(false);
@@ -263,6 +264,7 @@ export default function ItemList({
                 onRefresh={onRefresh}
                 showToast={showToast}
                 tagsOpen={allTagsOpen}
+                userRole={userRole}
               />
             </div>
           ))}

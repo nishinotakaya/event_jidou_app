@@ -8,6 +8,7 @@ import CalendarView from './components/CalendarView.jsx';
 import LoginPage from './components/LoginPage.jsx';
 import StudentsPage from './components/StudentsPage.jsx';
 import UsersPage from './components/UsersPage.jsx';
+import DetailModal from './components/DetailModal.jsx';
 import { fetchTexts, fetchFolders, deleteText, createText, deleteRemoteEvents, cancelRemoteEvents, fetchPostingHistory, scanGithubReviews } from './api.js';
 import './index.css';
 
@@ -51,6 +52,7 @@ export default function App() {
   const [showCalendar, setShowCalendar] = useState(true);
   const [showStudents, setShowStudents] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
+  const [detailItem, setDetailItem] = useState(null); // viewer用詳細モーダル
   const [currentUser, setCurrentUser] = useState(undefined); // undefined=loading, null=guest, object=logged in
 
   const { toasts, showToast, removeToast } = useToasts();
@@ -379,7 +381,7 @@ export default function App() {
           <CalendarView
             items={items}
             userRole={currentUser?.role}
-            onEditItem={(item) => setEditItem(item)}
+            onEditItem={(item) => currentUser?.role === 'viewer' ? setDetailItem(item) : setEditItem(item)}
             onShowInList={(item) => {
               setShowCalendar(false);
               if (item.folder) setSelectedFolder(item.folder);
@@ -439,7 +441,7 @@ export default function App() {
           selectedFolder={selectedFolder}
           searchQuery={searchQuery}
           sortOrder={sortOrder}
-          onEdit={(item) => setEditItem(item)}
+          onEdit={(item) => currentUser?.role === 'viewer' ? setDetailItem(item) : setEditItem(item)}
           onDelete={(item) => setDeleteConfirm(item)}
           onBulkDelete={handleBulkDelete}
           onPost={(item) => setPostItem(item)}
@@ -447,6 +449,7 @@ export default function App() {
           onCancel={handleCancelAll}
           onRefresh={loadItems}
           showToast={showToast}
+          userRole={currentUser?.role}
           page={page}
           onPageChange={setPage}
           onScanGithub={async () => {
@@ -559,6 +562,11 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Detail Modal (viewer用) */}
+      {detailItem && (
+        <DetailModal item={detailItem} onClose={() => setDetailItem(null)} />
       )}
 
       {/* Toast Notifications */}

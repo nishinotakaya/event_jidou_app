@@ -282,7 +282,7 @@ export default function CalendarView({ items = [], onEditItem, onShowInList, onN
                       </div>
                       <div className="calendar-event-actions">
                         <button className="btn btn-sm btn-teal" onClick={() => { setSelectedDate(null); onEditItem && onEditItem(item); }}>
-                          編集
+                          {userRole === 'viewer' ? '詳細' : '編集'}
                         </button>
                         <button
                           className="btn btn-sm btn-secondary"
@@ -291,14 +291,14 @@ export default function CalendarView({ items = [], onEditItem, onShowInList, onN
                         >
                           📋 一覧へ
                         </button>
-                        <button
+                        {userRole !== 'viewer' && <button
                           className="btn btn-sm"
                           style={{ background: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' }}
                           onClick={() => handleSyncToGoogle(item)}
                           disabled={syncing === item.id}
                         >
                           {syncing === item.id ? '⏳' : '📅'} GCal登録
-                        </button>
+                        </button>}
                       </div>
                     </div>
                   ))}
