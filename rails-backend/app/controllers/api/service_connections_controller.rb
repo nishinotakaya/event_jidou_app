@@ -2,7 +2,7 @@ module Api
   class ServiceConnectionsController < ApplicationController
     # GET /api/service_connections
     def index
-      connections = ServiceConnection.all.map { |c| c.as_json_safe(include_password: true) }
+      connections = current_user.service_connections.map { |c| c.as_json_safe(include_password: true) }
       # 未登録サービスも含めて返す
       all_services = ServiceConnection::SERVICES.map do |name|
         existing = connections.find { |c| c[:serviceName] == name }

@@ -7,6 +7,7 @@ import ConnectionsPage from './components/ConnectionsPage.jsx';
 import CalendarView from './components/CalendarView.jsx';
 import LoginPage from './components/LoginPage.jsx';
 import StudentsPage from './components/StudentsPage.jsx';
+import UsersPage from './components/UsersPage.jsx';
 import { fetchTexts, fetchFolders, deleteText, createText, deleteRemoteEvents, cancelRemoteEvents, fetchPostingHistory, scanGithubReviews } from './api.js';
 import './index.css';
 
@@ -49,6 +50,7 @@ export default function App() {
   const [showConnections, setShowConnections] = useState(false);
   const [showCalendar, setShowCalendar] = useState(true);
   const [showStudents, setShowStudents] = useState(false);
+  const [showUsers, setShowUsers] = useState(false);
   const [currentUser, setCurrentUser] = useState(undefined); // undefined=loading, null=guest, object=logged in
 
   const { toasts, showToast, removeToast } = useToasts();
@@ -307,7 +309,7 @@ export default function App() {
             >
               {showCalendar ? '📋 一覧表示' : '📅 カレンダー'}
             </button>
-            <button
+            {currentUser?.role !== 'viewer' && <button
               className="btn"
               onClick={() => { setShowConnections(!showConnections); if (!showConnections) setShowCalendar(false); }}
               title={showConnections ? 'サービス接続管理を隠す' : 'サービス接続管理を表示'}
@@ -321,13 +323,30 @@ export default function App() {
               }}
             >
               {showConnections ? '📋 イベント一覧 ▲' : '🔗 接続管理 ▼'}
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => setEditItem({})}
-            >
-              + 新規作成
-            </button>
+            </button>}
+            {currentUser?.role === 'admin' && (
+              <button
+                className="btn"
+                onClick={() => { setShowUsers(!showUsers); if (!showUsers) { setShowCalendar(false); setShowConnections(false); setShowStudents(false); } }}
+                style={{
+                  background: showUsers ? '#dc2626' : '#fef2f2',
+                  color: showUsers ? '#fff' : '#dc2626',
+                  border: showUsers ? '1.5px solid #dc2626' : '1.5px solid #fca5a5',
+                  fontWeight: 600,
+                  transition: 'all 0.2s',
+                }}
+              >
+                👥 ユーザー管理
+              </button>
+            )}
+            {currentUser?.role !== 'viewer' && (
+              <button
+                className="btn btn-primary"
+                onClick={() => setEditItem({})}
+              >
+                + 新規作成
+              </button>
+            )}
           </div>
         </div>
 
@@ -343,6 +362,11 @@ export default function App() {
               />
             </div>
           </div>
+        )}
+
+        {/* Users Page (admin only) */}
+        {showUsers && currentUser?.role === 'admin' && (
+          <UsersPage showToast={showToast} />
         )}
 
         {/* Students Page */}
@@ -376,7 +400,7 @@ export default function App() {
         )}
 
         {/* Search + Sort + Item List (接続管理・カレンダー表示中は非表示) */}
-        {!showConnections && !showCalendar && !showStudents && (<>
+        {!showConnections && !showCalendar && !showStudents && !showUsers && (<>
         <div className="search-bar">
           <span className="search-icon">🔍</span>
           <input

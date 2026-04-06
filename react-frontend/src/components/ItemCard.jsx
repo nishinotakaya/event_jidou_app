@@ -146,9 +146,9 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
           <button
             className="btn btn-teal btn-sm"
             onClick={() => onEdit(item)}
-            title="編集・投稿"
+            title={type === 'student' ? '編集' : '編集・投稿'}
           >
-            編集・投稿
+            {type === 'student' ? '編集' : '編集・投稿'}
           </button>
           <button
             className="btn btn-outline btn-sm"

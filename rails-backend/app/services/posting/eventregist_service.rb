@@ -11,22 +11,27 @@ module Posting
     end
 
     def ensure_login(page)
+      # まずダッシュボードに直接アクセス（セッションが有効ならログイン不要）
       log('[EventRegist] ログインページへ移動...')
-      page.goto(LOGIN_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.goto("#{BASE_URL}/ticket/list", waitUntil: 'domcontentloaded', timeout: 30_000)
       page.wait_for_timeout(2000)
 
-      # 既にログイン済みの場合
-      if page.url.include?('/dashboard') || page.url == "#{BASE_URL}/"
-        log('[EventRegist] ✅ ログイン済み')
+      unless page.url.include?('/login') || page.url.include?('/signin')
+        log("[EventRegist] ✅ ログイン済み → #{page.url}")
         return
       end
 
       creds = ServiceConnection.credentials_for('eventregist')
       raise '[EventRegist] メールアドレスが未設定です' if creds[:email].blank?
 
+      log("[EventRegist] ログインフォーム入力中... (URL: #{page.url})")
       # メールアドレス入力
       email_input = page.locator('input[type="email"], input[name="email"], input[placeholder*="メール"], input[placeholder*="mail"]').first
-      raise '[EventRegist] メール入力欄が見つかりません' unless (email_input.visible?(timeout: 5000) rescue false)
+      unless (email_input.visible?(timeout: 5000) rescue false)
+        # ページの状態をデバッグ
+        body = page.evaluate("document.body?.innerText?.substring(0, 200) || ''") rescue ''
+        raise "[EventRegist] メール入力欄が見つかりません (URL: #{page.url}, body: #{body[0, 80]})"
+      end
       email_input.fill(creds[:email])
 
       # パスワード入力

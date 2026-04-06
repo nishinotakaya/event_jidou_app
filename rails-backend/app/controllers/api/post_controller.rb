@@ -19,6 +19,7 @@ module Api
         return render json: { error: '投稿先が選択されていません' }, status: :unprocessable_entity
       end
 
+      payload['userId'] = current_user.id
       PostJob.perform_later(job_id, payload)
 
       render json: { job_id: job_id }

@@ -3,6 +3,15 @@ class User < ApplicationRecord
          :recoverable, :rememberable, :validatable,
          :omniauthable, omniauth_providers: [:google_oauth2]
 
+  ROLES = %w[admin editor viewer].freeze
+  validates :role, inclusion: { in: ROLES }
+
+  def admin?  = role == 'admin'
+  def editor? = role == 'editor'
+  def viewer? = role == 'viewer'
+  def can_edit?  = admin? || editor?
+  def can_post?  = admin? || editor?
+
   has_many :items, dependent: :destroy
   has_many :folders, dependent: :destroy
   has_many :service_connections, dependent: :destroy

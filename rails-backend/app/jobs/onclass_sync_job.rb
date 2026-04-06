@@ -12,7 +12,7 @@ class OnclassSyncJob < ApplicationJob
 
     Playwright.create(playwright_cli_executable_path: playwright_path) do |pw|
       browser = pw.chromium.launch(
-        headless: false,
+        headless: ENV["RAILS_ENV"] == "production",
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       )
       context = browser.new_context(

@@ -541,25 +541,57 @@ module Posting
 
     def login_and_get_bearer(page)
       log("[Peatix] ログイン中...")
-      page.goto('https://peatix.com/signin', waitUntil: 'domcontentloaded', timeout: 30_000)
 
-      unless page.url.include?('signin') || page.url.include?('login')
-        log("[Peatix] ✅ ログイン済み → #{page.url}")
-      else
-        page.fill('input[name="username"]', ENV['PEATIX_EMAIL'].to_s)
-        page.click('#next-button')
-        page.wait_for_url('**/user/signin', timeout: 15_000) rescue nil
-        page.wait_for_selector('input[type="password"]', timeout: 10_000) rescue nil
-        page.fill('input[type="password"]', ENV['PEATIX_PASSWORD'].to_s)
-        page.expect_navigation(timeout: 20_000) { page.click('#signin-button') } rescue nil
-
-        after_url = page.url
-        raise "Peatix ログイン失敗" if after_url.include?('signin') || after_url.include?('login')
-        log("[Peatix] ✅ ログイン完了 → #{after_url}")
-      end
-
+      # まずイベント作成ページに直接アクセス（DBセッションがあればログイン済み）
       group_id   = GROUP_ID.call
       create_url = ENV.fetch('PEATIX_CREATE_URL', "https://peatix.com/group/#{group_id}/event/create")
+      page.goto(create_url, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(3000)
+
+      # Bearer取得を試行（セッションが有効なら取れる）
+      token = page.evaluate("localStorage.getItem('peatix_frontend_access_token')") rescue nil
+      if token.present?
+        log("[Peatix] ✅ セッション有効 - Bearer取得: #{token[0, 8]}...")
+        return token
+      end
+
+      # セッション無効 → ログインが必要
+      log("[Peatix] セッション無効 - ログインページへ...")
+      page.goto('https://peatix.com/signin', waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(2000)
+
+      if page.url.include?('signin') || page.url.include?('login')
+        creds = ServiceConnection.credentials_for('peatix')
+        email = creds[:email].presence || ENV['PEATIX_EMAIL'].to_s
+        password = creds[:password].presence || ENV['PEATIX_PASSWORD'].to_s
+
+        log("[Peatix] メール入力中...")
+        page.fill('input[name="username"]', email)
+        page.click('#next-button')
+        page.wait_for_timeout(3000)
+
+        # パスワード入力欄を待つ（複数セレクタ試行）
+        pass_found = false
+        ['input[type="password"]', '#password', 'input[name="password"]'].each do |sel|
+          begin
+            page.wait_for_selector(sel, timeout: 5_000)
+            page.fill(sel, password)
+            pass_found = true
+            break
+          rescue
+            next
+          end
+        end
+        raise "Peatix パスワード入力欄が見つかりません（CAPTCHA or ページ構造変更の可能性）" unless pass_found
+
+        page.expect_navigation(timeout: 20_000) { page.click('#signin-button') } rescue nil
+        page.wait_for_timeout(3000)
+
+        raise "Peatix ログイン失敗 (URL: #{page.url})" if page.url.include?('signin') || page.url.include?('login')
+        log("[Peatix] ✅ ログイン完了 → #{page.url}")
+      end
+
+      # Bearerトークン取得
       page.goto(create_url, waitUntil: 'domcontentloaded', timeout: 30_000)
       page.wait_for_timeout(5000)
 

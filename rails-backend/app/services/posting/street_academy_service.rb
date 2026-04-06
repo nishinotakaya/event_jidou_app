@@ -23,14 +23,39 @@ module Posting
       creds = ServiceConnection.credentials_for('street_academy')
       raise '[ストアカ] メールアドレスが未設定です' if creds[:email].blank?
 
-      page.fill('#user_email', creds[:email])
-      page.fill('#user_password', creds[:password])
-      page.click('input[type="submit"]')
+      log("[ストアカ] 現在のURL: #{page.url}")
+      # フォーム要素を確認
+      form_info = page.evaluate(<<~'JS') rescue { 'error' => 'evaluate failed' }
+        (() => {
+          const emailInput = document.querySelector('#user_email') || document.querySelector('input[type="email"]') || document.querySelector('input[name*="email"]');
+          const passInput = document.querySelector('#user_password') || document.querySelector('input[type="password"]') || document.querySelector('input[name*="password"]');
+          const submitBtn = document.querySelector('input[type="submit"]') || document.querySelector('button[type="submit"]');
+          return {
+            hasEmail: !!emailInput, emailSelector: emailInput?.id || emailInput?.name || 'none',
+            hasPass: !!passInput, passSelector: passInput?.id || passInput?.name || 'none',
+            hasSubmit: !!submitBtn, submitText: (submitBtn?.value || submitBtn?.textContent || '').substring(0, 30),
+            bodyText: document.body?.innerText?.substring(0, 200) || '',
+          };
+        })()
+      JS
+      log("[ストアカ] フォーム情報: #{form_info.to_json}")
+
+      email_sel = '#user_email'
+      pass_sel = '#user_password'
+      # フォールバックセレクタ
+      email_sel = 'input[type="email"]' unless form_info['hasEmail'] && form_info['emailSelector'] == 'user_email'
+      pass_sel = 'input[type="password"]' unless form_info['hasPass'] && form_info['passSelector'] == 'user_password'
+
+      page.fill(email_sel, creds[:email])
+      page.fill(pass_sel, creds[:password])
+      page.click('input[type="submit"], button[type="submit"]')
       page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
       page.wait_for_timeout(3000)
 
+      log("[ストアカ] ログイン後URL: #{page.url}")
       if page.url.include?('/sign_in')
-        raise '[ストアカ] ログイン失敗'
+        page_text = page.evaluate("document.body?.innerText?.substring(0, 300) || ''") rescue ''
+        raise "[ストアカ] ログイン失敗 (URL: #{page.url}, body: #{page_text[0, 100]})"
       end
       log("[ストアカ] ✅ ログイン完了 → #{page.url}")
     end

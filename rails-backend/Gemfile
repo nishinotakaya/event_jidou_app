@@ -8,7 +8,7 @@ gem "puma", ">= 5.0"
 gem "rack-cors"
 gem "redis", ">= 4.0.1"       # ActionCable (production) + Sidekiq
 gem "sidekiq", "~> 7.0"       # background jobs (production)
-gem "playwright-ruby-client", "~> 1.49"  # Playwright Ruby binding
+gem "playwright-ruby-client", "1.49.1"  # npm playwright 1.49.1 と完全一致させる
 gem "devise", "~> 4.9"
 gem "omniauth-google-oauth2", "~> 1.1"
 gem "google-apis-gmail_v1", "~> 0.35"

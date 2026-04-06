@@ -45,7 +45,7 @@ class RegistrationChecker
 
     Playwright.create(playwright_cli_executable_path: pw_path) do |playwright|
       browser = playwright.chromium.launch(
-        headless: false,
+        headless: ENV["RAILS_ENV"] == "production",
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
       )
 

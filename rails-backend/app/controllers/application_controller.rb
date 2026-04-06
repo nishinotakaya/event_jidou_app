@@ -14,6 +14,14 @@ class ApplicationController < ActionController::API
     end
   end
 
+  def authorize_admin!
+    render json: { error: '管理者権限が必要です' }, status: :forbidden unless current_user&.admin?
+  end
+
+  def authorize_editor!
+    render json: { error: '編集権限が必要です' }, status: :forbidden unless current_user&.can_edit?
+  end
+
   def current_user
     @current_user ||= warden.user(:user)
   end

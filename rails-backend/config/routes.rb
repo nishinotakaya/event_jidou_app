@@ -94,6 +94,14 @@ Rails.application.routes.draw do
     put    "calendar/events/:event_id", to: "calendar#update_event"
     delete "calendar/events/:event_id", to: "calendar#delete_event"
 
+    # ユーザー管理（admin専用）
+    namespace :admin do
+      get    "users",          to: "users#index"
+      post   "users/invite",   to: "users#invite"
+      put    "users/:id",      to: "users#update"
+      delete "users/:id",      to: "users#destroy"
+    end
+
     # AI
     post "ai/correct",        to: "ai#correct"
     post "ai/generate",       to: "ai#generate"

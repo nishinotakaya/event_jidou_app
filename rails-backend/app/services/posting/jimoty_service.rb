@@ -11,18 +11,20 @@ module Posting
     end
 
     def ensure_login(page)
+      # まずマイページに直接アクセス（セッションが有効ならログイン不要）
       log('[ジモティー] ログインページへ移動...')
-      page.goto(LOGIN_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.goto('https://jmty.jp/my/posts', waitUntil: 'domcontentloaded', timeout: 30_000)
       page.wait_for_timeout(2000)
 
-      if page.url.include?('/my/') || (page.text_content('body').to_s.include?('ログアウト') rescue false)
-        log('[ジモティー] ✅ ログイン済み')
+      unless page.url.include?('/sign_in') || page.url.include?('/login')
+        log("[ジモティー] ✅ ログイン済み → #{page.url}")
         return
       end
 
       creds = ServiceConnection.credentials_for('jimoty')
       raise '[ジモティー] メールアドレスが未設定です' if creds[:email].blank?
 
+      log("[ジモティー] ログインフォーム入力中... (URL: #{page.url})")
       page.fill('input[name="user[email]"]', creds[:email])
       page.fill('input[name="user[password]"]', creds[:password])
       page.locator('input[type="submit"]').first.click
@@ -30,7 +32,8 @@ module Posting
       page.wait_for_timeout(3000)
 
       if page.url.include?('/sign_in')
-        raise '[ジモティー] ログイン失敗'
+        body = page.evaluate("document.body?.innerText?.substring(0, 200) || ''") rescue ''
+        raise "[ジモティー] ログイン失敗 (URL: #{page.url}, body: #{body[0, 80]})"
       end
       log("[ジモティー] ✅ ログイン完了 → #{page.url}")
     end

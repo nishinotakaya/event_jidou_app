@@ -1270,8 +1270,8 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
               </div>
             </div>
 
-            {/* Zoom Section */}
-            <div className="zoom-section" style={{ marginTop: '10px', background: '#f0f7ff', border: '1.5px solid #bfdbfe', borderRadius: '10px', padding: '14px' }}>
+            {/* Zoom Section (受講生サポートモードでは非表示) */}
+            {!isStudentMode && <div className="zoom-section" style={{ marginTop: '10px', background: '#f0f7ff', border: '1.5px solid #bfdbfe', borderRadius: '10px', padding: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
                 <label className="form-label" style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#1e40af' }}>
                   Zoom ミーティング
@@ -1493,7 +1493,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
             <div className="form-group" style={{ marginTop: '10px' }}>
               <label className="form-label">連絡先TEL</label>

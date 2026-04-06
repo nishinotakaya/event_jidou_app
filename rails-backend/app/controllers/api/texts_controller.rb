@@ -1,7 +1,10 @@
 module Api
   class TextsController < ApplicationController
+    before_action :authorize_editor!, only: [:create, :update, :destroy]
+
     def index
-      items = current_user.items.where(item_type: params[:type]).order(:created_at)
+      # 全ユーザーのアイテムを閲覧可能（管理者のアイテムを共有）
+      items = Item.where(item_type: params[:type]).order(:created_at)
       render json: items.map { |i| format_item(i) }
     end
 
@@ -26,7 +29,7 @@ module Api
     end
 
     def update
-      item = current_user.items.find_by(id: params[:id], item_type: params[:type])
+      item = Item.find_by(id: params[:id], item_type: params[:type])
       return render json: { error: 'Not found' }, status: :not_found unless item
 
       item.assign_attributes(
@@ -75,7 +78,7 @@ module Api
     end
 
     def destroy
-      item = current_user.items.find_by(id: params[:id], item_type: params[:type])
+      item = Item.find_by(id: params[:id], item_type: params[:type])
       return render json: { error: 'Not found' }, status: :not_found unless item
 
       item.destroy

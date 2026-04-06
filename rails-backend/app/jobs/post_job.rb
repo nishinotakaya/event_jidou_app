@@ -12,6 +12,8 @@ class PostJob < ApplicationJob
     sites          = Array(payload['sites'])
     event_fields   = payload['eventFields'] || {}
     item_id        = payload['itemId'].presence
+    posting_user_id = payload['userId']
+    posting_user    = User.find_by(id: posting_user_id)
     generate_image = payload['generateImage']
     image_style    = payload['imageStyle'] || 'cute'
     openai_key     = payload['openaiApiKey'].presence || ENV['OPENAI_API_KEY']
@@ -39,9 +41,9 @@ class PostJob < ApplicationJob
     playwright_path = find_playwright_path
 
     Playwright.create(playwright_cli_executable_path: playwright_path) do |playwright|
-      # headless: false — PeatixのFormKit等、headlessでは座標クリックが効かないUIがあるため
+      # 本番（Heroku）はheadless必須、ローカルはheadless: falseも可
       browser = playwright.chromium.launch(
-        headless: false,
+        headless: ENV['RAILS_ENV'] == 'production',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -56,102 +58,127 @@ class PostJob < ApplicationJob
         ],
       )
 
+      # オンクラスはイベント投稿時はスキップ（受講生サポートのみ）
+      is_event = item_id.to_s.start_with?('event')
+      if is_event
+        skipped = sites.select { |s| s.split(':').first == 'オンクラス' }
+        sites = sites.reject { |s| s.split(':').first == 'オンクラス' }
+        skipped.each do |s|
+          broadcast(job_id, type: 'log', message: "[オンクラス] ⏭️ イベント投稿ではスキップ（受講生サポートのみ対応）")
+          broadcast(job_id, type: 'status', site: s.split(':').first, status: 'skipped')
+        end
+      end
+
       # SNS（X/Instagram）はポータルサイト投稿後に実行（申し込みURLを取得するため）
       sns_sites = %w[X Instagram]
       portal_sites = sites.reject { |s| sns_sites.include?(s.split(':').first) }
       deferred_sites = sites.select { |s| sns_sites.include?(s.split(':').first) }
 
-      broadcast(job_id, type: 'log', message: "🚀 #{portal_sites.length}サイトを並列投稿開始...#{deferred_sites.any? ? "（SNS #{deferred_sites.length}件は後から投稿）" : ''}")
+      # 本番はメモリ節約のためサイトごとにブラウザ再起動、ローカルは並列
+      sequential = ENV['RAILS_ENV'] == 'production'
+      broadcast(job_id, type: 'log', message: "🚀 #{portal_sites.length}サイトを#{sequential ? '順次' : '並列'}投稿開始...#{deferred_sites.any? ? "（SNS #{deferred_sites.length}件は後から投稿）" : ''}")
 
-      # ===== ポータルサイト: 並列実行 =====
-      threads = portal_sites.map do |site_key|
-        Thread.new do
-          site_name, sub_type = site_key.split(':', 2)
-          ef = event_fields.merge(
-            'lmeAccount' => (sub_type || event_fields['lmeAccount'] || 'taiken'),
-            'imagePath'  => image_path,
+      # ===== 1サイト投稿処理 =====
+      post_one_site = ->(site_key, shared_browser) do
+        site_name, sub_type = site_key.split(':', 2)
+        ef = event_fields.merge(
+          'lmeAccount' => (sub_type || event_fields['lmeAccount'] || 'taiken'),
+          'imagePath'  => image_path,
+        )
+
+        # 本番: サイトごとにブラウザ起動→終了（メモリ解放）
+        # ローカル: 共有ブラウザを使用
+        site_browser = shared_browser
+        pw_instance = nil
+        if sequential
+          pw_instance = Playwright.create(playwright_cli_executable_path: playwright_path)
+          site_browser = pw_instance.playwright.chromium.launch(
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled',
+                   '--disable-dev-shm-usage', '--disable-gpu', '--disable-extensions', '--no-first-run'],
           )
+        end
 
-          context_opts = {
-            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
-            locale: 'ja-JP',
-            viewport: { width: 1280, height: 800 },
-          }
-          # DBからセッション復元
-          service_key = SITE_TO_SERVICE[site_name]
-          svc_conn = ServiceConnection.find_by(service_name: service_key)
-          if svc_conn&.session_data.present?
-            begin
-              context_opts[:storageState] = JSON.parse(svc_conn.session_data)
-              broadcast(job_id, type: 'log', message: "[#{site_name}] DBセッション復元")
-            rescue JSON::ParserError
-              broadcast(job_id, type: 'log', message: "[#{site_name}] セッション破損 - 新規ログイン")
-            end
-          end
-          # ファイルセッションもフォールバックとして確認
-          session_file = Rails.root.join('tmp', "#{service_key}_session.json").to_s
-          if !context_opts[:storageState] && File.exist?(session_file)
-            context_opts[:storageState] = session_file
-            broadcast(job_id, type: 'log', message: "[#{site_name}] ファイルセッション復元")
-          end
-          context = browser.new_context(**context_opts)
-          page = context.new_page
-
-          broadcast(job_id, type: 'status', site: site_name, status: 'running')
-          broadcast(job_id, type: 'log',    message: "[#{site_name}] 開始...")
-
+        context_opts = {
+          userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+          locale: 'ja-JP',
+          viewport: { width: 1280, height: 800 },
+        }
+        service_key = SITE_TO_SERVICE[site_name]
+        svc_conn = posting_user ? posting_user.service_connections.find_by(service_name: service_key) : ServiceConnection.find_by(service_name: service_key)
+        if svc_conn&.session_data.present?
           begin
-            # ログからイベントURLを抽出するためのキャプチャ
-            captured_urls = []
-            log_fn = ->(msg) {
-              broadcast(job_id, type: 'log', message: msg)
-              # ログ内のURLをキャプチャ
-              msg.to_s.scan(%r{https?://[^\s））」]+}).each { |url| captured_urls << url }
-            }
+            context_opts[:storageState] = JSON.parse(svc_conn.session_data)
+            broadcast(job_id, type: 'log', message: "[#{site_name}] DBセッション復元")
+          rescue JSON::ParserError
+            broadcast(job_id, type: 'log', message: "[#{site_name}] セッション破損 - 新規ログイン")
+          end
+        end
 
-            case site_name
-            when 'こくチーズ' then Posting::KokuchproService.new.call(page, content, ef, &log_fn)
-            when 'Peatix'     then Posting::PeatixService.new.call(page, content, ef, &log_fn)
-            when 'connpass'   then Posting::ConnpassService.new.call(page, content, ef, &log_fn)
-            when 'TechPlay'    then Posting::TechplayService.new.call(page, content, ef, &log_fn)
-            when 'つなゲート'   then Posting::TunagateService.new.call(page, content, ef, &log_fn)
-            when 'Doorkeeper' then Posting::DoorkeeperService.new.call(page, content, ef, &log_fn)
-            when 'セミナーズ'   then Posting::SeminarsService.new.call(page, content, ef, &log_fn)
-            when 'ストアカ'    then Posting::StreetAcademyService.new.call(page, content, ef, &log_fn)
-            when 'EventRegist' then Posting::EventregistService.new.call(page, content, ef, &log_fn)
-            when 'PassMarket'  then Posting::PassmarketService.new.call(page, content, ef, &log_fn)
-            when 'Luma'        then Posting::LumaService.new.call(page, content, ef, &log_fn)
-            when 'セミナーBiZ' then Posting::SeminarBizService.new.call(page, content, ef, &log_fn)
-            when 'ジモティー'   then Posting::JimotyService.new.call(page, content, ef, &log_fn)
-            when 'LME'         then Posting::LmeService.new.call(page, content, ef, &log_fn)
-            when 'Gmail'        then Posting::GmailService.new.call(page, content, ef, &log_fn)
-            when 'X'            then Posting::TwitterService.new.call(page, content, ef, &log_fn)
-            when 'Instagram'    then Posting::InstagramService.new.call(page, content, ef, &log_fn)
-            when 'オンクラス'   then Posting::OnclassService.new.call(page, content, ef, &log_fn)
-            else broadcast(job_id, type: 'log', message: "[#{site_name}] 未対応サイトです")
-            end
+        context = site_browser.new_context(**context_opts)
+        page = context.new_page
 
-            # イベント詳細URLを特定（ログ内のURL or page.url からイベントIDを含むものを優先）
-            event_url = pick_event_url(site_name, page.url, captured_urls)
+        broadcast(job_id, type: 'status', site: site_name, status: 'running')
+        broadcast(job_id, type: 'log',    message: "[#{site_name}] 開始...")
 
-            broadcast(job_id, type: 'status', site: site_name, status: 'success')
-            broadcast(job_id, type: 'log', message: "[#{site_name}] 📌 イベントURL: #{event_url}") if event_url.present?
-            update_connection_status(site_name, 'connected')
-            save_posting_history(item_id, site_name, 'success', event_url, ef.dig('publishSites', site_name))
-            # セッションをDBに保存
-            save_session_to_db(context, service_key)
-          rescue => e
-            broadcast(job_id, type: 'log',    message: "[#{site_name}] ❌ エラー: #{e.message}")
-            broadcast(job_id, type: 'status', site: site_name, status: 'error')
-            update_connection_status(site_name, 'error', e.message)
-            save_posting_history(item_id, site_name, 'error', nil, false, e.message)
-          ensure
-            context.close rescue nil
+        begin
+          captured_urls = []
+          log_fn = ->(msg) {
+            broadcast(job_id, type: 'log', message: msg)
+            msg.to_s.scan(%r{https?://[^\s））」]+}).each { |url| captured_urls << url }
+          }
+
+          case site_name
+          when 'こくチーズ' then Posting::KokuchproService.new.call(page, content, ef, &log_fn)
+          when 'Peatix'     then Posting::PeatixService.new.call(page, content, ef, &log_fn)
+          when 'connpass'   then Posting::ConnpassService.new.call(page, content, ef, &log_fn)
+          when 'TechPlay'    then Posting::TechplayService.new.call(page, content, ef, &log_fn)
+          when 'つなゲート'   then Posting::TunagateService.new.call(page, content, ef, &log_fn)
+          when 'Doorkeeper' then Posting::DoorkeeperService.new.call(page, content, ef, &log_fn)
+          when 'セミナーズ'   then Posting::SeminarsService.new.call(page, content, ef, &log_fn)
+          when 'ストアカ'    then Posting::StreetAcademyService.new.call(page, content, ef, &log_fn)
+          when 'EventRegist' then Posting::EventregistService.new.call(page, content, ef, &log_fn)
+          when 'PassMarket'  then Posting::PassmarketService.new.call(page, content, ef, &log_fn)
+          when 'Luma'        then Posting::LumaService.new.call(page, content, ef, &log_fn)
+          when 'セミナーBiZ' then Posting::SeminarBizService.new.call(page, content, ef, &log_fn)
+          when 'ジモティー'   then Posting::JimotyService.new.call(page, content, ef, &log_fn)
+          when 'LME'         then Posting::LmeService.new.call(page, content, ef, &log_fn)
+          when 'Gmail'        then Posting::GmailService.new.call(page, content, ef, &log_fn)
+          when 'X'            then Posting::TwitterService.new.call(page, content, ef, &log_fn)
+          when 'Instagram'    then Posting::InstagramService.new.call(page, content, ef, &log_fn)
+          when 'オンクラス'   then Posting::OnclassService.new.call(page, content, ef, &log_fn)
+          else broadcast(job_id, type: 'log', message: "[#{site_name}] 未対応サイトです")
+          end
+
+          event_url = pick_event_url(site_name, page.url, captured_urls)
+          broadcast(job_id, type: 'status', site: site_name, status: 'success')
+          broadcast(job_id, type: 'log', message: "[#{site_name}] 📌 イベントURL: #{event_url}") if event_url.present?
+          update_connection_status(site_name, 'connected')
+          save_posting_history(item_id, site_name, 'success', event_url, ef.dig('publishSites', site_name))
+          save_session_to_db(context, service_key)
+        rescue => e
+          broadcast(job_id, type: 'log',    message: "[#{site_name}] ❌ エラー: #{e.message}")
+          broadcast(job_id, type: 'status', site: site_name, status: 'error')
+          update_connection_status(site_name, 'error', e.message)
+          save_posting_history(item_id, site_name, 'error', nil, false, e.message)
+        ensure
+          context.close rescue nil
+          if sequential
+            site_browser.close rescue nil
+            pw_instance.close rescue nil
           end
         end
       end
 
-      threads.each(&:join)
+      # ===== 実行 =====
+      if sequential
+        # 本番: サイトごとにブラウザ起動→投稿→終了（メモリ完全解放）
+        portal_sites.each { |site_key| post_one_site.call(site_key, nil) }
+      else
+        # ローカル: 共有ブラウザで並列
+        threads = portal_sites.map { |site_key| Thread.new { post_one_site.call(site_key, browser) } }
+        threads.each(&:join)
+      end
 
       # ===== SNS: ポータルサイト投稿後に実行（申し込みURLを含めるため） =====
       if deferred_sites.any?

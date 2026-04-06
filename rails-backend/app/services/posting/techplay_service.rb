@@ -93,6 +93,48 @@ module Posting
         log("[TechPlay] 定員数入力: #{capacity}")
       end
 
+      # ----- 説明文（イベント内容） -----
+      lines = content.split("\n")
+      first_line = lines.first.to_s.gsub(/\A[#\s「『【]+/, '').gsub(/[】』」\s]+\z/, '').strip
+      body_text = (first_line.present? && title_text.include?(first_line)) ? lines.drop(1).join("\n").lstrip : content
+
+      # TechPlayの説明欄はtextareaまたはリッチエディタ
+      desc_filled = false
+      # textarea方式
+      desc_area = page.locator('textarea[name="detail"], textarea#detail, textarea[name="description"]').first
+      if (desc_area.visible?(timeout: 3000) rescue false)
+        desc_area.fill(body_text)
+        desc_filled = true
+        log('[TechPlay] 説明文入力完了（textarea）')
+      end
+      # contenteditable方式
+      unless desc_filled
+        editor = page.locator('[contenteditable="true"]').first
+        if (editor.visible?(timeout: 2000) rescue false)
+          editor.click
+          page.keyboard.type(body_text)
+          desc_filled = true
+          log('[TechPlay] 説明文入力完了（contenteditable）')
+        end
+      end
+      # Vue tiptap/quill方式
+      unless desc_filled
+        page.evaluate(<<~JS, arg: body_text)
+          (text) => {
+            const editors = document.querySelectorAll('.ProseMirror, .ql-editor, .tiptap, [contenteditable]');
+            for (const ed of editors) {
+              if (ed.offsetHeight > 50) {
+                ed.innerHTML = text.replace(/\\n/g, '<br>');
+                ed.dispatchEvent(new Event('input', { bubbles: true }));
+                return true;
+              }
+            }
+            return false;
+          }
+        JS
+        log('[TechPlay] 説明文入力完了（エディタ）')
+      end
+
       # 申込形式・参加費はデフォルトのまま
       log('[TechPlay] 申込形式・参加費はデフォルト値を使用')
 

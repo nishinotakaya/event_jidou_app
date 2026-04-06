@@ -11,6 +11,7 @@ module Api
           name: user.name,
           avatarUrl: user.avatar_url,
           provider: user.provider,
+          role: user.role,
         }
       else
         render json: { user: nil }
@@ -27,6 +28,7 @@ module Api
           name: user.name,
           avatarUrl: user.avatar_url,
           provider: user.provider,
+          role: user.role,
         }
       else
         render json: { error: 'メールアドレスまたはパスワードが正しくありません' }, status: :unauthorized

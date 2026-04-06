@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_04_05_130101) do
+ActiveRecord::Schema[7.2].define(version: 2026_04_06_132733) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "key"
     t.text "value"
@@ -124,6 +124,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_05_130101) do
     t.text "google_access_token"
     t.text "google_refresh_token"
     t.datetime "google_token_expires_at"
+    t.string "role", default: "viewer", null: false
+    t.integer "invited_by_id"
+    t.string "invitation_token"
+    t.datetime "invitation_sent_at"
+    t.datetime "invitation_accepted_at"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
   end
