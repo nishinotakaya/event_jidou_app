@@ -334,10 +334,8 @@ class PostJob < ApplicationJob
     if File.exist?(local)
       # パスにスペースや日本語が含まれる場合、ラッパースクリプト経由で実行
       wrapper = '/tmp/playwright-runner.sh'
-      unless File.exist?(wrapper)
-        File.write(wrapper, "#!/bin/bash\nexec #{Shellwords.escape(local)} \"$@\"\n")
-        File.chmod(0o755, wrapper)
-      end
+      File.write(wrapper, "#!/bin/bash\nexec #{Shellwords.escape(local)} \"\$@\"\n")
+      File.chmod(0o755, wrapper)
       return wrapper
     end
     # グローバルの npx を使用

@@ -156,10 +156,8 @@ class TestConnectionJob < ApplicationJob
     local = Rails.root.join('node_modules', '.bin', 'playwright').to_s
     if File.exist?(local)
       wrapper = '/tmp/playwright-runner.sh'
-      unless File.exist?(wrapper)
-        File.write(wrapper, "#!/bin/bash\nexec #{Shellwords.escape(local)} \"$@\"\n")
-        File.chmod(0o755, wrapper)
-      end
+      File.write(wrapper, "#!/bin/bash\nexec #{Shellwords.escape(local)} \"\$@\"\n")
+      File.chmod(0o755, wrapper)
       return wrapper
     end
     'npx playwright'
