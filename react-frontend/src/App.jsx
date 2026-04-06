@@ -378,6 +378,7 @@ export default function App() {
         {showCalendar && (
           <CalendarView
             items={items}
+            userRole={currentUser?.role}
             onEditItem={(item) => setEditItem(item)}
             onShowInList={(item) => {
               setShowCalendar(false);

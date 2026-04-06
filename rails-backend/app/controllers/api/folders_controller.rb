@@ -1,5 +1,7 @@
 module Api
   class FoldersController < ApplicationController
+    before_action :authorize_editor!, only: [:create, :update, :destroy]
+
     def index
       render json: build_tree(params[:type])
     end
@@ -83,8 +85,9 @@ module Api
     end
 
     def build_tree(type)
-      parents      = user_folders(type).where(parent: nil).order(:created_at)
-      all_children = user_folders(type).where.not(parent: nil).order(:created_at)
+      all_folders  = Folder.where(folder_type: type)
+      parents      = all_folders.where(parent: nil).order(:created_at)
+      all_children = all_folders.where.not(parent: nil).order(:created_at)
 
       parents.map do |p|
         children = all_children.select { |c| c.parent == p.name }.map(&:name)

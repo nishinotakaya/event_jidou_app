@@ -19,7 +19,7 @@ const SITE_ICONS = {
   twitter: '𝕏', instagram: '📸', gmail: '📧',
 };
 
-export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost, onDuplicate, onCancel, onRefresh, showToast, tagsOpen = true }) {
+export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost, onDuplicate, onCancel, onRefresh, showToast, tagsOpen = true, userRole = 'admin' }) {
   const [expanded, setExpanded] = useState(tagsOpen);
   useEffect(() => { setExpanded(tagsOpen); }, [tagsOpen]);
   const [movingFolder, setMovingFolder] = useState(false);
@@ -146,17 +146,17 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
           <button
             className="btn btn-teal btn-sm"
             onClick={() => onEdit(item)}
-            title={type === 'student' ? '編集' : '編集・投稿'}
+            title={userRole === 'viewer' ? '詳細' : type === 'student' ? '編集' : '編集・投稿'}
           >
-            {type === 'student' ? '編集' : '編集・投稿'}
+            {userRole === 'viewer' ? '詳細' : type === 'student' ? '編集' : '編集・投稿'}
           </button>
-          <button
+          {userRole !== 'viewer' && <button
             className="btn btn-outline btn-sm"
             onClick={() => onDuplicate(item)}
             title="複製"
           >
             複製
-          </button>
+          </button>}
           {postingHistory.length > 0 && postingHistory.some(h => !h.published && h.status === 'success') && (
             <button
               className="btn btn-sm"
@@ -178,13 +178,13 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
               中止
             </button>
           )}
-          <button
+          {userRole !== 'viewer' && <button
             className="btn btn-danger btn-sm"
             onClick={() => onDelete(item)}
             title="削除"
           >
             削除
-          </button>
+          </button>}
         </div>
       </div>
 

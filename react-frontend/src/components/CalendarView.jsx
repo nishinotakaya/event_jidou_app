@@ -39,7 +39,7 @@ function formatTime(dateStr) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-export default function CalendarView({ items = [], onEditItem, onShowInList, onNewEvent, onNewStudent, showToast }) {
+export default function CalendarView({ items = [], onEditItem, onShowInList, onNewEvent, onNewStudent, showToast, userRole = 'admin' }) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -177,14 +177,14 @@ export default function CalendarView({ items = [], onEditItem, onShowInList, onN
         </h2>
         <button className="btn btn-sm btn-secondary" onClick={nextMonth}>&gt;</button>
         <button className="btn btn-sm" onClick={goToday} style={{ marginLeft: '8px', fontSize: '11px' }}>今日</button>
-        <button
+        {userRole !== 'viewer' && <button
           className="btn btn-sm"
           onClick={loadGoogleEvents}
           disabled={loading}
           style={{ marginLeft: 'auto', fontSize: '11px', background: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' }}
         >
           {loading ? '⏳' : '🔄'} Google同期
-        </button>
+        </button>}
       </div>
 
       {/* 凡例 */}
@@ -247,21 +247,23 @@ export default function CalendarView({ items = [], onEditItem, onShowInList, onN
               <button className="modal-close" onClick={() => setSelectedDate(null)}>✕</button>
             </div>
             <div className="modal-body" style={{ overflowY: 'auto', flex: 1 }}>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={() => { setSelectedDate(null); onNewEvent && onNewEvent(selectedDate); }}
-                >
-                  + イベント登録
-                </button>
-                <button
-                  className="btn btn-sm"
-                  style={{ background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe', fontSize: '12px' }}
-                  onClick={() => { setSelectedDate(null); onNewStudent && onNewStudent(selectedDate); }}
-                >
-                  📝 受講生サポート投稿
-                </button>
-              </div>
+              {userRole !== 'viewer' && (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => { setSelectedDate(null); onNewEvent && onNewEvent(selectedDate); }}
+                  >
+                    + イベント登録
+                  </button>
+                  <button
+                    className="btn btn-sm"
+                    style={{ background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe', fontSize: '12px' }}
+                    onClick={() => { setSelectedDate(null); onNewStudent && onNewStudent(selectedDate); }}
+                  >
+                    📝 受講生サポート投稿
+                  </button>
+                </div>
+              )}
 
               {selectedAppEvents.length === 0 && selectedGcalEvents.length === 0 && (
                 <p style={{ color: '#9ca3af', fontSize: '13px' }}>この日のイベントはありません</p>
