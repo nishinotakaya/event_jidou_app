@@ -1,4 +1,18 @@
 {
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://announcement-d656a48fc066.herokuapp.com/api/:path*" },
     { "source": "/users/:path*", "destination": "https://announcement-d656a48fc066.herokuapp.com/users/:path*" },
