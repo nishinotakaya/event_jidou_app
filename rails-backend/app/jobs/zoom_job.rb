@@ -55,8 +55,18 @@ class ZoomJob < ApplicationJob
 
       context = browser.new_context(**context_opts)
       page = context.new_page
+      # ヘッドレス検出回避
+      page.add_init_script(script: <<~JS)
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['ja-JP', 'ja', 'en-US', 'en'] });
+        window.chrome = { runtime: {} };
+      JS
 
-      log_fn = ->(msg) { broadcast(job_id, type: 'log', message: msg) }
+      log_fn = ->(msg) {
+        Rails.logger.info("[ZoomJob] #{msg}")
+        broadcast(job_id, type: 'log', message: msg)
+      }
 
       service = ZoomService.new(&log_fn)
       result = service.create_meeting(
@@ -102,6 +112,7 @@ class ZoomJob < ApplicationJob
 
     broadcast(job_id, type: 'done')
   rescue => e
+    Rails.logger.error("[ZoomJob] ERROR: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}")
     broadcast(job_id, type: 'error', message: e.message)
     broadcast(job_id, type: 'done')
   end
