@@ -55,38 +55,48 @@ class ZoomService
     pass_input.wait_for(state: 'visible', timeout: 10_000)
     pass_input.fill(password)
 
-    # サインインボタン前にCAPTCHAがある場合
-    solve_captcha_if_present(page)
+    # invisible reCAPTCHA対応: 2CAPTCHAでトークン取得 → grecaptcha.executeをオーバーライド → サインイン
+    api_key = ENV['API2CAPTCHA_KEY'].to_s
+    captcha_info = page.evaluate("(() => { const t = document.body.innerText || ''; return t.includes('reCAPTCHA'); })()")
+
+    if captcha_info && api_key.present?
+      sitekey = page.evaluate("(() => { const el = document.querySelector('[data-sitekey]'); return el ? el.dataset.sitekey : ''; })()").to_s
+      sitekey = '6LdZ7KgaAAAAACd71H_lz76FwfcJpc4OQ1J7MDWA' if sitekey.blank?
+
+      log("[Zoom] invisible reCAPTCHA検出 — 2CAPTCHAでトークン取得中...")
+      token = solve_with_2captcha(api_key, method: 'userrecaptcha', googlekey: sitekey, pageurl: page.url, invisible: 1)
+
+      if token
+        # grecaptcha.enterprise.execute をオーバーライドしてトークンを即座に返す
+        page.evaluate(<<~JS, arg: token)
+          (token) => {
+            // textarea にトークン設定
+            document.querySelectorAll('textarea[name="g-recaptcha-response"]').forEach(el => {
+              el.innerHTML = token;
+              el.value = token;
+            });
+
+            // grecaptcha.execute / grecaptcha.enterprise.execute をモック
+            const mockExecute = () => Promise.resolve(token);
+            if (window.grecaptcha) {
+              window.grecaptcha.execute = mockExecute;
+              window.grecaptcha.enterprise = window.grecaptcha.enterprise || {};
+              window.grecaptcha.enterprise.execute = mockExecute;
+            }
+            window.grecaptcha = window.grecaptcha || {};
+            window.grecaptcha.execute = mockExecute;
+            window.grecaptcha.enterprise = window.grecaptcha.enterprise || {};
+            window.grecaptcha.enterprise.execute = mockExecute;
+          }
+        JS
+        log("[Zoom] ✅ reCAPTCHA トークン設定 + execute オーバーライド完了")
+      end
+    end
 
     signin_btn = page.locator('button:has-text("サインイン"), button:has-text("Sign In"), button:has-text("ログイン"), button[type="submit"]').first
     signin_btn.click
-    page.wait_for_timeout(5000)
+    page.wait_for_timeout(8000)
     page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
-
-    # サインイン後にCAPTCHAが表示される場合（最大2回リトライ）
-    2.times do |attempt|
-      break unless page.url.include?('/signin') || page.url.include?('/login')
-
-      log("[Zoom] ログインページに留まっています（試行#{attempt + 1}）— CAPTCHA確認中...")
-      page.screenshot(path: Rails.root.join('tmp', "zoom_captcha_attempt_#{attempt}.png").to_s) rescue nil
-
-      solved = solve_captcha_if_present(page)
-      if solved
-        # CAPTCHA解決後に再度サインインボタンを押す
-        page.wait_for_timeout(1000)
-        begin
-          signin_btn2 = page.locator('button:has-text("サインイン"), button:has-text("Sign In"), button:has-text("ログイン"), button[type="submit"]').first
-          signin_btn2.click
-          page.wait_for_timeout(5000)
-          page.wait_for_load_state('networkidle', timeout: 20_000) rescue nil
-        rescue => e
-          log("[Zoom] 再サインインボタン押下失敗: #{e.message}")
-        end
-      else
-        log("[Zoom] CAPTCHAが検出されませんでした")
-        break
-      end
-    end
 
     if page.url.include?('/signin') || page.url.include?('/login')
       # スクリーンショット保存
