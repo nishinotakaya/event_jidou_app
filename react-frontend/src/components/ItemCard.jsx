@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { updateText, fetchPostingHistory, checkRegistrations, checkParticipants, syncPostingHistory, publishAllEvents, fetchGithubReviews, approveGithubReview, postGithubComment, openLocalRepo, reReviewGithub, markPostingHistorySuccess, retryErrorPosts, updatePostingHistoryUrl } from '../api.js';
+import { updateText, fetchPostingHistory, checkRegistrations, checkParticipants, syncPostingHistory, publishAllEvents, fetchGithubReviews, approveGithubReview, postGithubComment, openLocalRepo, reReviewGithub, markPostingHistorySuccess, retryErrorPosts, updatePostingHistoryUrl, fetchParticipants, syncParticipants } from '../api.js';
 import { getEventStatus } from '../eventStatus.js';
 
 // 管理URL → 公開URL変換（viewer向け）
@@ -93,6 +93,9 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
   const [showParticipants, setShowParticipants] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [participantsModal, setParticipantsModal] = useState(null); // { siteName, participants }
+  const [participantsData, setParticipantsData] = useState({}); // { siteName: [{ name, email }] }
+  const [syncingParticipantsDB, setSyncingParticipantsDB] = useState(false);
   const [githubReview, setGithubReview] = useState(null);
   const [postingToGithub, setPostingToGithub] = useState(false);
   const folderOptions = buildFolderOptions(folders);
@@ -438,17 +441,52 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
             </button>
           )}
           {userRole !== 'viewer' && <button
-            onClick={handleCheckParticipants}
-            disabled={checkingParticipants}
+            onClick={async () => {
+              try {
+                const data = await fetchParticipants(item.id);
+                setParticipantsData(data.participants || {});
+                const total = Object.values(data.participants || {}).flat().length;
+                if (total > 0) {
+                  setParticipantsModal({ all: true });
+                } else {
+                  showToast('参加者データなし。「🔄 参加者同期」で取得してください', 'info');
+                }
+              } catch (err) { showToast(err.message, 'error'); }
+            }}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '3px',
               padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 600,
               background: '#fef3c7', color: '#d97706', border: '1px solid #fcd34d',
-              cursor: checkingParticipants ? 'wait' : 'pointer',
+              cursor: 'pointer',
             }}
-            title="各サイトの参加者名・メールアドレスを取得"
+            title="DBから参加者一覧を表示"
           >
-            {checkingParticipants ? '⏳ 取得中...' : '👥 参加者確認'}
+            👥 参加者確認
+          </button>}
+          {userRole !== 'viewer' && <button
+            onClick={async () => {
+              setSyncingParticipantsDB(true);
+              showToast('🔄 参加者同期中...', 'info');
+              try {
+                const data = await syncParticipants(item.id);
+                setParticipantsData(data.participants || {});
+                showToast(`参加者同期完了（${data.total}名）`, 'success');
+                // 申し込み数も更新
+                const latest = await fetchPostingHistory(item.id);
+                setPostingHistory(latest);
+              } catch (err) { showToast(err.message, 'error'); }
+              finally { setSyncingParticipantsDB(false); }
+            }}
+            disabled={syncingParticipantsDB}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '3px',
+              padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 600,
+              background: '#d1fae5', color: '#059669', border: '1px solid #6ee7b7',
+              cursor: syncingParticipantsDB ? 'wait' : 'pointer',
+            }}
+            title="各サイトから参加者を取得してDBに保存"
+          >
+            {syncingParticipantsDB ? '⏳ 同期中...' : '🔄 参加者同期'}
           </button>}
         {userRole !== 'viewer' && <button
           onClick={handleSync}
@@ -628,6 +666,52 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
           {movingFolder && <span className="spinner" />}
         </div>
       </div>
+
+      {/* 参加者モーダル */}
+      {participantsModal && (
+        <div
+          onClick={() => setParticipantsModal(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, width: '90%', maxWidth: 600, maxHeight: '70vh', overflow: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>👥 参加者一覧</h3>
+              <button onClick={() => setParticipantsModal(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
+            </div>
+            {Object.keys(participantsData).length === 0 ? (
+              <p style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>参加者データなし。「🔄 参加者同期」で取得してください。</p>
+            ) : (
+              Object.entries(participantsData).map(([site, list]) => (
+                <div key={site} style={{ marginBottom: 16 }}>
+                  <h4 style={{ margin: '0 0 8px', fontSize: 14, color: '#374151' }}>
+                    {SITE_ICONS[site] || '📌'} {PostingHistory?.SITE_LABELS?.[site] || site}（{list.length}名）
+                  </h4>
+                  {list.length === 0 ? (
+                    <p style={{ fontSize: 12, color: '#9ca3af', marginLeft: 16 }}>参加者なし</p>
+                  ) : (
+                    <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                          <th style={{ textAlign: 'left', padding: '4px 8px', color: '#6b7280' }}>名前</th>
+                          <th style={{ textAlign: 'left', padding: '4px 8px', color: '#6b7280' }}>メール</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {list.map((p, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                            <td style={{ padding: '4px 8px' }}>{p.name || '—'}</td>
+                            <td style={{ padding: '4px 8px', color: '#6b7280' }}>{p.email || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

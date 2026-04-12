@@ -60,6 +60,10 @@ Rails.application.routes.draw do
     patch "posting_histories/:id/mark_success",     to: "posting_histories#mark_success"
     patch "posting_histories/:id/update_url",       to: "posting_histories#update_url"
     post  "posting_histories/create_manual",         to: "posting_histories#create_manual"
+
+    # 参加者
+    get   "participants",          to: "participants#index"
+    post  "participants/sync",     to: "participants#sync"
     post  "posting_histories/bulk_mark_success",    to: "posting_histories#bulk_mark_success"
 
     # 投稿（ActionCable + Sidekiq バックグラウンドジョブ）

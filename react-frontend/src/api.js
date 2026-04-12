@@ -318,6 +318,21 @@ export async function updatePostingHistoryUrl(id, eventUrl) {
   return res.json();
 }
 
+export async function fetchParticipants(itemId) {
+  const res = await fetch(`/api/participants?item_id=${encodeURIComponent(itemId)}`);
+  if (!res.ok) return { participants: {}, total: 0 };
+  return res.json();
+}
+
+export async function syncParticipants(itemId) {
+  const res = await fetch(`/api/participants/sync?item_id=${encodeURIComponent(itemId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('参加者同期に失敗しました');
+  return res.json();
+}
+
 export async function bulkMarkPostingHistorySuccess(itemId) {
   const body = itemId ? { item_id: itemId } : {};
   const res = await fetch('/api/posting_histories/bulk_mark_success', {
