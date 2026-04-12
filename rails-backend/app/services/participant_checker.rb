@@ -316,16 +316,12 @@ class ParticipantChecker
       break if orders.empty?
 
       orders.each do |order|
-        buyer_name = order.dig('buyer', 'name').to_s
-        owners = order['owners'] || []
-        attendances = order['attendances'] || []
-
-        # owners（実際の参加者）を優先
-        if owners.any?
-          owners.each { |o| results << { 'name' => o['name'].to_s, 'email' => '' } }
-        elsif buyer_name.present?
-          results << { 'name' => buyer_name, 'email' => '' }
-        end
+        buyer_name = order.dig('buyer', 'name').to_s  # 本名（カタカナ）
+        owner_name = (order['owners'] || []).first&.dig('name').to_s  # ニックネーム
+        # 本名（buyer）を優先、ニックネームも併記
+        display_name = buyer_name.present? ? buyer_name : owner_name
+        display_name += "（#{owner_name}）" if buyer_name.present? && owner_name.present? && buyer_name != owner_name
+        results << { 'name' => display_name, 'email' => '' } if display_name.present?
       end
 
       total_pages = data.dig('paginationInfo', 'totalPages') || 1
