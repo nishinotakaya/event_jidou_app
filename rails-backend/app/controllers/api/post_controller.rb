@@ -78,6 +78,9 @@ module Api
         return render json: { error: '再投稿対象サイトがありません' }, status: :unprocessable_entity
       end
 
+      # ストアカが含まれる場合は画像自動生成ON
+      needs_image = sites.include?('ストアカ')
+
       job_id = SecureRandom.hex(8)
       payload = {
         'content'      => item.content.to_s,
@@ -90,7 +93,10 @@ module Api
           'zoomUrl'    => item.zoom_url,
           'publishSites' => sites.each_with_object({}) { |s, h| h[s] = true },
         },
-        'generateImage' => false,
+        'generateImage' => needs_image,
+        'imageStyle'   => 'cute',
+        'openaiApiKey' => AppSetting.get('openai_api_key').presence || ENV['OPENAI_API_KEY'],
+        'dalleApiKey'  => AppSetting.get('dalle_api_key').presence || ENV['OPENAI_API_KEY'],
         'itemId'       => item_id,
         'userId'       => current_user.id,
       }

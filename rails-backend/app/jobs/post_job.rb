@@ -337,7 +337,7 @@ class PostJob < ApplicationJob
     'Doorkeeper'   => %r{doorkeeper\.jp/.+/events/\d+(?!.*edit)},
     'セミナーズ'   => %r{seminars\.jp/s/\d+},
     'ストアカ'     => %r{street-academy\.com/myclass/\d+},
-    'EventRegist'  => %r{eventregist\.com/e/\w+},
+    'EventRegist'  => %r{eventregist\.com/(?:e/\w+|event/\w+|dashboard)},
     'PassMarket'   => %r{passmarket\.yahoo\.co\.jp/event/\w+},
     'Luma'         => %r{luma\.com/event/manage/evt-\w+|lu\.ma/event/manage/evt-\w+},
     'セミナーBiZ'  => %r{seminar-biz\.com/seminar/\d+/events/\d+},

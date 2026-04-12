@@ -684,7 +684,7 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
               Object.entries(participantsData).map(([site, list]) => (
                 <div key={site} style={{ marginBottom: 16 }}>
                   <h4 style={{ margin: '0 0 8px', fontSize: 14, color: '#374151' }}>
-                    {SITE_ICONS[site] || '📌'} {PostingHistory?.SITE_LABELS?.[site] || site}（{list.length}名）
+                    {SITE_ICONS[site] || '📌'} {ALL_EVENT_SITES.find(s => s.key === site)?.label || site}（{list.length}名）
                   </h4>
                   {list.length === 0 ? (
                     <p style={{ fontSize: 12, color: '#9ca3af', marginLeft: 16 }}>参加者なし</p>
