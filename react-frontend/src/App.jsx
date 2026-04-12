@@ -103,8 +103,16 @@ export default function App() {
         const d = await res.json();
         if (!cancelled && d && d.id) {
           setCurrentUser(d);
-          // セッション復元後に即座にデータ取得（useEffectの発火を待たない）
-          loadAllRef.current();
+          // viewer はカレンダー表示を強制
+          if (d.role === 'viewer') {
+            setShowCalendar(true);
+            setShowConnections(false);
+            setShowStudents(false);
+          }
+          // セッション復元後に即座にデータ取得（2回呼んで確実に）
+          await loadAllRef.current();
+          // 少し待ってからもう一度（レンダリング完了後のデータ反映保証）
+          setTimeout(() => { if (!cancelled) loadAllRef.current(); }, 500);
         }
       } catch {}
     };
@@ -123,6 +131,10 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     loadAll();
+    // viewer はログイン直後にカレンダー表示を保証
+    if (currentUser.role === 'viewer') {
+      setShowCalendar(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeType, currentUser?.id]);
 

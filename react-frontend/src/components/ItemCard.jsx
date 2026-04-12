@@ -5,22 +5,39 @@ import { getEventStatus } from '../eventStatus.js';
 // 管理URL → 公開URL変換（viewer向け）
 function toPublicUrl(url, siteName) {
   if (!url) return null;
-  // こくチーズ: /admin/e-XXX/d-YYY/ → /event/XXX/
+  // こくチーズ: /admin/e-XXX/d-YYY/ → /event/e-XXX/
   if (siteName === 'kokuchpro' || url.includes('kokuchpro.com/admin/')) {
-    const m = url.match(/\/e-([a-f0-9]+)\//);
+    const m = url.match(/\/(e-[a-f0-9]+)\//);
     return m ? `https://www.kokuchpro.com/event/${m[1]}/` : url;
   }
-  // TechPlay: /event/XXX/edit → techplay.jp/event/XXX
+  // TechPlay: owner.techplay.jp/event/XXX/edit → techplay.jp/event/XXX
   if (siteName === 'techplay' || url.includes('owner.techplay.jp')) {
     const m = url.match(/\/event\/(\d+)/);
     return m ? `https://techplay.jp/event/${m[1]}` : url;
   }
-  // Doorkeeper: /manage/.../events/XXX → doorkeeper.jp/events/XXX
+  // Doorkeeper: manage.doorkeeper.jp/groups/SLUG/events/123 → SLUG.doorkeeper.jp/events/123
   if (siteName === 'doorkeeper' || url.includes('manage.doorkeeper.jp')) {
-    const m = url.match(/\/events\/(\d+)/);
-    return m ? `https://www.doorkeeper.jp/events/${m[1]}` : url;
+    const m = url.match(/\/groups\/([^/]+)\/events\/(\d+)/);
+    return m ? `https://${m[1]}.doorkeeper.jp/events/${m[2]}` : url;
   }
-  // connpass, Peatix等はそのまま公開URL
+  // connpass: /published/ を除去
+  if (siteName === 'connpass') {
+    return url.replace(/\/published\/?$/, '/');
+  }
+  // Peatix: /published/ を除去
+  if (siteName === 'peatix') {
+    return url.replace(/\/published\/?$/, '/');
+  }
+  // ストアカ: そのまま公開URL
+  // Luma: manage URL → 公開URL
+  if (siteName === 'luma' && url.includes('/manage/')) {
+    return url.replace('/event/manage/', '/');
+  }
+  // つなゲート: /event/edit/XXX → /events/XXX
+  if (siteName === 'tunagate' && url.includes('/event/edit/')) {
+    const m = url.match(/\/event\/edit\/(\d+)/);
+    return m ? `https://tunagate.com/events/${m[1]}` : url;
+  }
   return url;
 }
 
@@ -269,10 +286,12 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
         </button>
         {expanded && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
 
-          {postingHistory.map((h) => {
-            const linkUrl = userRole === 'viewer'
-              ? (h.published ? toPublicUrl(h.eventUrl, h.siteName) : null) || '#'
-              : h.eventUrl || FALLBACK_URLS[h.siteName] || '#';
+          {postingHistory
+            .filter((h) => userRole !== 'viewer' || (h.published && h.eventUrl))
+            .map((h) => {
+            const linkUrl = h.published
+              ? (toPublicUrl(h.eventUrl, h.siteName) || h.eventUrl || FALLBACK_URLS[h.siteName] || '#')
+              : (h.eventUrl || FALLBACK_URLS[h.siteName] || '#');
             const hasLink = linkUrl !== '#';
             return (
             <a
@@ -392,10 +411,19 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
                   await retryErrorPosts(item.id, (event) => {
                     if (event.type === 'log') showToast(event.message, 'info');
                     else if (event.type === 'error') showToast(event.message, 'error');
-                    else if (event.type === 'done') showToast('再投稿完了', 'success');
+                    else if (event.type === 'status') {
+                      // リアルタイムでタグ色更新
+                      setPostingHistory((prev) => prev.map((ph) =>
+                        ph.siteLabel === event.site || ph.siteName === event.site
+                          ? { ...ph, status: event.status, published: event.status === 'success' }
+                          : ph
+                      ));
+                    } else if (event.type === 'done') {
+                      showToast('再投稿完了', 'success');
+                      // 最終データを取得して確定
+                      fetchPostingHistory(item.id).then(setPostingHistory).catch(() => {});
+                    }
                   });
-                  const latest = await fetchPostingHistory(item.id);
-                  setPostingHistory(latest);
                 } catch (err) { showToast(err.message, 'error'); }
               }}
               style={{

@@ -56,6 +56,18 @@ class ParticipantChecker
     return {} if histories.empty?
 
     results = {}
+
+    # Peatix は API で取得（Playwright 不要）
+    peatix_history = histories.find { |h| h.site_name == 'peatix' }
+    if peatix_history
+      participants = extract_peatix_participants_api(peatix_history.event_url)
+      results['peatix'] = {
+        site_label: 'Peatix',
+        event_url: peatix_history.event_url,
+        participants: participants,
+      }
+    end
+
     pw_path = find_playwright_path
     return results unless pw_path
 
@@ -66,6 +78,7 @@ class ParticipantChecker
       )
 
       histories.each do |history|
+        next if history.site_name == 'peatix' # API で取得済み
         config = SITE_CONFIGS[history.site_name]
         next unless config
 
@@ -269,12 +282,68 @@ class ParticipantChecker
     JS
   end
 
-  # Peatix固有: オーダー一覧からメール取得
+  # Peatix: API経由で参加者名を取得（Playwright不要）
+  def self.extract_peatix_participants_api(event_url)
+    event_id = event_url[/event\/(\d+)/, 1]
+    return [] unless event_id
+
+    conn = ServiceConnection.find_by(service_name: 'peatix')
+    return [] unless conn&.session_data.present?
+
+    session = JSON.parse(conn.session_data) rescue {}
+    token = nil
+    (session['origins'] || []).each do |origin|
+      (origin['localStorage'] || []).each do |item|
+        token = item['value'].to_s if item['name'] == 'peatix_frontend_access_token'
+      end
+    end
+    return [] unless token.present?
+
+    results = []
+    page_num = 1
+    loop do
+      uri = URI("https://peatix-api.com/v4/events/#{event_id}/orders?page=#{page_num}")
+      req = Net::HTTP::Get.new(uri)
+      req['Authorization'] = "Bearer #{token}"
+      req['Accept'] = 'application/json'
+      req['Origin'] = 'https://peatix.com'
+      req['X-Requested-With'] = 'XMLHttpRequest'
+      res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 10) { |h| h.request(req) }
+      break unless res.is_a?(Net::HTTPSuccess)
+
+      data = JSON.parse(res.body) rescue {}
+      orders = data['data'] || []
+      break if orders.empty?
+
+      orders.each do |order|
+        buyer_name = order.dig('buyer', 'name').to_s
+        owners = order['owners'] || []
+        attendances = order['attendances'] || []
+
+        # owners（実際の参加者）を優先
+        if owners.any?
+          owners.each { |o| results << { 'name' => o['name'].to_s, 'email' => '' } }
+        elsif buyer_name.present?
+          results << { 'name' => buyer_name, 'email' => '' }
+        end
+      end
+
+      total_pages = data.dig('paginationInfo', 'totalPages') || 1
+      break if page_num >= total_pages
+      page_num += 1
+    end
+
+    results.uniq { |r| r['name'] }
+  rescue => e
+    Rails.logger.warn("[ParticipantChecker] peatix API error: #{e.message}")
+    []
+  end
+
+  # Peatix固有フォールバック（Playwright版）
   def self.extract_peatix_participants(page)
     page.evaluate(<<~JS)
       (() => {
         const results = [];
-        // Peatixのオーダー行
         const rows = document.querySelectorAll('.order-row, [class*="order"], tr');
         rows.forEach(row => {
           const text = row.textContent;
