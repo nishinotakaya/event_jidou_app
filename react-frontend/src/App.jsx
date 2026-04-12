@@ -41,6 +41,7 @@ export default function App() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('upcoming'); // 'upcoming' | 'ended' | 'all'
 
   // Modals
   const [editItem, setEditItem] = useState(null); // null = closed, {} = new, item = edit
@@ -86,29 +87,44 @@ export default function App() {
   }, [loadItems, loadFolders]);
 
   // Load current user on mount
+  const loadAllRef = useRef(loadAll);
+  loadAllRef.current = loadAll;
+
   useEffect(() => {
-    fetch('/api/current_user').then(r => r.json()).then(d => {
-      if (d && d.id) setCurrentUser(d);
-    }).catch(() => {});
-    // URLにlogin=successがあればユーザー再取得してトップへ
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('login') === 'success') {
-      window.history.replaceState({}, '', window.location.pathname);
-      fetch('/api/current_user').then(r => r.json()).then(d => {
-        if (d && d.id) setCurrentUser(d);
-      }).catch(() => {});
-    }
+    let cancelled = false;
+    const restoreSession = async () => {
+      // URLにlogin=successがあればクエリパラメータを消す
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('login') === 'success') {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      try {
+        const res = await fetch('/api/current_user');
+        const d = await res.json();
+        if (!cancelled && d && d.id) {
+          setCurrentUser(d);
+          // セッション復元後に即座にデータ取得（useEffectの発火を待たない）
+          loadAllRef.current();
+        }
+      } catch {}
+    };
+    restoreSession();
+    return () => { cancelled = true; };
   }, []);
 
-  // Load when type changes
+  // Load when type changes or user becomes authenticated
   const activeTypeRef = useRef(activeType);
   useEffect(() => {
     activeTypeRef.current = activeType;
     setSelectedFolder(null);
     setPage(1);
+  }, [activeType]);
+
+  useEffect(() => {
+    if (!currentUser) return;
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeType]);
+  }, [activeType, currentUser?.id]);
 
   // ===== Folder change =====
   function handleSelectFolder(folder) {
@@ -116,8 +132,11 @@ export default function App() {
     setSearchQuery('');
     setPage(1);
     setShowConnections(false);
-    setShowCalendar(false);
     setShowStudents(false);
+    // viewer はカレンダー固定、管理者は一覧表示に遷移
+    if (currentUser?.role !== 'viewer') {
+      setShowCalendar(false);
+    }
   }
 
   // ===== Delete =====
@@ -232,7 +251,11 @@ export default function App() {
   if (!currentUser) {
     return (
       <LoginPage onLogin={(user) => {
-        if (user) setCurrentUser(user);
+        if (user) {
+          setCurrentUser(user);
+          // ログイン直後に即座にデータ取得（useEffectの発火を待たず確実に実行）
+          loadAll();
+        }
       }} />
     );
   }
@@ -380,6 +403,9 @@ export default function App() {
         {showCalendar && (
           <CalendarView
             items={items}
+            selectedFolder={selectedFolder}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
             userRole={currentUser?.role}
             onEditItem={(item) => currentUser?.role === 'viewer' ? setDetailItem(item) : setEditItem(item)}
             onShowInList={(item) => {
@@ -411,7 +437,7 @@ export default function App() {
             type="text"
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-            placeholder="タイトル・内容・日付で検索..."
+            placeholder="タイトル・内容・日付で検索（終了/募集中でフィルタ）..."
           />
           {searchQuery && (
             <button
@@ -421,6 +447,23 @@ export default function App() {
               ✕
             </button>
           )}
+          <div className="status-filter" role="tablist" aria-label="ステータス">
+            <button
+              className={`${statusFilter === 'upcoming' ? 'active upcoming' : ''}`}
+              onClick={() => { setStatusFilter('upcoming'); setPage(1); }}
+              title="開催前のイベントのみ"
+            >🟢 募集中</button>
+            <button
+              className={`${statusFilter === 'ended' ? 'active ended' : ''}`}
+              onClick={() => { setStatusFilter('ended'); setPage(1); }}
+              title="終了済みイベントのみ"
+            >🔴 終了</button>
+            <button
+              className={`${statusFilter === 'all' ? 'active' : ''}`}
+              onClick={() => { setStatusFilter('all'); setPage(1); }}
+              title="すべて表示"
+            >すべて</button>
+          </div>
           <select
             className="sort-select"
             value={sortOrder}
@@ -441,6 +484,7 @@ export default function App() {
           selectedFolder={selectedFolder}
           searchQuery={searchQuery}
           sortOrder={sortOrder}
+          statusFilter={statusFilter}
           onEdit={(item) => currentUser?.role === 'viewer' ? setDetailItem(item) : setEditItem(item)}
           onDelete={(item) => setDeleteConfirm(item)}
           onBulkDelete={handleBulkDelete}

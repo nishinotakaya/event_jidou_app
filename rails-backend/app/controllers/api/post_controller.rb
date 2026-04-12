@@ -54,5 +54,49 @@ module Api
       RemoteActionJob.perform_later(job_id, item_id, 'publish')
       render json: { job_id: job_id }
     end
+
+    # ❌ エラーサイトだけ再投稿
+    def retry_errors
+      item_id = params[:item_id].to_s
+      return render json: { error: 'item_id is required' }, status: :unprocessable_entity if item_id.blank?
+
+      item = Item.find_by(id: item_id)
+      return render json: { error: 'イベントが見つかりません' }, status: :not_found unless item
+
+      # ❌ エラー/not_found + 📝 未公開(success but not published) を対象
+      error_histories = PostingHistory.where(item_id: item_id).where(
+        'status IN (?) OR (status = ? AND published = ?)', %w[error not_found], 'success', false
+      )
+      if error_histories.empty?
+        return render json: { error: '再投稿対象のサイトがありません' }, status: :unprocessable_entity
+      end
+
+      service_to_site = PostJob::SITE_TO_SERVICE.invert
+      sites = error_histories.map { |h| service_to_site[h.site_name] }.compact
+
+      if sites.empty?
+        return render json: { error: '再投稿対象サイトがありません' }, status: :unprocessable_entity
+      end
+
+      job_id = SecureRandom.hex(8)
+      payload = {
+        'content'      => item.content.to_s,
+        'sites'        => sites,
+        'eventFields'  => {
+          'title'      => item.name,
+          'startDate'  => item.event_date,
+          'startTime'  => item.event_time,
+          'endTime'    => item.event_end_time,
+          'zoomUrl'    => item.zoom_url,
+          'publishSites' => sites.each_with_object({}) { |s, h| h[s] = true },
+        },
+        'generateImage' => false,
+        'itemId'       => item_id,
+        'userId'       => current_user.id,
+      }
+
+      PostJob.perform_later(job_id, payload)
+      render json: { job_id: job_id, sites: sites }
+    end
   end
 end

@@ -78,9 +78,34 @@ module Posting
         page.wait_for_timeout(2000)
         if page.url.include?('consent') || page.url.include?('oauth/id')
           log('[つなゲート] OAuth同意画面...')
+
+          # Googleのローディングオーバーレイ（dKGsO等）が消えるのを待つ
+          15.times do
+            overlay_visible = page.evaluate(<<~'JS') rescue false
+              (() => {
+                const els = document.querySelectorAll('div[jsname="OQ2Y6"], div.dKGsO, [role="progressbar"]');
+                for (const el of els) {
+                  if (el.offsetParent !== null) {
+                    const r = el.getBoundingClientRect();
+                    if (r.width > 50 && r.height > 50) return true;
+                  }
+                }
+                return false;
+              })()
+            JS
+            break unless overlay_visible
+            page.wait_for_timeout(1000)
+          end
+          page.wait_for_timeout(1500)
+
           next_btn = page.locator('button:has-text("次へ"), button:has-text("Continue"), button:has-text("許可")').first
           if (next_btn.visible?(timeout: 5000) rescue false)
-            next_btn.click
+            begin
+              next_btn.click(timeout: 5_000)
+            rescue
+              log('[つなゲート] 通常クリック失敗 → force click')
+              next_btn.click(force: true) rescue nil
+            end
             page.wait_for_timeout(8000)
             log('[つなゲート] 「次へ」クリック完了')
           end
@@ -89,17 +114,23 @@ module Posting
         # つなゲートへのリダイレクト待機
         10.times do
           page.wait_for_timeout(2000)
-          break if page.url.include?('tunagate.com') && !page.url.include?('sign_in')
+          current = page.url
+          break if current.start_with?('https://tunagate.com') && !current.include?('sign_in')
+          # Google rejected 検出
+          if current.include?('signin/rejected')
+            raise "[つなゲート] Googleログイン拒否。接続管理から「ブラウザログイン」でログインしてください。"
+          end
         end
       end
 
       page.wait_for_timeout(2000)
-      if page.url.include?('tunagate.com') && !page.url.include?('sign_in')
+      current = page.url
+      if current.start_with?('https://tunagate.com') && !current.include?('sign_in')
         # セッション保存
         page.context.storage_state(path: SESSION_PATH) rescue nil
-        log("[つなゲート] ✅ ログイン成功 → #{page.url}")
+        log("[つなゲート] ✅ ログイン成功 → #{current}")
       else
-        raise "[つなゲート] ログイン失敗。接続管理から「ブラウザログイン」でログインしてください。"
+        raise "[つなゲート] ログイン失敗 (URL: #{current[0, 80]})。接続管理から「ブラウザログイン」でログインしてください。"
       end
     end
 
@@ -118,12 +149,23 @@ module Posting
       log("[つなゲート] イベント作成ページ → #{page.url}")
       dump_form(page)
 
-      # イベント名（最初の空のテキストinput）
       title = extract_title(ef, content, 100)
-      fill_first_empty_input(page, title, 'イベント名')
 
-      # イベントの説明（textarea）
-      fill_first_textarea(page, content)
+      # つなゲートはタイトルもtextarea（1番目=タイトル、2番目=説明）
+      textareas = page.locator('textarea').all.select { |el| (el.visible?(timeout: 500) rescue false) }
+      if textareas.length >= 2
+        textareas[0].fill(title)
+        log("[つなゲート] イベント名: #{title[0..40]}")
+        textareas[1].fill(content)
+        log('[つなゲート] 説明入力完了')
+      elsif textareas.length == 1
+        textareas[0].fill(content)
+        log('[つなゲート] 説明入力完了（タイトル欄なし）')
+        fill_first_empty_input(page, title, 'イベント名')
+      else
+        fill_first_empty_input(page, title, 'イベント名')
+        fill_first_textarea(page, content)
+      end
 
       # チケット追加
       ticket = page.locator("button:has-text('チケット'), a:has-text('チケット')").first

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ItemCard from './ItemCard.jsx';
+import { getEventStatus, statusMatchesQuery } from '../eventStatus.js';
 
 const PAGE_SIZE = 9;
 
@@ -78,12 +79,18 @@ export default function ItemList({
   onPageChange,
   searchQuery = '',
   sortOrder = 'eventDate-desc',
+  statusFilter = 'upcoming',
   onScanGithub,
   userRole = 'admin',
 }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [allTagsOpen, setAllTagsOpen] = useState(true);
+
+  // 月ナビゲーション（フォルダ内 月単位移動）
+  const now = new Date();
+  const [monthCursor, setMonthCursor] = useState({ year: now.getFullYear(), month: now.getMonth() }); // month: 0-11
+  const [monthFilterEnabled, setMonthFilterEnabled] = useState(false);
 
   // Filter items by selected folder + search query
   // 親フォルダ選択時は子フォルダのアイテムも含める（前方一致）
@@ -94,14 +101,32 @@ export default function ItemList({
       })
     : items;
 
+  // 月フィルタ（有効時のみ）
+  if (monthFilterEnabled) {
+    const ym = `${monthCursor.year}-${String(monthCursor.month + 1).padStart(2, '0')}`;
+    filtered = filtered.filter((item) => (item.eventDate || '').startsWith(ym));
+  }
+
   if (searchQuery.trim()) {
-    const q = searchQuery.trim().toLowerCase();
-    filtered = filtered.filter((item) =>
-      (item.name || '').toLowerCase().includes(q) ||
-      (item.content || '').toLowerCase().includes(q) ||
-      (item.eventDate || '').includes(q) ||
-      (item.folder || '').toLowerCase().includes(q)
-    );
+    const raw = searchQuery.trim();
+    const q = raw.toLowerCase();
+    filtered = filtered.filter((item) => {
+      const status = getEventStatus(item);
+      if (raw.includes('終了') || raw.includes('募集中') || raw.includes('開催前')) {
+        return statusMatchesQuery(status, raw);
+      }
+      return (
+        (item.name || '').toLowerCase().includes(q) ||
+        (item.content || '').toLowerCase().includes(q) ||
+        (item.eventDate || '').includes(q) ||
+        (item.folder || '').toLowerCase().includes(q)
+      );
+    });
+  }
+
+  // ステータスフィルタ（タイプ=event のみ適用。受講生サポートには不適用）
+  if (type === 'event' && statusFilter !== 'all') {
+    filtered = filtered.filter((item) => getEventStatus(item) === statusFilter);
   }
 
   // Sort
@@ -147,24 +172,56 @@ export default function ItemList({
     );
   }
 
-  if (filtered.length === 0) {
-    return (
-      <div className="item-list-container">
-        <div className="item-list-empty">
-          <div className="item-list-empty-icon">📝</div>
-          <div className="item-list-empty-text">テキストがありません</div>
-          <div className="item-list-empty-sub">
-            {selectedFolder
-              ? 'このフォルダにはテキストがありません'
-              : '「新規作成」ボタンからテキストを追加してください'}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // 空状態は下のreturn内で表示（月ナビを維持するため早期returnしない）
+
+  const prevMonth = () => {
+    setMonthFilterEnabled(true);
+    setMonthCursor((c) => c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 });
+    onPageChange(1);
+  };
+  const nextMonth = () => {
+    setMonthFilterEnabled(true);
+    setMonthCursor((c) => c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 });
+    onPageChange(1);
+  };
+  const thisMonth = () => {
+    setMonthFilterEnabled(true);
+    const n = new Date();
+    setMonthCursor({ year: n.getFullYear(), month: n.getMonth() });
+    onPageChange(1);
+  };
 
   return (
     <>
+      {/* 月ナビゲーション（イベントタイプのみ） */}
+      {type === 'event' && (
+        <div style={{ padding: '0 24px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn btn-sm btn-secondary" onClick={prevMonth}>‹ 前月</button>
+          <button
+            className="btn btn-sm"
+            onClick={thisMonth}
+            style={{
+              fontSize: 13, fontWeight: 700,
+              background: monthFilterEnabled ? '#ede9fe' : '#f3f4f6',
+              color: monthFilterEnabled ? '#7c3aed' : '#6b7280',
+              border: `1.5px solid ${monthFilterEnabled ? '#c4b5fd' : '#d1d5db'}`,
+              padding: '6px 14px', minWidth: 120,
+            }}
+            title={monthFilterEnabled ? 'クリックで今月に戻る' : 'クリックで月フィルタを有効化'}
+          >
+            📅 {monthCursor.year}年{monthCursor.month + 1}月
+          </button>
+          <button className="btn btn-sm btn-secondary" onClick={nextMonth}>翌月 ›</button>
+          {monthFilterEnabled && (
+            <button
+              className="btn btn-sm"
+              onClick={() => { setMonthFilterEnabled(false); onPageChange(1); }}
+              style={{ fontSize: 11, background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5' }}
+            >✕ 月フィルタ解除</button>
+          )}
+        </div>
+      )}
+
       {/* 一括操作バー */}
       <div style={{ padding: '0 24px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <button
@@ -234,6 +291,23 @@ export default function ItemList({
       </div>
 
       <div className="item-list-container">
+        {filtered.length === 0 && (
+          <div className="item-list-empty">
+            <div className="item-list-empty-icon">📝</div>
+            <div className="item-list-empty-text">
+              {monthFilterEnabled
+                ? `${monthCursor.year}年${monthCursor.month + 1}月のイベントはありません`
+                : 'テキストがありません'}
+            </div>
+            <div className="item-list-empty-sub">
+              {monthFilterEnabled
+                ? '前後の月に移動するか、月フィルタを解除してください'
+                : selectedFolder
+                ? 'このフォルダにはテキストがありません'
+                : '「新規作成」ボタンからテキストを追加してください'}
+            </div>
+          </div>
+        )}
         <div className="item-grid">
           {paged.map((item) => (
             <div key={item.id} style={{ position: 'relative' }}>

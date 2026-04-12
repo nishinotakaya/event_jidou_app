@@ -1,7 +1,8 @@
 class ServiceConnection < ApplicationRecord
   SERVICES = %w[
     kokuchpro connpass peatix techplay zoom tunagate doorkeeper
-    street_academy eventregist passmarket luma seminar_biz jimoty gmail twitter instagram onclass github
+    street_academy eventregist passmarket luma seminar_biz jimoty gmail
+    twitter instagram facebook threads onclass github
   ].freeze
   # コメントアウト: lme, seminars, everevo
 
@@ -28,6 +29,8 @@ class ServiceConnection < ApplicationRecord
     'gmail'           => { email: 'GOOGLE_EMAIL', password: nil },
     'twitter'         => { email: 'TWITTER_EMAIL', password: 'TWITTER_PASSWORD' },
     'instagram'       => { email: 'INSTAGRAM_EMAIL', password: 'INSTAGRAM_PASSWORD' },
+    'facebook'        => { email: 'FACEBOOK_EMAIL', password: 'FACEBOOK_PASSWORD' },
+    'threads'         => { email: 'INSTAGRAM_EMAIL', password: 'INSTAGRAM_PASSWORD' },
     'onclass'         => { email: 'ONCLASS_EMAIL', password: 'ONCLASS_PASSWORD' },
     'github'          => { email: nil, password: 'GITHUB_TOKEN' },
   }.freeze

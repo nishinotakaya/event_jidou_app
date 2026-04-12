@@ -71,7 +71,35 @@ module Posting
 
     def navigate_to_community(page)
       page.goto("#{BASE_URL}/community", timeout: 30_000, waitUntil: 'load')
+      page.wait_for_timeout(3000)
+
+      # サイドバーの「コミュニティ」をクリックしてコミュニティビューを確実に開く
+      page.evaluate(<<~JS)
+        (() => {
+          const items = [...document.querySelectorAll('.v-list-item')];
+          const comm = items.find(el => {
+            const t = el.querySelector('.v-list-item-title');
+            return t && t.textContent.trim() === 'コミュニティ';
+          });
+          if (comm) comm.click();
+        })()
+      JS
       page.wait_for_timeout(5000)
+
+      # コミュニティのチャンネルリストが表示されるまで待機
+      10.times do
+        has_channels = page.evaluate(<<~JS) rescue false
+          (() => {
+            const items = [...document.querySelectorAll('.v-list-item')];
+            return items.some(el => {
+              const t = (el.querySelector('.v-list-item-title')?.textContent || el.textContent || '').trim();
+              return t.includes('チーム') || t.includes('チャンネル') || t.includes('もくもく') || t.includes('報告') || t.includes('質問');
+            });
+          })()
+        JS
+        break if has_channels
+        page.wait_for_timeout(2000)
+      end
       log('[オンクラス] コミュニティページに移動')
     end
 
@@ -81,21 +109,17 @@ module Posting
         (() => {
           const name = '#{escaped}';
           const items = [...document.querySelectorAll('.v-list-item')];
-          const target = items.find(el => {
+          let target = items.find(el => {
             const title = el.querySelector('.v-list-item-title');
             return (title && title.textContent.trim() === name) || el.textContent.trim() === name;
           });
+          if (!target) {
+            target = items.find(el => {
+              const text = (el.querySelector('.v-list-item-title')?.textContent || el.textContent || '').trim();
+              return text.includes(name) || name.includes(text.split('\\n')[0]);
+            });
+          }
           if (target) {
-            // サイドバーのスクロールコンテナを見つけてスクロール
-            let scrollParent = target.parentElement;
-            for (let i = 0; i < 10; i++) {
-              if (!scrollParent) break;
-              if (scrollParent.scrollHeight > scrollParent.clientHeight) {
-                scrollParent.scrollTop = target.offsetTop - scrollParent.offsetTop - 100;
-                break;
-              }
-              scrollParent = scrollParent.parentElement;
-            }
             target.scrollIntoView({ block: 'center', behavior: 'instant' });
             target.click();
             return true;
@@ -103,7 +127,16 @@ module Posting
           return false;
         })()
       JS
-      raise "[オンクラス] チャンネル「#{channel_name}」が見つかりません" unless clicked
+
+      unless clicked
+        avail = page.evaluate(<<~JS) rescue '[]'
+          JSON.stringify([...document.querySelectorAll('.v-list-item')].map(el =>
+            (el.querySelector('.v-list-item-title')?.textContent || el.textContent || '').trim().substring(0, 40)
+          ).filter(t => !['ホーム','コース管理','従業員管理','システム設定','マーケティング','コンテンツ','LP構築'].some(n => t.startsWith(n))))
+        JS
+        log("[オンクラス] 利用可能チャンネル: #{avail}")
+        raise "[オンクラス] チャンネル「#{channel_name}」が見つかりません"
+      end
       page.wait_for_timeout(3000)
     end
 

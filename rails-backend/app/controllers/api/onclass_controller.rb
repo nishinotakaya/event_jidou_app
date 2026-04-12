@@ -12,23 +12,24 @@ module Api
     end
 
     # GET /api/onclass/students
-    # DBから即返却。
+    # DBから即返却（期限内のフロントコースのみ）
     def students
-      existing = OnclassStudent.frontend_course.order(:name)
+      existing = OnclassStudent.active_frontend.order(:name)
       render json: {
         students: existing.pluck(:name),
         fetchedAt: existing.first&.fetched_at&.iso8601,
         cached: true,
+        activeCount: existing.count,
       }
     end
 
     # GET /api/onclass/students_list
-    # onclass_studentsテーブルの全レコードを返す
+    # 期限内のフロントコース受講生のみ返す
     def students_list
-      students = OnclassStudent.order(:course, :name)
+      students = OnclassStudent.active_frontend.order(:name)
       render json: {
         students: students.map { |s|
-          { id: s.id, name: s.name, course: s.course, fetchedAt: s.fetched_at&.iso8601 }
+          { id: s.id, name: s.name, course: s.course, expiresAt: s.expires_at&.iso8601, fetchedAt: s.fetched_at&.iso8601 }
         },
         total: students.count,
       }

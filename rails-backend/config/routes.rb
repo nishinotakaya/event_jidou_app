@@ -52,17 +52,22 @@ Rails.application.routes.draw do
     post "zoom/create_meeting", to: "zoom_settings#create_meeting"
 
     # 投稿履歴
-    get  "posting_histories",                      to: "posting_histories#index"
-    get  "posting_histories/latest",               to: "posting_histories#latest"
-    post "posting_histories/check_registrations",   to: "posting_histories#check_registrations"
-    post "posting_histories/sync",                  to: "posting_histories#sync"
-    post "posting_histories/check_participants",    to: "posting_histories#check_participants"
+    get   "posting_histories",                      to: "posting_histories#index"
+    get   "posting_histories/latest",               to: "posting_histories#latest"
+    post  "posting_histories/check_registrations",  to: "posting_histories#check_registrations"
+    post  "posting_histories/sync",                 to: "posting_histories#sync"
+    post  "posting_histories/check_participants",   to: "posting_histories#check_participants"
+    patch "posting_histories/:id/mark_success",     to: "posting_histories#mark_success"
+    patch "posting_histories/:id/update_url",       to: "posting_histories#update_url"
+    post  "posting_histories/create_manual",         to: "posting_histories#create_manual"
+    post  "posting_histories/bulk_mark_success",    to: "posting_histories#bulk_mark_success"
 
     # 投稿（ActionCable + Sidekiq バックグラウンドジョブ）
     post "post", to: "post#create"
     delete "post/:item_id/remote", to: "post#delete_remote"
     post   "post/:item_id/cancel", to: "post#cancel_remote"
     post   "post/:item_id/publish_all", to: "post#publish_all"
+    post   "post/:item_id/retry_errors", to: "post#retry_errors"
 
     # オンクラス
     get    "onclass/students", to: "onclass#students"
@@ -87,6 +92,12 @@ Rails.application.routes.draw do
 
     # 画像アップロード（汎用）
     post "upload_image", to: "images#upload"
+
+    # 生成/アップロード画像ライブラリ（DB保存）
+    get    "generated_images",     to: "generated_images#index"
+    get    "generated_images/:id", to: "generated_images#show", as: :generated_image
+    post   "generated_images",     to: "generated_images#create"
+    delete "generated_images/:id", to: "generated_images#destroy"
 
     # Googleカレンダー
     get  "calendar/events",   to: "calendar#events"

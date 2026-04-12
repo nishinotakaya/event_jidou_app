@@ -153,44 +153,56 @@ class RegistrationChecker
 
   private
 
-  # Peatix: 公開ページから参加者数を取得
+  # Peatix: APIから参加者数を取得（Bearer token使用）
   def self.check_peatix(event_url)
-    # event_url: https://peatix.com/event/4940762
     event_id = event_url[/event\/(\d+)/, 1]
     return nil unless event_id
 
-    # 公開ページのHTMLから参加者数を抽出
+    # 1. Peatix API（Bearer token）で取得
+    conn = ServiceConnection.find_by(service_name: 'peatix')
+    if conn&.session_data.present?
+      begin
+        session = JSON.parse(conn.session_data)
+        # localStorage から peatix_frontend_access_token を取得
+        token = nil
+        (session['origins'] || []).each do |origin|
+          (origin['localStorage'] || []).each do |item|
+            token = item['value'].to_s if item['name'] == 'peatix_frontend_access_token'
+          end
+        end
+
+        if token
+          uri = URI("https://peatix-api.com/v4/events/#{event_id}/orders")
+          req = Net::HTTP::Get.new(uri)
+          req['Authorization'] = "Bearer #{token}"
+          req['Accept'] = 'application/json'
+          req['Origin'] = 'https://peatix.com'
+          req['Referer'] = 'https://peatix.com/'
+          req['X-Requested-With'] = 'XMLHttpRequest'
+          res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 10) { |h| h.request(req) }
+          if res.is_a?(Net::HTTPSuccess)
+            data = JSON.parse(res.body) rescue {}
+            total = data.dig('paginationInfo', 'totalItems')
+            return total.to_i if total
+          end
+        end
+      rescue => e
+        Rails.logger.warn("[RegistrationChecker] peatix API error: #{e.message}")
+      end
+    end
+
+    # 2. 公開ページHTMLフォールバック
     html = fetch_html("https://peatix.com/event/#{event_id}")
     return nil unless html
-
     doc = Nokogiri::HTML(html)
-
-    # Peatixは複数のフォーマットで参加者数を表示
-    # 1. "X人参加" パターン
     text = doc.text
     if (m = text.match(/(\d+)\s*人\s*(?:が?参加|申し込み|attending)/))
       return m[1].to_i
     end
-
-    # 2. JSON-LD内のattendee数
     doc.css('script[type="application/ld+json"]').each do |script|
-      begin
-        data = JSON.parse(script.text)
-        if data['attendeeCount']
-          return data['attendeeCount'].to_i
-        end
-      rescue
-      end
+      data = JSON.parse(script.text) rescue next
+      return data['attendeeCount'].to_i if data['attendeeCount']
     end
-
-    # 3. list_sales ページを試す（認証が必要かもしれないが公開イベントならOK）
-    sales_html = fetch_html("https://peatix.com/event/#{event_id}/list_sales")
-    if sales_html
-      if (m = sales_html.match(/(\d+)\s*(?:件|枚|人|tickets?)/i))
-        return m[1].to_i
-      end
-    end
-
     0
   end
 
@@ -231,18 +243,43 @@ class RegistrationChecker
 
   # Doorkeeper: HTMLから参加者数を取得
   def self.check_doorkeeper(event_url)
-    # 管理URL → 公開URLに変換
-    # manage.doorkeeper.jp/groups/XXX/events/123 → XXX.doorkeeper.jp/events/123
+    # Doorkeeper API v2で参加者数を取得
+    if (m = event_url.match(%r{/events/(\d+)}))
+      event_id = m[1]
+      # Doorkeeper公開API: /events/:id
+      begin
+        uri = URI("https://api.doorkeeper.jp/events/#{event_id}")
+        req = Net::HTTP::Get.new(uri)
+        req['Accept'] = 'application/json'
+        res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 10) { |h| h.request(req) }
+        if res.is_a?(Net::HTTPSuccess)
+          data = JSON.parse(res.body) rescue {}
+          event = data['event'] || data
+          participants = event['participants'] || event['ticket_count'] || event['waitlisted']
+          return participants.to_i if participants
+        end
+      rescue => e
+        Rails.logger.warn("[RegistrationChecker] doorkeeper API error: #{e.message}")
+      end
+    end
+
+    # フォールバック: 公開ページHTMLから取得
     public_url = event_url
     if event_url.include?('manage.doorkeeper.jp')
-      if (m = event_url.match(%r{manage\.doorkeeper\.jp/groups/([^/]+)/events/(\d+)}))
-        public_url = "https://#{m[1]}.doorkeeper.jp/events/#{m[2]}"
+      if (m2 = event_url.match(%r{manage\.doorkeeper\.jp/groups/([^/]+)/events/(\d+)}))
+        public_url = "https://#{m2[1]}.doorkeeper.jp/events/#{m2[2]}"
       end
     end
     html = fetch_html(public_url)
-    return nil unless html
-    if (m = html.match(/(\d+)\s*人\s*(?:参加|申し込み)/))
-      return m[1].to_i
+    return 0 unless html
+    text = Nokogiri::HTML(html).text
+    # 「申し込み数: X」パターン（定員ではなく申し込み数を取得）
+    if (m3 = text.match(/申し込み数[：:]\s*(\d+)/))
+      return m3[1].to_i
+    end
+    # 「X / Y」パターン（参加者/定員）
+    if (m4 = text.match(/(\d+)\s*\/\s*\d+\s*人/))
+      return m4[1].to_i
     end
     0
   end
@@ -304,7 +341,12 @@ class RegistrationChecker
       loc = "#{uri.scheme}://#{uri.host}#{loc}" if loc.start_with?('/')
       return fetch_html(loc, depth + 1)
     end
-    res.is_a?(Net::HTTPSuccess) ? res.body : nil
+    if res.is_a?(Net::HTTPSuccess)
+      body = res.body
+      body.force_encoding('UTF-8') unless body.encoding == Encoding::UTF_8
+      body.encode!('UTF-8', invalid: :replace, undef: :replace, replace: '')
+      body
+    end
   rescue => e
     Rails.logger.warn("[RegistrationChecker] fetch error #{url}: #{e.message}")
     nil

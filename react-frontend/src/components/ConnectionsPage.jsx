@@ -18,15 +18,17 @@ const SERVICE_LABELS = {
   tunagate:   { name: 'つなゲート', icon: '🤝', url: 'https://tunagate.com/', browserLogin: true, loginUrl: 'https://tunagate.com/auth/google?origin=https://tunagate.com', eventsUrl: 'https://tunagate.com/mypage' },
   doorkeeper: { name: 'Doorkeeper', icon: '🚪', url: 'https://www.doorkeeper.jp/', eventsUrl: 'https://manage.doorkeeper.jp/groups' },
   // seminars:        { name: 'セミナーズ', icon: '📢', url: 'https://seminars.jp/', eventsUrl: 'https://seminars.jp/user/profile/edit' },
-  street_academy:  { name: 'ストアカ', icon: '🎓', url: 'https://www.street-academy.com/', eventsUrl: 'https://www.street-academy.com/dashboard/steachers/myclass' },
+  street_academy:  { name: 'ストアカ', icon: '🎓', url: 'https://www.street-academy.com/', browserLogin: true, loginUrl: 'https://www.street-academy.com/d/users/sign_in', eventsUrl: 'https://www.street-academy.com/dashboard/steachers/myclass' },
   eventregist:     { name: 'EventRegist', icon: '📋', url: 'https://eventregist.com/', eventsUrl: 'https://eventregist.com/eventlist' },
   passmarket:      { name: 'PassMarket', icon: '🅿️', url: 'https://passmarket.yahoo.co.jp/', browserLogin: true, loginUrl: 'https://passmarket.yahoo.co.jp/', eventsUrl: 'https://passmarket.yahoo.co.jp/manage/events/' },
   luma:            { name: 'Luma', icon: '✨', url: 'https://lu.ma/', browserLogin: true, loginUrl: 'https://lu.ma/signin', eventsUrl: 'https://lu.ma/home' },
-  seminar_biz:     { name: 'セミナーBiZ', icon: '💼', url: 'https://seminar-biz.com/', eventsUrl: 'https://seminar-biz.com/company/dashboard' },
+  seminar_biz:     { name: 'セミナーBiZ', icon: '💼', url: 'https://seminar-biz.com/', eventsUrl: 'https://seminar-biz.com/company/dashboard', planNote: '⚠️ フリープラン: 公開中セミナー1件まで。2件目以降は有料プラン(月5,500円〜)が必要' },
   jimoty:          { name: 'ジモティー', icon: '📍', url: 'https://jmty.jp/', browserLogin: true, loginUrl: 'https://jmty.jp/login', eventsUrl: 'https://jmty.jp/my/posts' },
   gmail:           { name: 'Gmail', icon: '📧', url: 'https://mail.google.com/', note: 'Googleログインで自動連携' },
   twitter:         { name: 'X (Twitter)', icon: '𝕏', url: 'https://x.com/', browserLogin: true, loginUrl: 'https://x.com/i/flow/login', eventsUrl: 'https://x.com/home' },
   instagram:       { name: 'Instagram', icon: '📸', url: 'https://www.instagram.com/', browserLogin: true, loginUrl: 'https://www.instagram.com/accounts/login/', eventsUrl: 'https://www.instagram.com/' },
+  facebook:        { name: 'Facebook', icon: '📘', url: 'https://www.facebook.com/', browserLogin: true, loginUrl: 'https://www.facebook.com/login', eventsUrl: 'https://www.facebook.com/' },
+  threads:         { name: 'Threads', icon: '🧵', url: 'https://www.threads.net/', browserLogin: true, loginUrl: 'https://www.threads.net/login', eventsUrl: 'https://www.threads.net/' },
   onclass:         { name: 'オンクラス', icon: '🎓', url: 'https://manager.the-online-class.com/' },
   github:          { name: 'GitHub', icon: '🐙', url: 'https://github.com/', tokenOnly: true, note: 'Personal Access Token（Classic, repoスコープ）' },
 };
@@ -67,8 +69,10 @@ export default function ConnectionsPage({ showToast, onBack, onGoToList, inline 
     try {
       const data = await fetchServiceConnections();
       setConnections(data);
+      return data;
     } catch (err) {
       showToast(err.message, 'error');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -88,11 +92,12 @@ export default function ConnectionsPage({ showToast, onBack, onGoToList, inline 
 
   async function handleSave(serviceName) {
     const isToken = SERVICE_LABELS[serviceName]?.tokenOnly;
-    if (!isToken && !formEmail) {
+    const isBrowserLogin = SERVICE_LABELS[serviceName]?.browserLogin;
+    if (!isToken && !isBrowserLogin && !formEmail) {
       showToast('メールアドレスを入力してください', 'error');
       return;
     }
-    if (!formPassword) {
+    if (!isBrowserLogin && !formPassword) {
       showToast(isToken ? 'トークンを入力してください' : 'パスワードを入力してください', 'error');
       return;
     }
@@ -129,11 +134,30 @@ export default function ConnectionsPage({ showToast, onBack, onGoToList, inline 
         setTesting(null);
         return;
       }
-      // ポーリングでステータスを更新
-      setTimeout(async () => {
-        await loadConnections();
-        setTesting(null);
-      }, 10000);
+      // Playwrightログインテストは最大90秒かかる。5秒おきにポーリング。
+      const svcName = conn.serviceName;
+      let attempts = 0;
+      const maxAttempts = 18; // 90秒
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const freshData = await loadConnections();
+          if (!freshData) return;
+          const updated = freshData.find(c => c.serviceName === svcName);
+          if (!updated) return;
+          // testing中は待機続行、connected/errorで終了
+          if (updated.status === 'testing' && attempts < maxAttempts) return;
+          clearInterval(poll);
+          setTesting(null);
+          if (updated.status === 'error') {
+            showToast(`${SERVICE_LABELS[svcName]?.name}: ❌ ${updated.errorMessage || 'テスト失敗'}`, 'error');
+          } else if (updated.status === 'connected') {
+            showToast(`${SERVICE_LABELS[svcName]?.name}: ✅ ログインテスト成功`, 'success');
+          } else {
+            showToast(`${SERVICE_LABELS[svcName]?.name}: テストタイムアウト`, 'error');
+          }
+        } catch { /* ignore */ }
+      }, 5000);
     } catch (err) {
       showToast(err.message, 'error');
       setTesting(null);
@@ -382,55 +406,67 @@ export default function ConnectionsPage({ showToast, onBack, onGoToList, inline 
 
               {isEditing && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {!label.tokenOnly && (
-                    <input
-                      className="form-input"
-                      type="email"
-                      value={formEmail}
-                      onChange={(e) => setFormEmail(e.target.value)}
-                      placeholder="メールアドレス"
-                      style={{ fontSize: '13px' }}
-                    />
+                  {label.browserLogin ? (
+                    <p style={{ margin: 0, fontSize: '11px', color: '#6b7280', padding: '8px', background: '#fef9c3', borderRadius: '6px' }}>
+                      「🌐 ログイン」ボタンからブラウザログインしてください。メールアドレス・パスワードの入力は不要です。
+                    </p>
+                  ) : (
+                    <>
+                      {!label.tokenOnly && (
+                        <input
+                          className="form-input"
+                          type="email"
+                          value={formEmail}
+                          onChange={(e) => setFormEmail(e.target.value)}
+                          placeholder="メールアドレス"
+                          style={{ fontSize: '13px' }}
+                        />
+                      )}
+                      {label.note && (
+                        <p style={{ margin: 0, fontSize: '10px', color: '#9ca3af' }}>{label.note}</p>
+                      )}
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <input
+                          className="form-input"
+                          type={showPasswords[`edit_${conn.serviceName}`] ? 'text' : 'password'}
+                          value={formPassword}
+                          onChange={(e) => setFormPassword(e.target.value)}
+                          placeholder={label.tokenOnly ? 'トークン' : 'パスワード'}
+                          style={{ fontSize: '13px', flex: 1 }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswords(prev => ({ ...prev, [`edit_${conn.serviceName}`]: !prev[`edit_${conn.serviceName}`] }))}
+                          style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px 8px', cursor: 'pointer', fontSize: '14px' }}
+                          title={showPasswords[`edit_${conn.serviceName}`] ? 'パスワードを隠す' : 'パスワードを表示'}
+                        >
+                          {showPasswords[`edit_${conn.serviceName}`] ? '🙈' : '👁️'}
+                        </button>
+                      </div>
+                    </>
                   )}
-                  {label.note && (
-                    <p style={{ margin: 0, fontSize: '10px', color: '#9ca3af' }}>{label.note}</p>
-                  )}
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <input
-                      className="form-input"
-                      type={showPasswords[`edit_${conn.serviceName}`] ? 'text' : 'password'}
-                      value={formPassword}
-                      onChange={(e) => setFormPassword(e.target.value)}
-                      placeholder={label.tokenOnly ? 'トークン' : 'パスワード'}
-                      style={{ fontSize: '13px', flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPasswords(prev => ({ ...prev, [`edit_${conn.serviceName}`]: !prev[`edit_${conn.serviceName}`] }))}
-                      style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px 8px', cursor: 'pointer', fontSize: '14px' }}
-                      title={showPasswords[`edit_${conn.serviceName}`] ? 'パスワードを隠す' : 'パスワードを表示'}
-                    >
-                      {showPasswords[`edit_${conn.serviceName}`] ? '🙈' : '👁️'}
-                    </button>
-                  </div>
                   <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                     <button className="btn btn-secondary btn-sm" onClick={handleCancelEdit} style={{ fontSize: '12px' }}>
                       キャンセル
                     </button>
-                    <button
-                      className="btn btn-sm"
-                      onClick={() => handleTest({ ...conn, serviceName: conn.serviceName })}
-                      style={{ fontSize: '12px', background: '#f59e0b', color: '#fff' }}
-                    >
-                      🔄 保存+テスト
-                    </button>
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => handleSave(conn.serviceName)}
-                      style={{ fontSize: '12px' }}
-                    >
-                      💾 保存
-                    </button>
+                    {!label.browserLogin && (
+                      <>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => handleTest({ ...conn, serviceName: conn.serviceName })}
+                          style={{ fontSize: '12px', background: '#f59e0b', color: '#fff' }}
+                        >
+                          🔄 保存+テスト
+                        </button>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleSave(conn.serviceName)}
+                          style={{ fontSize: '12px' }}
+                        >
+                          💾 保存
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}

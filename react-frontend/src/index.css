@@ -2295,3 +2295,82 @@ summary.event-fields-title {
   color: #9ca3af;
   text-align: right;
 }
+
+/* ===== Event Status Badge ===== */
+.event-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  border: 2px solid transparent;
+  vertical-align: middle;
+}
+.event-status-badge.upcoming {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: #fff;
+  border-color: #166534;
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+.event-status-badge.ended {
+  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+  color: #fff;
+  border-color: #7f1d1d;
+  opacity: 0.95;
+}
+@keyframes badge-pulse {
+  0%, 100% { box-shadow: 0 2px 6px rgba(34, 197, 94, 0.4); }
+  50%      { box-shadow: 0 2px 14px rgba(34, 197, 94, 0.85); }
+}
+
+/* 終了イベントの行は薄く */
+.item-card.ended {
+  opacity: 0.55;
+  background: #f9fafb;
+}
+.item-card.ended:hover { opacity: 0.85; }
+
+/* ステータスフィルター */
+.status-filter {
+  display: inline-flex;
+  background: #f3f4f6;
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+  margin-left: 8px;
+}
+.status-filter button {
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.status-filter button:hover { color: #111827; }
+.status-filter button.active {
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.status-filter button.active.upcoming { color: #16a34a; }
+.status-filter button.active.ended    { color: #dc2626; }
+
+/* カレンダーセル内の終了イベントは赤系＆取り消し線風 */
+.calendar-dot.app.ended {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: #991b1b !important;
+  text-decoration: line-through;
+  opacity: 0.75;
+}

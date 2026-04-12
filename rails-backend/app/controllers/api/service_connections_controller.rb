@@ -59,8 +59,9 @@ module Api
     # POST /api/service_connections/:id/test
     def test_connection
       conn = ServiceConnection.find(params[:id])
-      conn.update!(status: 'connected', last_connected_at: Time.current, error_message: nil)
-      render json: conn.as_json_safe.merge(message: '接続確認OK')
+      job_id = SecureRandom.hex(8)
+      TestConnectionJob.perform_later(job_id, conn.service_name)
+      render json: { job_id: job_id, message: 'ログインテスト開始...' }
     end
 
     # POST /api/service_connections/test_new
@@ -76,12 +77,14 @@ module Api
       conn = ServiceConnection.find_or_initialize_by(service_name: service_name)
       conn.email = email
       conn.password_field = password
-      conn.status = 'connected'
+      conn.status = 'testing'
       conn.last_connected_at = Time.current
       conn.error_message = nil
       conn.save!
 
-      render json: conn.as_json_safe.merge(message: '保存・接続確認OK')
+      job_id = SecureRandom.hex(8)
+      TestConnectionJob.perform_later(job_id, service_name)
+      render json: conn.as_json_safe.merge(job_id: job_id, message: 'ログインテスト開始...')
     end
 
     # POST /api/service_connections/migrate_from_env
@@ -107,17 +110,29 @@ module Api
 
     # POST /api/service_connections/capture_session
     # ChromeブラウザのCookieからセッションファイルを生成
+    DOMAIN_MAP = {
+      'tunagate'        => 'tunagate.com',
+      'street_academy'  => 'street-academy.com',
+      'jimoty'          => 'jmty.jp',
+      'passmarket'      => 'passmarket.yahoo.co.jp',
+      'luma'            => 'lu.ma',
+      'twitter'         => 'x.com',
+      'instagram'       => 'instagram.com',
+    }.freeze
+
     def capture_session
       service_name = params[:service_name]
-      domain_map = { 'tunagate' => 'tunagate.com' }
-      domain = domain_map[service_name]
+      domain = DOMAIN_MAP[service_name]
       return render json: { error: '非対応サービスです' }, status: :bad_request unless domain
 
       session_path = Rails.root.join('tmp', "#{service_name}_session.json").to_s
       count = ChromeCookieExtractor.extract_for_playwright(domain, session_path)
 
+      # DBにもstorageStateを保存（PostJobがDB経由でセッション復元するため）
       conn = ServiceConnection.find_or_initialize_by(service_name: service_name)
-      conn.email ||= 'Google認証'
+      conn.user_id ||= current_user&.id
+      conn.email ||= 'ブラウザログイン'
+      conn.session_data = File.read(session_path) if File.exist?(session_path)
       conn.status = 'connected'
       conn.last_connected_at = Time.current
       conn.error_message = nil

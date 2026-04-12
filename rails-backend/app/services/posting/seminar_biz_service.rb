@@ -35,8 +35,34 @@ module Posting
 
     def create_seminar(page, content, ef)
       log('[セミナーBiZ] セミナー作成ページへ移動...')
-      page.goto(CREATE_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.goto(CREATE_URL, waitUntil: 'networkidle', timeout: 30_000) rescue page.goto(CREATE_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
       page.wait_for_timeout(3000)
+
+      # プラン制限チェック
+      plan_limit = page.evaluate('document.body?.innerText?.includes("掲載上限数") || false') rescue false
+      if plan_limit
+        plan_msg = page.evaluate('(() => { const m = document.body.innerText.match(/現在契約中の[^。]+。/); return m ? m[0] : null; })()') rescue nil
+        raise "[セミナーBiZ] 💰 プラン制限: #{plan_msg || 'フリープランの掲載上限に達しています'}。有料プラン(月5,500円〜)へのアップグレードが必要です。"
+      end
+
+      # リダイレクトされた場合は再ログイン＆リトライ
+      unless page.url.include?('/create')
+        log("[セミナーBiZ] ⚠️ 作成ページにリダイレクトされず（#{page.url}）→ 再ログイン後にリトライ")
+        ensure_login(page)
+        page.goto(CREATE_URL, waitUntil: 'networkidle', timeout: 30_000) rescue nil
+        page.wait_for_timeout(3000)
+
+        # 再度プラン制限チェック
+        plan_limit2 = page.evaluate('document.body?.innerText?.includes("掲載上限数") || false') rescue false
+        if plan_limit2
+          plan_msg2 = page.evaluate('(() => { const m = document.body.innerText.match(/現在契約中の[^。]+。/); return m ? m[0] : null; })()') rescue nil
+          raise "[セミナーBiZ] 💰 プラン制限: #{plan_msg2 || 'フリープランの掲載上限に達しています'}。有料プラン(月5,500円〜)へのアップグレードが必要です。"
+        end
+
+        unless page.url.include?('/create')
+          raise "[セミナーBiZ] 作成ページにアクセスできません（URL: #{page.url}）"
+        end
+      end
 
       title_text = extract_title(ef, content, 100)
       start_date = normalize_date(ef['startDate'].presence || default_date_plus(30))

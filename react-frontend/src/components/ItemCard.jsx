@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { updateText, fetchPostingHistory, checkRegistrations, checkParticipants, syncPostingHistory, publishAllEvents, fetchGithubReviews, approveGithubReview, postGithubComment, openLocalRepo, reReviewGithub } from '../api.js';
+import { updateText, fetchPostingHistory, checkRegistrations, checkParticipants, syncPostingHistory, publishAllEvents, fetchGithubReviews, approveGithubReview, postGithubComment, openLocalRepo, reReviewGithub, markPostingHistorySuccess, retryErrorPosts, updatePostingHistoryUrl } from '../api.js';
+import { getEventStatus } from '../eventStatus.js';
 
 // 管理URL → 公開URL変換（viewer向け）
 function toPublicUrl(url, siteName) {
@@ -38,7 +39,30 @@ const SITE_ICONS = {
   kokuchpro: '🟠', connpass: '🔴', peatix: '🟡', techplay: '🔵',
   tunagate: '🤝', doorkeeper: '🚪', seminars: '📢', street_academy: '🎓',
   eventregist: '📋', passmarket: '🅿️', luma: '✨', seminar_biz: '💼', jimoty: '📍',
-  twitter: '𝕏', instagram: '📸', gmail: '📧',
+  twitter: '𝕏', instagram: '📸', gmail: '📧', facebook: '📘', threads: '🧵',
+};
+
+const ALL_EVENT_SITES = [
+  { key: 'kokuchpro', label: 'こくチーズ' }, { key: 'connpass', label: 'connpass' },
+  { key: 'peatix', label: 'Peatix' }, { key: 'techplay', label: 'TechPlay' },
+  { key: 'tunagate', label: 'つなゲート' }, { key: 'doorkeeper', label: 'Doorkeeper' },
+  { key: 'street_academy', label: 'ストアカ' }, { key: 'eventregist', label: 'EventRegist' },
+  { key: 'luma', label: 'Luma' }, { key: 'seminar_biz', label: 'セミナーBiZ' },
+  { key: 'jimoty', label: 'ジモティー' },
+];
+
+const FALLBACK_URLS = {
+  kokuchpro: 'https://www.kokuchpro.com/mypage/event/',
+  connpass: 'https://connpass.com/editmanage/',
+  peatix: 'https://peatix.com/dashboard',
+  techplay: 'https://owner.techplay.jp/dashboard',
+  tunagate: 'https://tunagate.com/mypage',
+  doorkeeper: 'https://manage.doorkeeper.jp/groups',
+  street_academy: 'https://www.street-academy.com/dashboard/steachers/myclass',
+  eventregist: 'https://eventregist.com/eventlist',
+  luma: 'https://lu.ma/home',
+  seminar_biz: 'https://seminar-biz.com/company/seminars',
+  jimoty: 'https://jmty.jp/my/posts',
 };
 
 export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost, onDuplicate, onCancel, onRefresh, showToast, tagsOpen = true, userRole = 'admin' }) {
@@ -160,10 +184,19 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
   const createdAt = item.createdAt || '';
   const updatedAt = item.updatedAt || '';
 
+  const eventStatus = type === 'event' ? getEventStatus(item) : null;
+
   return (
-    <div className="item-card">
+    <div className={`item-card${eventStatus === 'ended' ? ' ended' : ''}`}>
       <div className="item-card-header">
-        <div className="item-card-name">{item.name}</div>
+        <div className="item-card-name">
+          {eventStatus && (
+            <span className={`event-status-badge ${eventStatus}`} style={{ marginRight: 8 }}>
+              {eventStatus === 'ended' ? '🔴 終了' : '🟢 募集中'}
+            </span>
+          )}
+          {item.name}
+        </div>
         <div className="item-card-actions">
           <button
             className="btn btn-teal btn-sm"
@@ -235,15 +268,39 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
           投稿状況{postingHistory.length > 0 ? ` (${postingHistory.length})` : ''}
         </button>
         {expanded && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
-        {postingHistory.length > 0 && (<>
 
-          {postingHistory.map((h) => (
+          {postingHistory.map((h) => {
+            const linkUrl = userRole === 'viewer'
+              ? (h.published ? toPublicUrl(h.eventUrl, h.siteName) : null) || '#'
+              : h.eventUrl || FALLBACK_URLS[h.siteName] || '#';
+            const hasLink = linkUrl !== '#';
+            return (
             <a
               key={h.siteName}
-              href={userRole === 'viewer' ? (h.published ? toPublicUrl(h.eventUrl, h.siteName) : null) || '#' : h.eventUrl || '#'}
-              target={(userRole === 'viewer' ? h.published : h.eventUrl) ? '_blank' : undefined}
+              href={linkUrl}
+              target={hasLink ? '_blank' : undefined}
               rel="noopener noreferrer"
-              onClick={(e) => { if (userRole === 'viewer' ? !h.published : !h.eventUrl) e.preventDefault(); }}
+              onClick={async (e) => {
+                // 管理者: URL未取得 or エラーのバッジクリックでURL手動入力
+                if (userRole !== 'viewer' && h.id && (!h.eventUrl || h.status === 'error' || h.status === 'not_found')) {
+                  e.preventDefault();
+                  const url = window.prompt(`${h.siteLabel} のイベントURLを入力してください\n\n▼ イベント一覧ページ（ここからURLをコピー）\n${FALLBACK_URLS[h.siteName] || '(なし)'}`, h.eventUrl || '');
+                  if (url === null) return; // キャンセル
+                  try {
+                    if (url.trim()) {
+                      await updatePostingHistoryUrl(h.id, url.trim());
+                      showToast(`${h.siteLabel} のURLを保存しました`, 'success');
+                    } else {
+                      await markPostingHistorySuccess(h.id);
+                      showToast(`${h.siteLabel} を成功扱いにしました`, 'success');
+                    }
+                    const latest = await fetchPostingHistory(item.id);
+                    setPostingHistory(latest);
+                  } catch (err) { showToast(err.message, 'error'); }
+                  return;
+                }
+                if (!hasLink) e.preventDefault();
+              }}
               title={`${h.siteLabel}${h.status === 'not_found' ? '（存在しない）' : h.status === 'ended' ? '（終了）' : h.status === 'cancelled' ? '（中止）' : h.status === 'deleted' ? '（削除済み）' : h.published ? '（公開済み）' : '（下書き）'}${h.registrations != null ? `\n申し込み: ${h.registrations}人` : ''}${h.eventUrl ? '\nクリックで詳細ページへ' : ''}\n投稿日: ${h.postedAt ? new Date(h.postedAt).toLocaleString('ja-JP') : ''}`}
               style={{
                 display: 'inline-flex',
@@ -254,10 +311,10 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
                 fontSize: '11px',
                 fontWeight: 600,
                 textDecoration: 'none',
-                cursor: h.eventUrl ? 'pointer' : 'default',
-                background: h.status === 'not_found' || h.status === 'ended' ? '#fee2e2' : h.status === 'cancelled' ? '#fef3c7' : h.status === 'deleted' ? '#f3f4f6' : h.status === 'error' ? '#fee2e2' : h.published ? '#dcfce7' : '#f3f4f6',
-                color: h.status === 'not_found' || h.status === 'ended' ? '#dc2626' : h.status === 'cancelled' ? '#d97706' : h.status === 'deleted' ? '#9ca3af' : h.status === 'error' ? '#dc2626' : h.published ? '#16a34a' : '#6b7280',
-                border: `1px solid ${h.status === 'not_found' || h.status === 'ended' ? '#fca5a5' : h.status === 'cancelled' ? '#fcd34d' : h.status === 'deleted' ? '#d1d5db' : h.status === 'error' ? '#fca5a5' : h.published ? '#86efac' : '#d1d5db'}`,
+                cursor: hasLink ? 'pointer' : 'default',
+                background: h.status === 'not_found' || h.status === 'ended' ? '#fee2e2' : h.status === 'cancelled' ? '#fef3c7' : h.status === 'deleted' ? '#f3f4f6' : h.status === 'error' ? (h.errorMessage?.includes('プラン') ? '#fff7ed' : '#fee2e2') : h.published ? '#dcfce7' : '#f3f4f6',
+                color: h.status === 'not_found' || h.status === 'ended' ? '#dc2626' : h.status === 'cancelled' ? '#d97706' : h.status === 'deleted' ? '#9ca3af' : h.status === 'error' ? (h.errorMessage?.includes('プラン') ? '#c2410c' : '#dc2626') : h.published ? '#16a34a' : '#6b7280',
+                border: `1px solid ${h.status === 'not_found' || h.status === 'ended' ? '#fca5a5' : h.status === 'cancelled' ? '#fcd34d' : h.status === 'deleted' ? '#d1d5db' : h.status === 'error' ? (h.errorMessage?.includes('プラン') ? '#fdba74' : '#fca5a5') : h.published ? '#86efac' : '#d1d5db'}`,
                 textDecorationLine: h.status === 'deleted' || h.status === 'not_found' ? 'line-through' : 'none',
                 opacity: h.status === 'deleted' ? 0.6 : 1,
               }}
@@ -265,9 +322,53 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
               <span>{SITE_ICONS[h.siteName] || '📌'}</span>
               <span>{h.siteLabel}</span>
               {h.registrations != null && h.status !== 'cancelled' && h.status !== 'deleted' && <span style={{ color: '#7c3aed', fontWeight: 700 }}>({h.registrations}人)</span>}
-              {h.status === 'not_found' ? <span>❌</span> : h.status === 'ended' ? <span>❌ 終了</span> : h.status === 'cancelled' ? <span>🚫 中止</span> : h.status === 'deleted' ? <span>🗑️</span> : h.status === 'error' ? <span>❌</span> : h.published ? <span>✅</span> : <span>📝</span>}
+              {h.status === 'not_found' ? <span>❌</span> : h.status === 'ended' ? <span>❌ 終了</span> : h.status === 'cancelled' ? <span>🚫 中止</span> : h.status === 'deleted' ? <span>🗑️</span> : h.status === 'error' ? (h.errorMessage?.includes('プラン') ? <span>💰 プラン</span> : <span>❌</span>) : h.published ? <span>✅</span> : <span>📝</span>}
             </a>
-          ))}
+          );})}
+
+          {/* 未投稿サイトを ❌ で表示 */}
+          {userRole !== 'viewer' && ALL_EVENT_SITES
+            .filter(s => !postingHistory.some(h => h.siteName === s.key))
+            .map(s => {
+              const siteUrl = FALLBACK_URLS[s.key] || '#';
+              return (
+                <span
+                  key={s.key}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                    padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 600,
+                    background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb',
+                  }}
+                  title={`${s.label}: 未投稿`}
+                >
+                  <a href={siteUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <span>{SITE_ICONS[s.key] || '📌'}</span>
+                    <span>{s.label}</span>
+                  </a>
+                  <span
+                    onClick={async () => {
+                      const url = window.prompt(`${s.label} のイベントURLを入力\n\n▼ イベント一覧ページ（ここからURLをコピー）\n${siteUrl}`, '');
+                      if (!url?.trim()) return;
+                      try {
+                        const res = await fetch('/api/posting_histories/create_manual', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ item_id: item.id, site_name: s.key, event_url: url.trim() }),
+                        });
+                        if (!res.ok) throw new Error('保存失敗');
+                        showToast(`${s.label} のURLを保存しました`, 'success');
+                        const latest = await fetchPostingHistory(item.id);
+                        setPostingHistory(latest);
+                      } catch (err) { showToast(err.message, 'error'); }
+                    }}
+                    style={{ cursor: 'pointer', marginLeft: 2 }}
+                    title="クリックでURL手動入力"
+                  >✏️</span>
+                </span>
+              );
+            })
+          }
+
           {userRole !== 'viewer' && <button
             onClick={handleCheckRegistrations}
             disabled={checkingRegs}
@@ -281,6 +382,33 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
           >
             {checkingRegs ? '⏳' : '🔄'} 申し込み確認
           </button>}
+          {userRole !== 'viewer' && postingHistory.some(h => h.status === 'error' || h.status === 'not_found' || (h.status === 'success' && !h.published)) && (
+            <button
+              onClick={async () => {
+                const errSites = postingHistory.filter(h => h.status === 'error' || h.status === 'not_found' || (h.status === 'success' && !h.published)).map(h => `${h.siteLabel}(${h.status === 'error' ? '❌' : h.status === 'not_found' ? '❌' : '📝'})`).join(', ');
+                if (!window.confirm(`❌ のサイト（${errSites}）に再投稿しますか？`)) return;
+                showToast('🔄 再投稿開始...', 'info');
+                try {
+                  await retryErrorPosts(item.id, (event) => {
+                    if (event.type === 'log') showToast(event.message, 'info');
+                    else if (event.type === 'error') showToast(event.message, 'error');
+                    else if (event.type === 'done') showToast('再投稿完了', 'success');
+                  });
+                  const latest = await fetchPostingHistory(item.id);
+                  setPostingHistory(latest);
+                } catch (err) { showToast(err.message, 'error'); }
+              }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 600,
+                background: '#dbeafe', color: '#2563eb', border: '1px solid #93c5fd',
+                cursor: 'pointer',
+              }}
+              title="❌ のサイトだけ再投稿する"
+            >
+              🔄 再投稿
+            </button>
+          )}
           {userRole !== 'viewer' && <button
             onClick={handleCheckParticipants}
             disabled={checkingParticipants}
@@ -294,7 +422,6 @@ export default function ItemCard({ item, type, folders, onEdit, onDelete, onPost
           >
             {checkingParticipants ? '⏳ 取得中...' : '👥 参加者確認'}
           </button>}
-        </>)}
         {userRole !== 'viewer' && <button
           onClick={handleSync}
           disabled={syncing}

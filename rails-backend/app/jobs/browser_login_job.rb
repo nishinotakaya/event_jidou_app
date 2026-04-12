@@ -13,7 +13,7 @@ class BrowserLoginJob < ApplicationJob
     'luma' => {
       url: 'https://lu.ma/signin',
       session_path: -> { Rails.root.join('tmp', 'luma_session.json').to_s },
-      success_check: ->(url) { url.include?('luma.com') && !url.include?('/signin') },
+      success_check: ->(url) { url.include?('lu.ma') && !url.include?('/signin') },
     },
     'passmarket' => {
       url: 'https://passmarket.yahoo.co.jp/',
@@ -34,6 +34,21 @@ class BrowserLoginJob < ApplicationJob
       url: 'https://www.instagram.com/accounts/login/',
       session_path: -> { Rails.root.join('tmp', 'instagram_session.json').to_s },
       success_check: ->(url) { url.include?('instagram.com') && !url.include?('/login') && !url.include?('/accounts/login') },
+    },
+    'facebook' => {
+      url: 'https://www.facebook.com/login',
+      session_path: -> { Rails.root.join('tmp', 'facebook_session.json').to_s },
+      success_check: ->(url) { url.include?('facebook.com') && !url.include?('/login') && !url.include?('checkpoint') },
+    },
+    'threads' => {
+      url: 'https://www.threads.net/login',
+      session_path: -> { Rails.root.join('tmp', 'threads_session.json').to_s },
+      success_check: ->(url) { url.include?('threads.net') && !url.include?('/login') },
+    },
+    'street_academy' => {
+      url: 'https://www.street-academy.com/d/users/sign_in',
+      session_path: -> { Rails.root.join('tmp', 'street_academy_session.json').to_s },
+      success_check: ->(url) { url.include?('street-academy.com') && !url.include?('/sign_in') },
     },
   }.freeze
 
@@ -74,9 +89,15 @@ class BrowserLoginJob < ApplicationJob
           broadcast(job_id, type: 'log', message: "✅ ログイン成功！セッションを保存しました。")
           broadcast(job_id, type: 'result', data: { status: 'connected', service: service_name })
 
-          # service_connectionも更新
-          conn = ServiceConnection.find_by(service_name: service_name)
-          conn&.update!(status: 'connected', last_connected_at: Time.current, error_message: nil)
+          # service_connectionも更新（セッションデータをDBにも保存）
+          conn = ServiceConnection.find_or_initialize_by(service_name: service_name)
+          conn.email ||= 'ブラウザログイン'
+          session_json = File.read(session_path) rescue nil
+          conn.session_data = session_json if session_json
+          conn.status = 'connected'
+          conn.last_connected_at = Time.current
+          conn.error_message = nil
+          conn.save!
 
           broadcast(job_id, type: 'done')
           browser.close rescue nil

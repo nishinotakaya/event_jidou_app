@@ -1,5 +1,10 @@
 import { createConsumer } from '@rails/actioncable';
 
+// WebSocket URL（Vercel経由はWebSocket非対応のため、本番はHerokuに直接接続）
+const CABLE_URL = window.location.hostname === 'localhost'
+  ? '/cable'
+  : 'wss://announcement-d656a48fc066.herokuapp.com/cable';
+
 // ===== Texts CRUD =====
 export async function fetchTexts(type) {
   const res = await fetch(`/api/texts/${type}`);
@@ -7,8 +12,9 @@ export async function fetchTexts(type) {
   return res.json();
 }
 
-export async function createText(type, { name, content, folder = '', eventDate, eventTime, eventEndTime, onclassMentions, onclassChannels, studentPostType }) {
+export async function createText(type, { name, content, folder = '', eventDate, eventTime, eventEndTime, zoomUrl, onclassMentions, onclassChannels, studentPostType }) {
   const body = { name, content, folder, eventDate, eventTime, eventEndTime };
+  if (zoomUrl !== undefined) body.zoomUrl = zoomUrl;
   if (onclassMentions) body.onclassMentions = onclassMentions;
   if (onclassChannels) body.onclassChannels = onclassChannels;
   if (studentPostType) body.studentPostType = studentPostType;
@@ -21,8 +27,9 @@ export async function createText(type, { name, content, folder = '', eventDate, 
   return res.json();
 }
 
-export async function updateText(type, id, { name, content, folder, eventDate, eventTime, eventEndTime, onclassMentions, onclassChannels, studentPostType }) {
+export async function updateText(type, id, { name, content, folder, eventDate, eventTime, eventEndTime, zoomUrl, onclassMentions, onclassChannels, studentPostType }) {
   const body = { name, content, folder, eventDate, eventTime, eventEndTime };
+  if (zoomUrl !== undefined) body.zoomUrl = zoomUrl;
   if (onclassMentions) body.onclassMentions = onclassMentions;
   if (onclassChannels) body.onclassChannels = onclassChannels;
   if (studentPostType) body.studentPostType = studentPostType;
@@ -292,6 +299,69 @@ export async function syncPostingHistory(itemId) {
   return res.json();
 }
 
+export async function markPostingHistorySuccess(id) {
+  const res = await fetch(`/api/posting_histories/${id}/mark_success`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('ステータス変更に失敗しました');
+  return res.json();
+}
+
+export async function updatePostingHistoryUrl(id, eventUrl) {
+  const res = await fetch(`/api/posting_histories/${id}/update_url`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event_url: eventUrl }),
+  });
+  if (!res.ok) throw new Error('URL更新に失敗しました');
+  return res.json();
+}
+
+export async function bulkMarkPostingHistorySuccess(itemId) {
+  const body = itemId ? { item_id: itemId } : {};
+  const res = await fetch('/api/posting_histories/bulk_mark_success', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('一括変更に失敗しました');
+  return res.json();
+}
+
+export function retryErrorPosts(itemId, onEvent) {
+  return postToSitesRaw(`/api/post/${encodeURIComponent(itemId)}/retry_errors`, {}, onEvent);
+}
+
+function postToSitesRaw(url, extraBody, onEvent) {
+  return new Promise((resolve, reject) => {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(extraBody),
+    })
+      .then((res) => {
+        if (!res.ok) return res.json().then((d) => { throw new Error(d.error || '再投稿に失敗しました'); });
+        return res.json();
+      })
+      .then((data) => {
+        if (!data.job_id) { resolve(data); return; }
+        const cable = createConsumer(CABLE_URL);
+        const sub = cable.subscriptions.create({ channel: 'PostChannel', job_id: data.job_id }, {
+          received(event) {
+            if (onEvent) onEvent(event);
+            if (event.type === 'done' || event.type === 'error') {
+              sub.unsubscribe();
+              cable.disconnect();
+              resolve(data);
+            }
+          },
+        });
+      })
+      .catch(reject);
+  });
+}
+
 export async function checkRegistrations(itemId) {
   const res = await fetch(`/api/posting_histories/check_registrations?item_id=${encodeURIComponent(itemId)}`, {
     method: 'POST',
@@ -325,7 +395,7 @@ export async function cancelRemoteEvents(itemId, onEvent) {
 }
 
 function subscribeToJob(job_id, onEvent) {
-  const cableUrl = import.meta.env.VITE_CABLE_URL || '/cable';
+  const cableUrl = CABLE_URL;
   const consumer = createConsumer(cableUrl);
   return new Promise((resolve, reject) => {
     const subscription = consumer.subscriptions.create(
@@ -366,6 +436,27 @@ export async function uploadImage(file) {
   formData.append('image', file);
   const res = await fetch('/api/upload_image', { method: 'POST', body: formData });
   if (!res.ok) throw new Error('画像アップロードに失敗しました');
+  return res.json();
+}
+
+// ===== Generated Images (DB保存されたAI画像・アップロード画像) =====
+export async function fetchGeneratedImages() {
+  const res = await fetch('/api/generated_images');
+  if (!res.ok) throw new Error('画像一覧の取得に失敗しました');
+  return res.json();
+}
+
+export async function uploadGeneratedImage(file) {
+  const formData = new FormData();
+  formData.append('image', file);
+  const res = await fetch('/api/generated_images', { method: 'POST', body: formData });
+  if (!res.ok) throw new Error('画像保存に失敗しました');
+  return res.json();
+}
+
+export async function deleteGeneratedImage(id) {
+  const res = await fetch(`/api/generated_images/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('画像削除に失敗しました');
   return res.json();
 }
 
@@ -417,7 +508,7 @@ export async function reReviewGithub(id, onEvent) {
   const { job_id } = await res.json();
   if (!onEvent) return { job_id };
 
-  const cableUrl = import.meta.env.VITE_CABLE_URL || '/cable';
+  const cableUrl = CABLE_URL;
   const { createConsumer } = await import('@rails/actioncable');
   const consumer = createConsumer(cableUrl);
   return new Promise((resolve, reject) => {
@@ -446,7 +537,7 @@ export async function scanGithubReviews(onEvent) {
   if (!onEvent) return { job_id };
 
   // ActionCableでリアルタイムログを受信
-  const cableUrl = import.meta.env.VITE_CABLE_URL || '/cable';
+  const cableUrl = CABLE_URL;
   const { createConsumer } = await import('@rails/actioncable');
   const consumer = createConsumer(cableUrl);
 
@@ -538,7 +629,7 @@ export async function syncOnclassStudents(onEvent) {
   if (!res.ok) throw new Error('同期開始に失敗しました');
   const { job_id } = await res.json();
 
-  const cableUrl = import.meta.env.VITE_CABLE_URL || '/cable';
+  const cableUrl = CABLE_URL;
   const consumer = createConsumer(cableUrl);
 
   return new Promise((resolve, reject) => {
@@ -579,7 +670,7 @@ export async function postToSites({ content, sites, eventFields, generateImage, 
   const { job_id } = await res.json();
 
   // 2. Subscribe to ActionCable PostChannel for real-time progress
-  const cableUrl = import.meta.env.VITE_CABLE_URL || '/cable';
+  const cableUrl = CABLE_URL;
   const consumer = createConsumer(cableUrl);
 
   return new Promise((resolve, reject) => {

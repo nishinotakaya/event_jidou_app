@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchCalendarEvents, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../api.js';
+import { getEventStatus } from '../eventStatus.js';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -39,7 +40,29 @@ function formatTime(dateStr) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-export default function CalendarView({ items = [], onEditItem, onShowInList, onNewEvent, onNewStudent, showToast, userRole = 'admin' }) {
+export default function CalendarView({
+  items = [],
+  selectedFolder = null,
+  statusFilter = 'upcoming',
+  onStatusFilterChange,
+  onEditItem,
+  onShowInList,
+  onNewEvent,
+  onNewStudent,
+  showToast,
+  userRole = 'admin',
+}) {
+  // フォルダ + ステータスで絞り込み
+  const filteredItems = items.filter((item) => {
+    if (selectedFolder) {
+      const f = item.folder || '';
+      if (f !== selectedFolder && !f.startsWith(selectedFolder + '/')) return false;
+    }
+    if (statusFilter !== 'all') {
+      if (getEventStatus(item) !== statusFilter) return false;
+    }
+    return true;
+  });
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -70,9 +93,9 @@ export default function CalendarView({ items = [], onEditItem, onShowInList, onN
     loadGoogleEvents();
   }, [loadGoogleEvents]);
 
-  // アプリ内イベントを日付でマッピング
+  // アプリ内イベントを日付でマッピング（フィルタ適用後）
   const appEventsByDate = {};
-  items.forEach((item) => {
+  filteredItems.forEach((item) => {
     if (!item.eventDate) return;
     const key = item.eventDate;
     if (!appEventsByDate[key]) appEventsByDate[key] = [];
@@ -187,10 +210,31 @@ export default function CalendarView({ items = [], onEditItem, onShowInList, onN
         </button>}
       </div>
 
-      {/* 凡例 */}
-      <div className="calendar-legend">
+      {/* 凡例 + ステータスフィルタ */}
+      <div className="calendar-legend" style={{ gap: 16, flexWrap: 'wrap' }}>
         <span><span className="calendar-legend-dot" style={{ background: '#ede9fe', borderColor: '#c4b5fd' }} />アプリ内イベント</span>
         <span><span className="calendar-legend-dot" style={{ background: '#dcfce7', borderColor: '#86efac' }} />Googleカレンダー</span>
+        {onStatusFilterChange && (
+          <div className="status-filter" role="tablist" aria-label="ステータス">
+            <button
+              className={statusFilter === 'upcoming' ? 'active upcoming' : ''}
+              onClick={() => onStatusFilterChange('upcoming')}
+            >🟢 募集中</button>
+            <button
+              className={statusFilter === 'ended' ? 'active ended' : ''}
+              onClick={() => onStatusFilterChange('ended')}
+            >🔴 終了</button>
+            <button
+              className={statusFilter === 'all' ? 'active' : ''}
+              onClick={() => onStatusFilterChange('all')}
+            >すべて</button>
+          </div>
+        )}
+        {selectedFolder && (
+          <span style={{ fontSize: 12, color: '#7c3aed', fontWeight: 600 }}>
+            📂 {selectedFolder}
+          </span>
+        )}
       </div>
 
       {/* カレンダーグリッド */}
@@ -217,11 +261,14 @@ export default function CalendarView({ items = [], onEditItem, onShowInList, onN
             >
               <span className="calendar-day">{cell.day}</span>
               <div className="calendar-dots">
-                {appEvts.slice(0, 3).map((e) => (
-                  <div key={e.id} className="calendar-dot app" title={e.name}>
-                    {e.eventTime ? `${e.eventTime.substring(0, 5)}- ` : ''}{e.name}
-                  </div>
-                ))}
+                {appEvts.slice(0, 3).map((e) => {
+                  const s = getEventStatus(e);
+                  return (
+                    <div key={e.id} className={`calendar-dot app${s === 'ended' ? ' ended' : ''}`} title={e.name}>
+                      {e.eventTime ? `${e.eventTime.substring(0, 5)}- ` : ''}{e.name}
+                    </div>
+                  );
+                })}
                 {gcalEvts.slice(0, 2).map((e) => (
                   <div key={e.id} className="calendar-dot gcal" title={e.title}>
                     {!e.allDay && e.start ? `${formatTime(e.start)}- ` : ''}{e.title}
@@ -272,9 +319,14 @@ export default function CalendarView({ items = [], onEditItem, onShowInList, onN
               {selectedAppEvents.length > 0 && (
                 <div className="calendar-detail-section">
                   <h4 className="calendar-detail-label">📋 アプリ内イベント</h4>
-                  {selectedAppEvents.map((item) => (
-                    <div key={item.id} className="calendar-event-card app">
+                  {selectedAppEvents.map((item) => {
+                    const s = getEventStatus(item);
+                    return (
+                    <div key={item.id} className={`calendar-event-card app${s === 'ended' ? ' ended' : ''}`} style={s === 'ended' ? { opacity: 0.65 } : {}}>
                       <div className="calendar-event-info">
+                        <span className={`event-status-badge ${s}`} style={{ marginRight: 8 }}>
+                          {s === 'ended' ? '🔴 終了' : '🟢 募集中'}
+                        </span>
                         <strong>{item.name}</strong>
                         <span className="calendar-event-time">
                           {item.eventTime || ''}{item.eventEndTime ? `〜${item.eventEndTime}` : ''}
@@ -301,7 +353,8 @@ export default function CalendarView({ items = [], onEditItem, onShowInList, onN
                         </button>}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 

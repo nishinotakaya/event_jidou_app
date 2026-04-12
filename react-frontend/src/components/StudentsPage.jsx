@@ -203,6 +203,11 @@ export default function StudentsPage({ showToast }) {
               {list.map((s) => (
                 <div key={s.id} className="student-card">
                   <span className="student-name">{s.name}</span>
+                  {s.expiresAt && (
+                    <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: 600, marginLeft: 6 }}>
+                      〜{new Date(s.expiresAt).toLocaleDateString('ja-JP')}
+                    </span>
+                  )}
                   <button
                     className="student-delete"
                     onClick={() => handleDelete(s)}

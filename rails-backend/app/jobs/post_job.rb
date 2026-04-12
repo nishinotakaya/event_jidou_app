@@ -21,9 +21,24 @@ class PostJob < ApplicationJob
 
     broadcast(job_id, type: 'log', message: '投稿処理を開始します...')
 
-    # ===== 画像生成（DALL-E 3） =====
+    # ===== 画像準備 =====
+    # 優先順位: (1) 既存画像ID指定 → DBから復元、(2) DALL-E 自動生成
     image_path = nil
-    if generate_image
+    generated_image_id = payload['generatedImageId'].presence
+
+    if generated_image_id
+      begin
+        img = GeneratedImage.find(generated_image_id)
+        ext = img.content_type.to_s.include?('jpeg') ? '.jpg' : '.png'
+        image_path = Rails.root.join('tmp', "picked_image_#{Time.now.to_i}_#{job_id}#{ext}").to_s
+        File.write(image_path, img.data, mode: 'wb')
+        broadcast(job_id, type: 'log', message: "🖼️ 既存画像を使用（id=#{img.id}, #{img.byte_size}B）")
+      rescue ActiveRecord::RecordNotFound
+        broadcast(job_id, type: 'log', message: "⚠️ 指定された画像(id=#{generated_image_id})が見つかりません")
+      end
+    end
+
+    if image_path.nil? && generate_image
       if dalle_key.blank?
         broadcast(job_id, type: 'log', message: '⚠️ 画像生成: DALL-E APIキーが未設定のためスキップします')
       else
@@ -31,7 +46,24 @@ class PostJob < ApplicationJob
           broadcast(job_id, type: 'log', message: '🖼️ DALL-E 3で画像生成中...')
           image_title = event_fields['title'].presence || content.split("\n").first.to_s[0, 80]
           image_path  = generate_dalle_image(dalle_key, image_title, image_style, job_id)
-          broadcast(job_id, type: 'log', message: '🖼️ 画像生成・保存完了')
+          # DB保存（再利用可能にする）
+          begin
+            bytes = File.binread(image_path)
+            GeneratedImage.create!(
+              user_id: posting_user_id,
+              source: 'dalle',
+              filename: File.basename(image_path),
+              content_type: 'image/png',
+              byte_size: bytes.bytesize,
+              prompt: image_title,
+              style: image_style,
+              item_id: item_id,
+              data: bytes,
+            )
+            broadcast(job_id, type: 'log', message: '🖼️ 画像生成・DB保存完了')
+          rescue => e
+            broadcast(job_id, type: 'log', message: "⚠️ 画像DB保存失敗: #{e.message}（ファイルは保持）")
+          end
         rescue => e
           broadcast(job_id, type: 'log', message: "⚠️ 画像生成失敗: #{e.message}")
         end
@@ -67,6 +99,16 @@ class PostJob < ApplicationJob
           broadcast(job_id, type: 'log', message: "[オンクラス] ⏭️ イベント投稿ではスキップ（受講生サポートのみ対応）")
           broadcast(job_id, type: 'status', site: s.split(':').first, status: 'skipped')
         end
+      end
+
+      # ストアカ公開時は画像必須（サイト側の必須項目 / 2,000円 上限）
+      publishing_street = sites.any? { |s| s.split(':').first == 'ストアカ' } && event_fields.dig('publishSites', 'ストアカ')
+      ef_image = event_fields['imagePath'].to_s.presence
+      if publishing_street && image_path.blank? && ef_image.blank?
+        sites = sites.reject { |s| s.split(':').first == 'ストアカ' }
+        broadcast(job_id, type: 'log', message: "[ストアカ] ❌ 公開するには画像が必須です。DALL-E自動生成をONにするか、過去画像を選択してから再実行してください。")
+        broadcast(job_id, type: 'status', site: 'ストアカ', status: 'error')
+        save_posting_history(item_id, 'ストアカ', 'error', nil, false, '画像未指定（ストアカ公開には画像必須）')
       end
 
       # SNS（X/Instagram）はポータルサイト投稿後に実行（申し込みURLを取得するため）
@@ -128,29 +170,41 @@ class PostJob < ApplicationJob
             msg.to_s.scan(%r{https?://[^\s））」]+}).each { |url| captured_urls << url }
           }
 
-          case site_name
-          when 'こくチーズ' then Posting::KokuchproService.new.call(page, content, ef, &log_fn)
-          when 'Peatix'     then Posting::PeatixService.new.call(page, content, ef, &log_fn)
-          when 'connpass'   then Posting::ConnpassService.new.call(page, content, ef, &log_fn)
-          when 'TechPlay'    then Posting::TechplayService.new.call(page, content, ef, &log_fn)
-          when 'つなゲート'   then Posting::TunagateService.new.call(page, content, ef, &log_fn)
-          when 'Doorkeeper' then Posting::DoorkeeperService.new.call(page, content, ef, &log_fn)
-          when 'セミナーズ'   then Posting::SeminarsService.new.call(page, content, ef, &log_fn)
-          when 'ストアカ'    then Posting::StreetAcademyService.new.call(page, content, ef, &log_fn)
-          when 'EventRegist' then Posting::EventregistService.new.call(page, content, ef, &log_fn)
-          when 'PassMarket'  then Posting::PassmarketService.new.call(page, content, ef, &log_fn)
-          when 'Luma'        then Posting::LumaService.new.call(page, content, ef, &log_fn)
-          when 'セミナーBiZ' then Posting::SeminarBizService.new.call(page, content, ef, &log_fn)
-          when 'ジモティー'   then Posting::JimotyService.new.call(page, content, ef, &log_fn)
-          when 'LME'         then Posting::LmeService.new.call(page, content, ef, &log_fn)
-          when 'Gmail'        then Posting::GmailService.new.call(page, content, ef, &log_fn)
-          when 'X'            then Posting::TwitterService.new.call(page, content, ef, &log_fn)
-          when 'Instagram'    then Posting::InstagramService.new.call(page, content, ef, &log_fn)
-          when 'オンクラス'   then Posting::OnclassService.new.call(page, content, ef, &log_fn)
-          else broadcast(job_id, type: 'log', message: "[#{site_name}] 未対応サイトです")
+          # 既存投稿があれば更新（編集）、なければ新規作成
+          existing = item_id.present? ? PostingHistory.find_by(item_id: item_id, site_name: service_key, status: 'success') : nil
+          svc_class = {
+            'こくチーズ' => Posting::KokuchproService, 'Peatix' => Posting::PeatixService,
+            'connpass' => Posting::ConnpassService, 'TechPlay' => Posting::TechplayService,
+            'つなゲート' => Posting::TunagateService, 'Doorkeeper' => Posting::DoorkeeperService,
+            'セミナーズ' => Posting::SeminarsService, 'ストアカ' => Posting::StreetAcademyService,
+            'EventRegist' => Posting::EventregistService, 'PassMarket' => Posting::PassmarketService,
+            'Luma' => Posting::LumaService, 'セミナーBiZ' => Posting::SeminarBizService,
+            'ジモティー' => Posting::JimotyService, 'LME' => Posting::LmeService,
+            'Gmail' => Posting::GmailService, 'X' => Posting::TwitterService,
+            'Instagram' => Posting::InstagramService, 'オンクラス' => Posting::OnclassService,
+            'Facebook' => Posting::FacebookService,
+          }[site_name]
+
+          if svc_class.nil?
+            broadcast(job_id, type: 'log', message: "[#{site_name}] 未対応サイトです")
+          elsif existing&.event_url.present?
+            # 既存投稿あり → 更新
+            broadcast(job_id, type: 'log', message: "[#{site_name}] 📝 既存投稿を更新中... (#{existing.event_url})")
+            begin
+              svc_class.new.update_remote(page, existing.event_url, content, ef, &log_fn)
+            rescue NotImplementedError
+              broadcast(job_id, type: 'log', message: "[#{site_name}] ⚠️ 更新未対応 → 新規作成にフォールバック")
+              svc_class.new.call(page, content, ef, &log_fn)
+            end
+          else
+            # 新規作成
+            svc_class.new.call(page, content, ef, &log_fn)
           end
 
           event_url = pick_event_url(site_name, page.url, captured_urls)
+          if EVENT_URL_PATTERNS.key?(site_name) && event_url.blank?
+            raise "イベントURLを検出できませんでした。公開処理が完了していない可能性があります（最終URL: #{page.url}）"
+          end
           broadcast(job_id, type: 'status', site: site_name, status: 'success')
           broadcast(job_id, type: 'log', message: "[#{site_name}] 📌 イベントURL: #{event_url}") if event_url.present?
           update_connection_status(site_name, 'connected')
@@ -268,6 +322,8 @@ class PostJob < ApplicationJob
     'Gmail'        => 'gmail',
     'X'            => 'twitter',
     'Instagram'    => 'instagram',
+    'Facebook'     => 'facebook',
+    'Threads'      => 'threads',
     'オンクラス'   => 'onclass',
   }.freeze
 
@@ -277,7 +333,7 @@ class PostJob < ApplicationJob
     'connpass'     => %r{connpass\.com/event/\d+(?:/edit)?/?},
     'Peatix'       => %r{peatix\.com/event/\d+(?!.*edit)},
     'TechPlay'     => %r{techplay\.jp/event/\d+(?!.*edit)},
-    'つなゲート'   => %r{tunagate\.com/circle/\d+/events/\d+},
+    'つなゲート'   => %r{tunagate\.com/(?:circle/\d+/events/\d+|events?/(?:edit/)?\d+)},
     'Doorkeeper'   => %r{doorkeeper\.jp/.+/events/\d+(?!.*edit)},
     'セミナーズ'   => %r{seminars\.jp/s/\d+},
     'ストアカ'     => %r{street-academy\.com/myclass/\d+},

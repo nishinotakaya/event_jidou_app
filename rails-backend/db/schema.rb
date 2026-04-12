@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_04_06_132733) do
+ActiveRecord::Schema[7.2].define(version: 2026_04_12_000000) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "key"
     t.text "value"
@@ -27,6 +27,22 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_06_132733) do
     t.datetime "updated_at", null: false
     t.bigint "user_id"
     t.index ["user_id"], name: "index_folders_on_user_id"
+  end
+
+  create_table "generated_images", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.bigint "user_id"
+    t.string "source", default: "dalle", null: false
+    t.string "filename"
+    t.string "content_type", default: "image/png"
+    t.integer "byte_size"
+    t.text "prompt"
+    t.string "style"
+    t.string "item_id"
+    t.binary "data", size: :long, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_generated_images_on_created_at"
+    t.index ["user_id"], name: "index_generated_images_on_user_id"
   end
 
   create_table "github_reviews", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
@@ -65,6 +81,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_06_132733) do
     t.text "onclass_mentions"
     t.text "onclass_channels"
     t.string "student_post_type"
+    t.string "zoom_url"
     t.index ["user_id"], name: "index_items_on_user_id"
   end
 
@@ -74,6 +91,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_06_132733) do
     t.datetime "fetched_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.date "expires_at"
+    t.index ["expires_at"], name: "index_onclass_students_on_expires_at"
   end
 
   create_table "posting_histories", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|

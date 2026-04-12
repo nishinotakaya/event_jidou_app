@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting, fetchAppSettings, saveAppSettings, fetchServiceConnections, fetchPostingHistory, createText, updateText, aiGenerate, aiCorrect, aiAlignDatetime, aiAgent, fetchOnclassStudents, uploadOnclassImage, createCalendarEvent, uploadImage, checkDuplicateEvent } from '../api.js';
+import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting, fetchAppSettings, saveAppSettings, fetchServiceConnections, fetchPostingHistory, createText, updateText, aiGenerate, aiCorrect, aiAlignDatetime, aiAgent, fetchOnclassStudents, uploadOnclassImage, createCalendarEvent, uploadImage, checkDuplicateEvent, fetchGeneratedImages, uploadGeneratedImage, deleteGeneratedImage } from '../api.js';
 
 // 全サイトリスト
 const ALL_SITES = [
   'こくチーズ', 'Peatix', 'connpass', 'TechPlay', 'つなゲート', 'Doorkeeper',
-  'ストアカ', 'EventRegist', 'Luma', 'セミナーBiZ', 'ジモティー', 'Gmail', 'X', 'Instagram',
+  'ストアカ', 'EventRegist', 'Luma', 'セミナーBiZ', 'ジモティー', 'Gmail', 'X', 'Instagram', 'Facebook', 'Threads',
   /* 'PassMarket' — サービス終了 */
   /* 'セミナーズ' — セミナー作成ページへの遷移がブロックされるため一時停止 */
 ];
@@ -41,11 +41,63 @@ const SITE_TO_SERVICE = {
   'Gmail': 'gmail',
   'X': 'twitter',
   'Instagram': 'instagram',
+  'Facebook': 'facebook',
+  'Threads': 'threads',
   'オンクラス': 'onclass',
 };
 
 // 下書き非対応サイト（チェック=公開投稿、未チェック=投稿しない）
-const PUBLISH_ONLY_SITES = new Set(['ストアカ', 'Luma', 'LME', 'Gmail', 'X', 'Instagram', 'オンクラス']);
+const PUBLISH_ONLY_SITES = new Set(['ストアカ', 'Luma', 'LME', 'Gmail', 'X', 'Instagram', 'Facebook', 'Threads', 'オンクラス']);
+
+// 公開URLから各サイトの編集ページURLを導出
+function getEditUrl(siteName, eventUrl) {
+  if (!eventUrl) return null;
+  try {
+    switch (siteName) {
+      case 'こくチーズ': {
+        // /event/e-xxx/d-xxx → /admin/e-xxx/d-xxx/
+        const m = eventUrl.match(/kokuchpro\.com\/event\/(e-[\w-]+\/d-[\w-]+)/);
+        return m ? `https://kokuchpro.com/admin/${m[1]}/` : eventUrl;
+      }
+      case 'Peatix': {
+        const m = eventUrl.match(/peatix\.com\/event\/(\d+)/);
+        return m ? `https://peatix.com/event/${m[1]}/edit/basics` : eventUrl;
+      }
+      case 'connpass': {
+        const m = eventUrl.match(/connpass\.com\/event\/(\d+)/);
+        return m ? `https://connpass.com/event/${m[1]}/edit/` : eventUrl;
+      }
+      case 'TechPlay': {
+        const m = eventUrl.match(/techplay\.jp\/event\/(\d+)/);
+        return m ? `https://techplay.jp/event/${m[1]}/edit` : eventUrl;
+      }
+      case 'Doorkeeper': {
+        // 公開: doorkeeper.jp/events/{id} → manage.doorkeeper.jp/groups/{group}/events/{id}/edit
+        // group名は不明なので manage トップへ誘導
+        const m = eventUrl.match(/doorkeeper\.jp\/events\/(\d+)/);
+        return m ? `https://manage.doorkeeper.jp/events/${m[1]}/edit` : 'https://manage.doorkeeper.jp/';
+      }
+      case 'EventRegist': return eventUrl; // 同一URL
+      case 'ストアカ': {
+        const m = eventUrl.match(/street-academy\.com\/myclass\/(\d+)/);
+        return m ? `https://www.street-academy.com/myclass/${m[1]}/edit` : eventUrl;
+      }
+      case 'セミナーBiZ': return eventUrl;
+      case 'Luma': return eventUrl;
+      case 'ジモティー': {
+        // articles/.../article-{id}/ → my/posts から該当を編集
+        return 'https://jmty.jp/my/posts';
+      }
+      case 'つなゲート': {
+        const m = eventUrl.match(/tunagate\.com\/(?:circle\/\d+\/)?event\/(\d+)/);
+        return m ? `https://tunagate.com/event/edit/${m[1]}` : eventUrl;
+      }
+      default: return eventUrl;
+    }
+  } catch {
+    return eventUrl;
+  }
+}
 
 const DEFAULT_EVENT_FIELDS = {
   title:        '',
@@ -70,6 +122,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
   const isStudentMode = activeType === 'student';
   const isGitReview = item?.folder === 'Gitレビュー' || (isStudentMode && item?.name?.startsWith('📝 コードレビュー'));
   const isNew = !item?.id;
+  const createdItemRef = useRef(null); // 新規作成後のIDを保持（重複作成防止）
   const [activeTab, setActiveTab] = useState(isNew ? 'edit' : 'post'); // 'edit' | 'post'
 
   // 編集用state
@@ -107,6 +160,9 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
   const [eventFields, setEventFields] = useState({ ...DEFAULT_EVENT_FIELDS });
   const [generateImage, setGenerateImage] = useState(false);
   const [imageStyle, setImageStyle] = useState('cute');
+  const [pickedImage, setPickedImage] = useState(null); // { id, url, filename }
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryImages, setGalleryImages] = useState([]);
   const [apiKey, setApiKey] = useState('');
   const [dalleApiKey, setDalleApiKey] = useState('');
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -269,7 +325,8 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
   }
 
   async function handleCreateZoomMeeting() {
-    if (!eventFields.title && !item?.name) {
+    const zoomName = editName.trim() || eventFields.title || item?.name;
+    if (!zoomName) {
       showToast('イベント名を入力してください', 'error');
       return;
     }
@@ -283,7 +340,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
       let zoomResult = null;
       await createZoomMeeting(
         {
-          title: eventFields.zoomTitle || eventFields.title || item?.name || 'ミーティング',
+          title: eventFields.zoomTitle || zoomName,
           startDate: eventFields.startDate,
           startTime: eventFields.startTime || '10:00',
           duration: 120,
@@ -389,10 +446,22 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
   const autoSave = useCallback(async (content) => {
     if (!editName.trim()) return;
     try {
-      if (isNew) {
-        await createText(activeType, { name: editName.trim(), content, folder: editFolder, eventDate: eventFields.startDate || '', eventTime: eventFields.startTime || '', eventEndTime: eventFields.endTime || '', ...(isStudentMode ? { onclassMentions: selectedMentions, onclassChannels, studentPostType } : {}) });
-      } else {
-        await updateText(activeType, item.id, { name: editName.trim(), content, folder: editFolder, eventDate: eventFields.startDate || '', eventTime: eventFields.startTime || '', eventEndTime: eventFields.endTime || '', ...(isStudentMode ? { onclassMentions: selectedMentions, onclassChannels, studentPostType } : {}) });
+      const basePayload = {
+        name: editName.trim(),
+        content,
+        folder: editFolder,
+        eventDate: eventFields.startDate || '',
+        eventTime: eventFields.startTime || '',
+        eventEndTime: eventFields.endTime || '',
+        zoomUrl: eventFields.zoomUrl || '',
+        ...(isStudentMode ? { onclassMentions: selectedMentions, onclassChannels, studentPostType } : {}),
+      };
+      const itemId = createdItemRef.current || item?.id;
+      if (isNew && !itemId) {
+        const created = await createText(activeType, basePayload);
+        if (created?.id) createdItemRef.current = created.id;
+      } else if (itemId) {
+        await updateText(activeType, itemId, basePayload);
       }
       if (onSaved) await onSaved();
     } catch (_) {}
@@ -457,12 +526,27 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
         } catch (err) { showToast(`Zoom作成失敗: ${err.message}`, 'error'); }
       }
 
-      if (isNew) {
-        await createText(activeType, { name: editName.trim(), content, folder: editFolder, eventDate: eventFields.startDate || '', eventTime: eventFields.startTime || '', eventEndTime: eventFields.endTime || '', ...(isStudentMode ? { onclassMentions: selectedMentions, onclassChannels, studentPostType } : {}) });
+      const saveBase = {
+        name: editName.trim(),
+        content,
+        folder: editFolder,
+        eventDate: eventFields.startDate || '',
+        eventTime: eventFields.startTime || '',
+        eventEndTime: eventFields.endTime || '',
+        zoomUrl: eventFields.zoomUrl || '',
+        ...(isStudentMode ? { onclassMentions: selectedMentions, onclassChannels, studentPostType } : {}),
+      };
+      if (isNew && !createdItemRef.current) {
+        const created = await createText(activeType, saveBase);
+        // 作成後のIDを保持し、以降の保存で updateText を使う（重複作成防止）
+        if (created?.id) createdItemRef.current = created.id;
         showToast('イベント作成完了！下の投稿ボタンで各サイトに投稿できます', 'success');
       } else {
-        await updateText(activeType, item.id, { name: editName.trim(), content, folder: editFolder, eventDate: eventFields.startDate || '', eventTime: eventFields.startTime || '', eventEndTime: eventFields.endTime || '', ...(isStudentMode ? { onclassMentions: selectedMentions, onclassChannels, studentPostType } : {}) });
-        showToast('保存しました', 'success');
+        const itemId = createdItemRef.current || item?.id;
+        if (itemId) {
+          await updateText(activeType, itemId, saveBase);
+          showToast('保存しました', 'success');
+        }
       }
 
       // Googleカレンダー自動登録（新規 + イベントモード + 日付あり + チェック有効時）
@@ -520,6 +604,26 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
       return;
     }
 
+    // ストアカ公開時は画像必須（ストアカ側の必須項目）
+    const publishingStreet = selectedSites.includes('ストアカ') && publishSites['ストアカ'];
+    if (publishingStreet && !generateImage && !pickedImage) {
+      showToast('ストアカ公開時は画像が必須です。「🖼️ 画像自動生成」ONか、「📂 過去の画像から選択」で画像を指定してください。', 'error');
+      return;
+    }
+
+    // 既投稿サイトを警告（重複投稿防止）
+    const alreadyPosted = selectedSites.filter((site) => {
+      const h = postingHistoryMap[SITE_TO_SERVICE[site]];
+      return h && h.eventUrl && h.status === 'success';
+    });
+    if (alreadyPosted.length > 0) {
+      const ok = window.confirm(
+        `次のサイトはすでに投稿済みです:\n\n${alreadyPosted.join(', ')}\n\n` +
+        `再投稿すると重複イベントが作成されます。\n編集したい場合は各サイトの「✏️ 編集」ボタンから直接編集してください。\n\nそれでも投稿を続けますか？`
+      );
+      if (!ok) return;
+    }
+
     // 投稿前にコンテンツ＋オンクラスフィールドを保存
     try {
       const savePayload = {
@@ -529,12 +633,15 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
         eventDate: eventFields.startDate || '',
         eventTime: eventFields.startTime || '',
         eventEndTime: eventFields.endTime || '',
+        zoomUrl: eventFields.zoomUrl || '',
         ...(isStudentMode ? { onclassMentions: selectedMentions, onclassChannels, studentPostType } : {}),
       };
-      if (isNew) {
-        await createText(activeType, savePayload);
-      } else if (item?.id) {
-        await updateText(activeType, item.id, savePayload);
+      const itemId = createdItemRef.current || item?.id;
+      if (isNew && !itemId) {
+        const created = await createText(activeType, savePayload);
+        if (created?.id) createdItemRef.current = created.id;
+      } else if (itemId) {
+        await updateText(activeType, itemId, savePayload);
       }
       if (onSaved) await onSaved();
     } catch (e) {
@@ -610,6 +717,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
           eventFields: ef,
           generateImage,
           imageStyle,
+          generatedImageId: pickedImage?.id || null,
           openaiApiKey: apiKey,
           dalleApiKey: dalleApiKey || apiKey,
           itemId: item?.id || '',
@@ -660,7 +768,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
     } finally {
       setPosting(false);
     }
-  }, [selectedSites, lmeSubType, eventFields, generateImage, imageStyle, apiKey, item, showToast, connectedServices]);
+  }, [selectedSites, lmeSubType, eventFields, publishSites, generateImage, imageStyle, pickedImage, apiKey, dalleApiKey, item, showToast, connectedServices, selectedMentions, onclassChannels, studentPostType]);
 
   // オーバーレイクリックではモーダルを閉じない（✕ボタンとキャンセルボタンのみ）
   function handleOverlayClick() {}
@@ -1095,22 +1203,42 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
                         <span className="site-status running">待機中</span>
                       )}
                     </div>
-                    {/* 投稿済みイベントURL */}
+                    {/* 投稿済みイベントURL + 編集リンク */}
                     {postingHistoryMap[SITE_TO_SERVICE[site]] && (
-                      <div style={{ padding: '2px 6px 4px 6px', fontSize: '10px' }}>
+                      <div style={{ padding: '2px 6px 4px 6px', fontSize: '10px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
                         {postingHistoryMap[SITE_TO_SERVICE[site]].eventUrl ? (
-                          <a
-                            href={postingHistoryMap[SITE_TO_SERVICE[site]].eventUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: '#3b82f6', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            🔗 {postingHistoryMap[SITE_TO_SERVICE[site]].published ? '公開中' : '下書き'}
-                            <span style={{ color: '#9ca3af', fontSize: '10px', marginLeft: '4px' }}>
-                              {new Date(postingHistoryMap[SITE_TO_SERVICE[site]].postedAt).toLocaleDateString('ja-JP')}
-                            </span>
-                          </a>
+                          <>
+                            <a
+                              href={postingHistoryMap[SITE_TO_SERVICE[site]].eventUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#3b82f6', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              🔗 {postingHistoryMap[SITE_TO_SERVICE[site]].published ? '公開中' : '下書き'}
+                              <span style={{ color: '#9ca3af', fontSize: '10px', marginLeft: '4px' }}>
+                                {new Date(postingHistoryMap[SITE_TO_SERVICE[site]].postedAt).toLocaleDateString('ja-JP')}
+                              </span>
+                            </a>
+                            <a
+                              href={getEditUrl(site, postingHistoryMap[SITE_TO_SERVICE[site]].eventUrl)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title={`${site}の編集ページを開く`}
+                              style={{
+                                color: '#fff',
+                                background: '#7c3aed',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                textDecoration: 'none',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                              }}
+                            >
+                              ✏️ 編集
+                            </a>
+                          </>
                         ) : (
                           <span style={{ color: postingHistoryMap[SITE_TO_SERVICE[site]].status === 'error' ? '#dc2626' : '#9ca3af' }}>
                             {postingHistoryMap[SITE_TO_SERVICE[site]].status === 'error'
@@ -1524,7 +1652,10 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
               <input
                 type="checkbox"
                 checked={generateImage}
-                onChange={(e) => setGenerateImage(e.target.checked)}
+                onChange={(e) => {
+                  setGenerateImage(e.target.checked);
+                  if (e.target.checked) setPickedImage(null);
+                }}
                 disabled={posting}
                 style={{ accentColor: '#f472b6' }}
               />
@@ -1555,6 +1686,43 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
                   ⚡ かっこいい系
                 </label>
               </div>
+            )}
+          </div>
+
+          {/* 過去画像選択 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0' }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={posting}
+              onClick={async () => {
+                try {
+                  const imgs = await fetchGeneratedImages();
+                  setGalleryImages(imgs);
+                  setGalleryOpen(true);
+                } catch (e) { showToast(e.message, 'error'); }
+              }}
+              style={{ fontSize: '12px', padding: '6px 12px' }}
+            >
+              📂 過去の画像から選択
+            </button>
+            {pickedImage && (
+              <>
+                <img
+                  src={pickedImage.url}
+                  alt="選択中"
+                  style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, border: '1px solid #d1d5db' }}
+                />
+                <span style={{ fontSize: '12px', color: '#6b7280' }}>{pickedImage.filename || `#${pickedImage.id}`}</span>
+                <button
+                  type="button"
+                  onClick={() => setPickedImage(null)}
+                  disabled={posting}
+                  style={{ fontSize: '11px', padding: '4px 8px', background: '#fee2e2', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  × 解除
+                </button>
+              </>
             )}
           </div>
 
@@ -1623,6 +1791,79 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
           )}
         </div>
       </div>
+
+      {galleryOpen && (
+        <div
+          onClick={() => setGalleryOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, padding: 20, width: '80%', maxWidth: 900, maxHeight: '80vh', overflow: 'auto' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0 }}>📂 画像ライブラリ ({galleryImages.length})</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <label className="btn btn-secondary" style={{ cursor: 'pointer', fontSize: 12 }}>
+                  ＋ アップロード
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        await uploadGeneratedImage(file);
+                        const imgs = await fetchGeneratedImages();
+                        setGalleryImages(imgs);
+                        showToast('画像を追加しました', 'success');
+                      } catch (err) { showToast(err.message, 'error'); }
+                    }}
+                  />
+                </label>
+                <button className="btn btn-secondary" onClick={() => setGalleryOpen(false)}>✕ 閉じる</button>
+              </div>
+            </div>
+            {galleryImages.length === 0 ? (
+              <p style={{ color: '#6b7280', textAlign: 'center', padding: 40 }}>画像がありません。アップロードするか、画像自動生成をONにして投稿すると保存されます。</p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12 }}>
+                {galleryImages.map((img) => (
+                  <div
+                    key={img.id}
+                    style={{ border: pickedImage?.id === img.id ? '3px solid #7c3aed' : '1px solid #e5e7eb', borderRadius: 8, padding: 6, cursor: 'pointer', background: '#fff' }}
+                    onClick={() => {
+                      setPickedImage({ id: img.id, url: img.url, filename: img.filename });
+                      setGenerateImage(false);
+                      setGalleryOpen(false);
+                    }}
+                  >
+                    <img src={img.url} alt={img.filename} style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 4, display: 'block' }} />
+                    <div style={{ fontSize: 10, color: '#6b7280', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {img.source === 'dalle' ? '🤖' : '📤'} {img.filename || `#${img.id}`}
+                    </div>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!window.confirm('この画像を削除しますか？')) return;
+                        try {
+                          await deleteGeneratedImage(img.id);
+                          setGalleryImages(galleryImages.filter((x) => x.id !== img.id));
+                          if (pickedImage?.id === img.id) setPickedImage(null);
+                        } catch (err) { showToast(err.message, 'error'); }
+                      }}
+                      style={{ fontSize: 10, background: '#fee2e2', border: 'none', borderRadius: 4, padding: '2px 6px', marginTop: 4, cursor: 'pointer', width: '100%' }}
+                    >
+                      🗑 削除
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
