@@ -1,170 +1,176 @@
+require 'net/http'
+require 'json'
+
 module Posting
   class LumaService < BaseService
-    SIGNIN_URL = 'https://lu.ma/signin'
+    API_BASE = 'https://api2.luma.com'
+    CALENDAR_API_ID = 'cal-pAQcVXC34JzVcRE'
 
     private
 
-    def execute(page, content, ef)
-      ensure_login(page)
-      create_event(page, content, ef)
+    def execute(_page, content, ef)
+      @auth_key = fetch_auth_key
+      raise '[Luma] auth-session-keyがありません。接続管理画面からGoogleログインしてください。' unless @auth_key
+
+      verify_login!
+      event_api_id = create_event(content, ef)
+
+      # 説明文を更新（create時にはdescription_mirrorのみ）
+      update_description(event_api_id, content, ef) if event_api_id
+
+      # 公開URLを取得（lu.ma/{slug}形式）
+      event_data = api_get("/event/admin/get?event_api_id=#{event_api_id}")
+      slug = event_data.dig('event', 'url')
+      public_url = slug ? "https://lu.ma/#{slug}" : "https://luma.com/event/manage/#{event_api_id}"
+      log("[Luma] ✅ イベント作成完了 → #{public_url}")
+      public_url
     end
 
-    def ensure_login(page)
-      log('[Luma] ホームページへ移動...')
-      page.goto('https://lu.ma/home', waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_timeout(3000)
+    def fetch_auth_key
+      conn = ServiceConnection.find_by(service_name: 'luma')
+      return nil unless conn&.session_data.present?
 
-      # ログイン済みチェック
-      unless page.url.include?('/signin')
-        create_btn = page.locator('button:has-text("Create"), a:has-text("Create"), button:has-text("イベント作成"), a:has-text("イベント作成")').first
-        if (create_btn.visible?(timeout: 5000) rescue false)
-          log('[Luma] ✅ ログイン済み（セッション復元）')
-          return
-        end
-      end
-
-      # セッションがない場合はブラウザログインを促す
-      raise '[Luma] ログインが必要です。接続管理画面の「ブラウザログイン」からGoogleログインしてください。'
+      data = JSON.parse(conn.session_data) rescue {}
+      # auth_session_keyキーがあればそれを使う、なければcookiesから取得
+      data['auth_session_key'] ||
+        data['cookies']&.find { |c| c['name'] == 'luma.auth-session-key' }&.dig('value')
     end
 
-    def create_event(page, content, ef)
-      log('[Luma] イベント作成...')
+    def verify_login!
+      res = api_get('/calendar/admin/list')
+      raise '[Luma] ログインセッションが無効です。再度Googleログインしてください。' unless res['infos']
+      log('[Luma] ✅ API認証OK')
+    end
 
-      page.goto('https://lu.ma/home', waitUntil: 'domcontentloaded', timeout: 30_000) rescue nil
-      page.wait_for_timeout(2000)
+    def create_event(content, ef)
+      title = extract_title(ef, content, 100)
+      start_date = ef['startDate'].presence || default_date_plus(30)
+      start_time = pad_time(ef['startTime'].presence || '20:30')
+      end_time = pad_time(ef['endTime'].presence || '21:30')
 
-      create_btn = page.locator('button:has-text("Create Event"), button:has-text("Create"), a:has-text("Create Event"), button:has-text("イベント作成"), a:has-text("イベント作成")').first
-      if (create_btn.visible?(timeout: 5000) rescue false)
-        create_btn.click
-        page.wait_for_timeout(3000)
-      else
-        page.goto('https://lu.ma/create', waitUntil: 'domcontentloaded', timeout: 30_000) rescue nil
-        page.wait_for_timeout(3000)
-      end
+      # ISO 8601形式に変換（JST→UTC）
+      start_dt = Time.parse("#{start_date} #{start_time} +0900")
+      end_dt = Time.parse("#{start_date} #{end_time} +0900")
+      duration_seconds = (end_dt - start_dt).to_i
+      duration_hours = duration_seconds / 3600
+      duration_minutes = (duration_seconds % 3600) / 60
+      duration_interval = "PT#{duration_hours}H" + (duration_minutes > 0 ? "#{duration_minutes}M" : '')
 
-      log("[Luma] イベント作成画面 → #{page.url}")
+      body = {
+        name: title,
+        start_at: start_dt.utc.strftime('%Y-%m-%dT%H:%M:%S.000Z'),
+        duration_interval: duration_interval,
+        timezone: 'Asia/Tokyo',
+        calendar_api_id: CALENDAR_API_ID,
+        visibility: 'public',
+        location_type: 'offline',
+        geo_address_visibility: 'public',
+        geo_address_json: nil,
+        coordinate: nil,
+        zoom_meeting_url: ef['zoomUrl'].to_s,
+        zoom_meeting_id: '',
+        zoom_meeting_password: '',
+        zoom_session_type: nil,
+        zoom_creation_method: nil,
+        description_mirror: build_description(content),
+        cover_url: 'https://images.lumacdn.com/gallery-images/lr/7abe3092-628a-42a3-b74e-4cfd56a4d79f',
+        max_capacity: nil,
+        waitlist_status: 'disabled',
+        theme_meta: { theme: 'legacy' },
+        tint_color: '#ea536d',
+        font_title: 'ivy-presto',
+        grant_manage_access: false,
+        _calendar_requires_manage_access: false,
+        supports_members_only: false,
+        calendar_to_submit_to_api_id: nil,
+        ticket_types: [{
+          currency: nil,
+          type: 'free',
+          ethereum_token_requirements: [],
+          cents: nil,
+          is_flexible: false,
+          min_cents: nil,
+          require_approval: false,
+          is_hidden: false,
+        }],
+      }
 
-      title_text = extract_title(ef, content, 100)
-      start_date = normalize_date(ef['startDate'].presence || default_date_plus(30))
-      start_time = pad_time(ef['startTime'])
-      end_date   = normalize_date(ef['endDate'].presence || start_date)
-      end_time   = pad_time(ef['endTime'])
+      log("[Luma] イベント作成中: #{title}")
+      res = api_post('/event/create', body)
 
-      # タイトル
-      title_area = page.locator('textarea[placeholder="イベント名"], textarea[placeholder*="Event Name"]').first
-      if (title_area.visible?(timeout: 5000) rescue false)
-        title_area.fill(title_text)
-        log("[Luma] タイトル: #{title_text}")
-      end
+      event_api_id = res.dig('event', 'api_id') || res['api_id']
+      raise "[Luma] イベント作成に失敗しました: #{res['message']}" unless event_api_id
 
-      # 時間入力
-      page.wait_for_timeout(1000)
-      time_inputs = page.locator('input[type="time"]')
-      if (time_inputs.count >= 2 rescue false)
-        time_inputs.first.fill(start_time)
-        time_inputs.nth(1).fill(end_time)
-        log("[Luma] 時間: #{start_time} 〜 #{end_time}")
-      end
+      log("[Luma] イベント作成成功: #{event_api_id}")
+      event_api_id
+    end
 
-      # 日付入力（JS経由でinput値を直接変更）
-      target_date = Date.parse(start_date)
-      date_display = "#{target_date.month}月#{target_date.day}日(#{%w[日 月 火 水 木 金 土][target_date.wday]})"
-      page.evaluate(<<~JS, arg: { display: date_display, iso: start_date })
-        (d) => {
-          const inputs = document.querySelectorAll('input[type="text"]');
-          inputs.forEach(input => {
-            if (input.value && input.value.match(/月.*日/)) {
-              const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-              setter.call(input, d.display);
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-          });
-        }
-      JS
-      log("[Luma] 日付: #{date_display}")
+    def update_description(event_api_id, content, ef)
+      body = {
+        event_api_id: event_api_id,
+        description: content,
+      }
+      api_post('/event/update', body) rescue nil
+    end
 
-      # 画像アップロード
-      if ef['imagePath'].present? && File.exist?(ef['imagePath'].to_s)
-        file_input = page.locator('input[type="file"]').first
-        if (file_input.count > 0 rescue false)
-          file_input.set_input_files(ef['imagePath'])
-          page.wait_for_timeout(3000)
-          log('[Luma] 画像アップロード完了')
+    def build_description(content)
+      # Luma description_mirror: ProseMirror JSON形式（行ごとにparagraph）
+      paragraphs = content.split("\n").map do |line|
+        if line.strip.empty?
+          { type: 'paragraph' }
+        else
+          { type: 'paragraph', content: [{ type: 'text', text: line }] }
         end
       end
+      { type: 'doc', content: paragraphs }
+    end
 
-      # モーダルオーバーレイがあれば閉じる
-      page.keyboard.press('Escape') rescue nil
-      page.wait_for_timeout(500)
+    # --- API通信 ---
 
-      # 「イベント作成」ボタン（button[type="submit"]）
-      page.wait_for_timeout(500)
-      save_btn = page.locator('button[type="submit"]:has-text("イベント作成"), button[type="submit"]:has-text("Create Event")').first
-      if (save_btn.visible?(timeout: 5000) rescue false)
-        save_btn.click(force: true)
-        page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
-        page.wait_for_timeout(5000)
-        log("[Luma] ✅ イベント作成完了 → #{page.url}")
-      else
-        log('[Luma] ⚠️ イベント作成ボタンが見つかりません')
-      end
+    def api_get(path)
+      uri = URI("#{API_BASE}#{path}")
+      req = Net::HTTP::Get.new(uri)
+      set_headers(req)
 
-      log("[Luma] ✅ 処理完了 → #{page.url}")
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+      JSON.parse(res.body)
+    end
+
+    def api_post(path, body)
+      uri = URI("#{API_BASE}#{path}")
+      req = Net::HTTP::Post.new(uri)
+      req.body = body.to_json
+      set_headers(req)
+      req['Content-Type'] = 'application/json'
+
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+      JSON.parse(res.body)
+    end
+
+    def set_headers(req)
+      req['Cookie'] = "luma.auth-session-key=#{@auth_key}"
+      req['x-luma-client-type'] = 'luma-web'
+      req['Accept'] = '*/*'
+      req['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
     end
 
     # --- 削除・中止 ---
 
     def perform_delete(page, event_url)
-      ensure_login(page)
-      # 「その他」タブに遷移（削除はここにある）
-      more_url = event_url.sub(/\/?$/, '') + '/more'
-      page.goto(more_url, waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_timeout(3000)
+      @auth_key = fetch_auth_key
+      return log('[Luma] auth-session-keyがありません') unless @auth_key
 
-      log('[Luma] 「その他」ページで削除ボタンを探索中...')
-      page.on('dialog', ->(d) { d.accept }) rescue nil
+      event_api_id = event_url.scan(/evt-\w+/).first
+      return log('[Luma] イベントIDが特定できません') unless event_api_id
 
-      # ページ下部にスクロール
-      page.evaluate('() => window.scrollTo(0, document.body.scrollHeight)')
-      page.wait_for_timeout(1000)
-
-      del_btn = page.locator('button:has-text("Delete"), button:has-text("Delete Event"), a:has-text("Delete")').first
-      if (del_btn.visible?(timeout: 5000) rescue false)
-        del_btn.click
-        page.wait_for_timeout(2000)
-        # 確認モーダル
-        confirm = page.locator('button:has-text("Delete"), button:has-text("Yes"), button:has-text("Confirm")').last
-        confirm.click if (confirm.visible?(timeout: 5000) rescue false)
-        page.wait_for_timeout(3000)
-        log('[Luma] ✅ イベント削除完了')
-      else
-        raise '[Luma] 削除ボタンが見つかりません'
-      end
+      api_post('/event/admin/delete', { event_api_id: event_api_id })
+      log("[Luma] ✅ イベント削除完了: #{event_api_id}")
+    rescue => e
+      log("[Luma] 削除エラー: #{e.message}")
     end
 
     def perform_cancel(page, event_url)
-      ensure_login(page)
-      more_url = event_url.sub(/\/?$/, '') + '/more'
-      page.goto(more_url, waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_timeout(3000)
-
-      log('[Luma] 「その他」ページで中止ボタンを探索中...')
-      page.on('dialog', ->(d) { d.accept }) rescue nil
-
-      cancel_btn = page.locator('button:has-text("Cancel Event"), button:has-text("Cancel"), a:has-text("Cancel Event")').first
-      if (cancel_btn.visible?(timeout: 5000) rescue false)
-        cancel_btn.click
-        page.wait_for_timeout(2000)
-        confirm = page.locator('button:has-text("Cancel"), button:has-text("Yes"), button:has-text("Confirm")').last
-        confirm.click if (confirm.visible?(timeout: 5000) rescue false)
-        page.wait_for_timeout(3000)
-        log('[Luma] ✅ イベント中止完了')
-      else
-        # フォールバック: 削除
-        log('[Luma] 中止ボタンなし → 削除で対応')
-        perform_delete(page, event_url)
-      end
+      perform_delete(page, event_url)
     end
   end
 end

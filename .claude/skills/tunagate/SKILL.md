@@ -1,87 +1,46 @@
 ---
 name: tunagate
-description: つなゲート投稿自動化 — Googleログイン → サークル作成 → イベント作成・チケット・日時・公開の全ステップ完了
+description: つなゲート投稿自動化 — Net::HTTP JSON API方式でPlaywright不要。イベント作成・チケット・日時・公開の全ステップ完了
 ---
 
 # つなゲート投稿自動化スキル
 
 ## 概要
 
-つなゲート（tunagate.com）へのイベント自動投稿。Googleログイン → イベント作成 → チケット設定 → 日時入力 → 公開/下書き保存まで一貫処理。
+つなゲート（tunagate.com）へのイベント自動投稿。**Net::HTTP JSON API直接呼び出し方式**（Playwright完全排除）。
+
+## アーキテクチャ
+
+- **方式**: Net::HTTP + JSON API（SPA APIを直接呼び出し）
+- **認証**: Cookie認証（Rails Devise）— `_c_tunagate_session` + `remember_user_token`
+- **CSRFトークン**: HTMLの`<meta name="csrf-token">`から取得、`X-CSRF-Token`ヘッダーで送信
+- **Content-Type**: `application/json`
+- **サービスファイル**: `app/services/posting/tunagate_service.rb`
+
+## APIエンドポイント
+
+| メソッド | エンドポイント | 用途 |
+|---------|-------------|------|
+| GET | `/events/new/{circle_id}` | イベントID自動採番 |
+| POST | `/api/event_edit/create_content` | 説明文作成 `{event_id, body, content_type: 1}` |
+| POST | `/api/event_edit_submit/draft` | 下書き保存 |
+| POST | `/api/event_edit_submit/publish` | 公開保存 |
 
 ## 投稿フロー
 
 ```
-1. https://tunagate.com/users/sign_in にアクセス
-   - 「Googleでログイン」をクリック
-   - 既にGoogleセッションがあればそのまま認証通過
-   - Googleのパラメータ（state, code等）を自動処理
-
-2. https://tunagate.com/menu に遷移
-   - 「イベント作成」をクリック
-   - モーダルが開く
-
-3. モーダル内で「新規サークルで追加」を選択
-
-4. フォーム入力
-   - イベント名: テキストDBの name
-   - イベントの説明: テキストDBの content
-
-5. チケット設定
-   - 「チケットの追加」をクリック
-   - チケット情報を入力
-
-6. イベント日時
-   - カレンダーUIで開催日を選択（必須をクリック）
-   - 開始時刻と終了時刻を入力
-
-7. 開催場所
-   - 会場名（eventFields.place）の値を入力
-
-8. 募集人数
-   - 定員（eventFields.capacity）の値を入力
-
-9. 公開/下書き
-   - publishSites.つなゲート === true → 「公開」をクリック
-   - それ以外 → 「下書き」をクリック
+1. 認証: session_data Cookie復元 → GET /menu で検証 → 失敗時はDeviseログイン
+2. GET /events/new/{circle_id} → リダイレクト先からevent_id取得
+3. POST /api/event_edit/create_content で説明文作成
+4. POST /api/event_edit_submit/draft or /publish でイベント保存
+   body: { event: {id, title, contents, event_date, ...}, events_plans: [{plan, capacity, ...}] }
+5. 削除: draft保存APIにdelete_status: 1を渡す
 ```
 
-## 認証方式
+## 重要
 
-- **Googleログイン**（OAuthリダイレクト）
-- つなゲート独自のメール/パスワードは不要
-- Google認証済みセッション（Zoom等で使用済み）を活用
-- service_connections テーブルの `google` エントリで管理
+- `events_plans`は必須（空だと400エラー）
+- circle_id: `220600`（AppSettingで変更可能）
+- 日時: `YYYY-MM-DD HH:MM:00`
 
-## サインインURL
-
-```
-https://tunagate.com/users/sign_in?ifx=yBrPZyXgNqee6MeA
-```
-
-## 実装ファイル
-
-- `rails-backend/app/services/posting/tunagate_service.rb` — メイン実装
-- `rails-backend/app/jobs/post_job.rb` — PostJob から呼出
-
-## フォーム要素（調査必要）
-
-| 項目 | セレクタ（要調査） | 値 |
-|---|---|---|
-| イベント名 | TBD | テキストDB.name |
-| イベントの説明 | TBD | テキストDB.content |
-| チケット追加 | TBD（ボタン） | クリック |
-| 開催日 | TBD（カレンダーUI） | eventFields.startDate |
-| 開始時刻 | TBD | eventFields.startTime |
-| 終了時刻 | TBD | eventFields.endTime |
-| 開催場所 | TBD | eventFields.place |
-| 募集人数 | TBD | eventFields.capacity |
-| 公開ボタン | TBD | publishSites.つなゲート |
-| 下書きボタン | TBD | !publishSites.つなゲート |
-
-## 注意事項
-
-- Googleログインはリダイレクトが複数回発生するため、waitForNavigation/networkidle で確実に待つ
-- モーダル内のフォームはSPAの可能性あり → wait_for_selector で要素出現を待つ
-- カレンダーUIは日付ピッカーの実装により入力方法が変わる → 実際のDOM構造を要調査
-- チケット追加はモーダル内のボタンクリック → 追加フォームが展開される可能性
+## 本番テスト: ✅ ローカル・Heroku両方成功

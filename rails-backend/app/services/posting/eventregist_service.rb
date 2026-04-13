@@ -255,18 +255,38 @@ module Posting
     end
 
     def publish_event(page)
-      publish_btn = page.locator('button:has-text("公開"), button:has-text("Publish"), a:has-text("公開")').first
-      if (publish_btn.visible?(timeout: 5000) rescue false)
-        publish_btn.click
-        page.wait_for_timeout(3000)
-        # 確認ダイアログ
-        confirm_btn = page.locator('button:has-text("はい"), button:has-text("OK"), button:has-text("確認")').first
-        confirm_btn.click if (confirm_btn.visible?(timeout: 2000) rescue false)
-        page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
-        log("[EventRegist] ✅ 公開完了 → #{page.url}")
-      else
+      page.wait_for_timeout(3000)
+
+      # 公開ボタンを幅広いセレクタで探す
+      publish_btn = page.locator('button:has-text("公開する"), button:has-text("公開"), button:has-text("Publish"), a:has-text("公開する"), a:has-text("公開"), a:has-text("Publish"), input[value*="公開"]').first
+      unless (publish_btn.visible?(timeout: 5000) rescue false)
+        # JSで探す
+        found = page.evaluate(<<~'JS')
+          (() => {
+            const els = [...document.querySelectorAll('button, a, input[type="submit"]')];
+            const btn = els.find(el => /公開|Publish/i.test(el.textContent || el.value || ''));
+            if (btn) { btn.click(); return true; }
+            return false;
+          })()
+        JS
+        if found
+          page.wait_for_timeout(3000)
+          confirm_btn = page.locator('button:has-text("はい"), button:has-text("OK"), button:has-text("確認"), button:has-text("公開する")').first
+          confirm_btn.click if (confirm_btn.visible?(timeout: 3000) rescue false)
+          page.wait_for_timeout(3000)
+          log("[EventRegist] ✅ 公開完了（JS） → #{page.url}")
+          return
+        end
         log('[EventRegist] ⚠️ 公開ボタンが見つかりません')
+        return
       end
+
+      publish_btn.click
+      page.wait_for_timeout(3000)
+      confirm_btn = page.locator('button:has-text("はい"), button:has-text("OK"), button:has-text("確認"), button:has-text("公開する")').first
+      confirm_btn.click if (confirm_btn.visible?(timeout: 3000) rescue false)
+      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
+      log("[EventRegist] ✅ 公開完了 → #{page.url}")
     end
 
     # --- 削除・中止 ---

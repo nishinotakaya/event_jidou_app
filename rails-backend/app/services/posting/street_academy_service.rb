@@ -84,13 +84,13 @@ module Posting
         log('[ストアカ] 対象者入力完了')
       end
 
-      # 料金（最低1000円）
+      # 料金
       cost_input = place.include?('オンライン') ?
         page.locator('#online-class-cost-form') :
         page.locator('#class-cost-form')
       if (cost_input.visible?(timeout: 2000) rescue false)
-        cost_input.fill('1000')
-        log('[ストアカ] 料金: 1000円')
+        cost_input.fill('2000')
+        log('[ストアカ] 料金: 2000円')
       end
 
       # カテゴリー（「プログラミング」で検索 → IT・リスキリング > プログラミング）

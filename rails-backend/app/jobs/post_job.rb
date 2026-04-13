@@ -38,6 +38,8 @@ class PostJob < ApplicationJob
       end
     end
 
+    # 画像が未指定の場合は常にAI生成（ストアカ等で必須）
+    generate_image = true if image_path.nil?
     if image_path.nil? && generate_image
       if dalle_key.blank?
         broadcast(job_id, type: 'log', message: '⚠️ 画像生成: DALL-E APIキーが未設定のためスキップします')

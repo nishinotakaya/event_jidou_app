@@ -283,7 +283,7 @@ Devise.setup do |config|
   # up on your models and hooks.
   # config.omniauth :github, 'APP_ID', 'APP_SECRET', scope: 'user,public_repo'
   omniauth_options = {
-    scope: 'email,profile,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/calendar',
+    scope: 'email,profile,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/calendar',
     access_type: 'offline',
     prompt: 'consent',
   }
