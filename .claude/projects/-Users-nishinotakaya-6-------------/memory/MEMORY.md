@@ -1,0 +1,4 @@
+- [残課題一覧 2026-04-12](remaining_issues.md) — 参加者名表示・同期タイムアウト・オンクラスチャンネル等
+- [テストファースト](feedback_test_first.md) — 本番テスト必須。ローカルだけで完了報告しない
+- [カレンダー詳細タグ](feedback_calendar_tags.md) — ItemCardに追加した機能はCalendarEventCardにも同等実装
+- [リロード不要化](feedback_reload_issue.md) — 画面切替時は必ずloadAll()。リロード強制は許容しない

@@ -36,7 +36,7 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
   const [eventSubType, setEventSubType] = useState('benkyokai');
   const [lmeSendDate, setLmeSendDate] = useState('');
   const [lmeSendTime, setLmeSendTime] = useState('10:00');
-  const [zoomUrl, setZoomUrl] = useState('');
+  const [zoomUrl, setZoomUrl] = useState(item?.zoomUrl || '');
   const [meetingId, setMeetingId] = useState('');
   const [passcode, setPasscode] = useState('');
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -76,8 +76,9 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
       if (s.lme_send_date)      setLmeSendDate(s.lme_send_date);
       if (s.lme_send_time)      setLmeSendTime(s.lme_send_time);
       // 新規作成時はZoom情報を復元しない（自動作成するため）
+      // 編集時は item.zoomUrl を最優先、なければ app_settings の値にフォールバック
       if (isEdit) {
-        if (s.lme_zoom_url)       setZoomUrl(s.lme_zoom_url);
+        if (!item?.zoomUrl && s.lme_zoom_url) setZoomUrl(s.lme_zoom_url);
         if (s.lme_meeting_id)     setMeetingId(s.lme_meeting_id);
         if (s.lme_passcode && !/\*/.test(s.lme_passcode)) setPasscode(s.lme_passcode);
       }
@@ -219,10 +220,10 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
       }
 
       if (isEdit) {
-        await updateText(type, item.id, { name: name.trim(), content: finalContent, folder });
+        await updateText(type, item.id, { name: name.trim(), content: finalContent, folder, zoomUrl: currentZoomUrl });
         showToast('更新しました', 'success');
       } else {
-        await createText(type, { name: name.trim(), content: finalContent, folder });
+        await createText(type, { name: name.trim(), content: finalContent, folder, zoomUrl: currentZoomUrl });
         showToast('作成しました', 'success');
       }
       await onSaved();
@@ -426,6 +427,20 @@ export default function EditModal({ item, type, folders, onClose, onSaved, showT
                 />
               </div>
             </div>
+
+            {/* Zoom URL（イベント本体に紐づく） */}
+            {type === 'event' && (
+              <div className="form-group" style={{ margin: '8px 0 4px' }}>
+                <label className="form-label">🎥 Zoom URL</label>
+                <input
+                  className="form-input"
+                  type="url"
+                  value={zoomUrl}
+                  onChange={(e) => setZoomUrl(e.target.value)}
+                  placeholder="https://zoom.us/j/..."
+                />
+              </div>
+            )}
 
             {/* Zoom自動作成チェックボックス */}
             {type === 'event' && zoomConnected && (

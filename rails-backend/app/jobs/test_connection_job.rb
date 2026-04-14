@@ -4,147 +4,124 @@ require 'shellwords'
 class TestConnectionJob < ApplicationJob
   queue_as :default
 
-  TEST_CONFIGS = {
-    'kokuchpro' => {
-      url: 'https://www.kokuchpro.com/login/',
-      email_sel: '#LoginFormEmail',
-      pass_sel: '#LoginFormPassword',
-      submit_sel: '#LoginFormBtn',
-      success_check: ->(page) { !page.url.include?('/login') },
-    },
-    'connpass' => {
-      url: 'https://connpass.com/login/',
-      email_sel: 'input[name="username"],input[name="email"]',
-      pass_sel: 'input[name="password"]',
-      submit_sel: 'button[type="submit"]',
-      success_check: ->(page) { !page.url.include?('/login') },
-    },
-    'peatix' => {
-      url: 'https://peatix.com/signin',
-      email_sel: 'input[name="username"]',
-      pass_sel: 'input[type="password"]',
-      submit_sel: 'button[type="submit"]',
-      success_check: ->(page) { !page.url.include?('/signin') },
-    },
-    'techplay' => {
-      url: 'https://owner.techplay.jp/auth',
-      email_sel: '#email',
-      pass_sel: '#password',
-      submit_sel: "input[type='submit']",
-      success_check: ->(page) { !page.url.include?('/auth') || page.url.include?('select_menu') },
-    },
-    'zoom' => {
-      url: 'https://zoom.us/signin',
-      email_sel: '#email',
-      pass_sel: '#password',
-      submit_sel: 'button[type="submit"],#js_btn_login',
-      success_check: ->(page) { page.url.include?('zoom.us/profile') || page.url.include?('zoom.us/meeting') || !page.url.include?('/signin') },
-    },
-    'lme' => {
-      url: 'https://page.line-and.me/',
-      email_sel: 'input[type="email"],input[name="email"]',
-      pass_sel: 'input[type="password"],input[name="password"]',
-      submit_sel: 'button[type="submit"]',
-      success_check: ->(page) { !page.url.include?('/login') && !page.url.include?('/signin') },
-    },
-    'doorkeeper' => {
-      url: 'https://manage.doorkeeper.jp/user/sign_in',
-      email_sel: 'input[name="user[email]"]',
-      pass_sel: 'input[name="user[password]"]',
-      submit_sel: 'input[type="submit"],button[type="submit"]',
-      success_check: ->(page) { !page.url.include?('/sign_in') },
-    },
-    'seminars' => {
-      url: 'https://seminars.jp/login',
-      email_sel: 'input[name="email"],input[type="email"],#email',
-      pass_sel: 'input[name="password"],input[type="password"],#password',
-      submit_sel: 'button[type="submit"],input[type="submit"]',
-      success_check: ->(page) { !page.url.include?('/login') },
-    },
-    'onclass' => {
-      url: 'https://manager.the-online-class.com/sign_in',
-      email_sel: 'input[name="email"]',
-      pass_sel: 'input[name="password"]',
-      submit_sel: 'button:has-text("ログインする")',
-      success_check: ->(page) { !page.url.include?('/sign_in') },
-    },
+  SERVICE_CLASS = {
+    'kokuchpro'       => 'Posting::KokuchproService',
+    'connpass'        => 'Posting::ConnpassService',
+    'peatix'          => 'Posting::PeatixService',
+    'techplay'        => 'Posting::TechplayService',
+    'tunagate'        => 'Posting::TunagateService',
+    'doorkeeper'      => 'Posting::DoorkeeperService',
+    'street_academy'  => 'Posting::StreetAcademyService',
+    'eventregist'     => 'Posting::EventregistService',
+    'luma'            => 'Posting::LumaService',
+    'seminar_biz'     => 'Posting::SeminarBizService',
+    'jimoty'          => 'Posting::JimotyService',
+    'seminars'        => 'Posting::SeminarsService',
   }.freeze
 
-  def perform(connection_id)
-    conn = ServiceConnection.find(connection_id)
-    config = TEST_CONFIGS[conn.service_name]
+  LABEL = {
+    'kokuchpro' => 'こくチーズ', 'connpass' => 'connpass', 'peatix' => 'Peatix',
+    'techplay' => 'TechPlay', 'tunagate' => 'つなゲート', 'doorkeeper' => 'Doorkeeper',
+    'street_academy' => 'ストアカ', 'eventregist' => 'EventRegist', 'luma' => 'Luma',
+    'seminar_biz' => 'セミナーBiZ', 'jimoty' => 'ジモティー', 'seminars' => 'セミナーズ',
+  }.freeze
 
-    unless config
-      conn.update!(status: 'error', error_message: '接続テスト未対応のサービスです')
-      broadcast(conn)
-      return
+  # 新API: job_id + service_name
+  # 旧API互換: connection_id のみ
+  def perform(*args)
+    if args.length == 2
+      perform_with_job_id(args[0], args[1])
+    else
+      perform_legacy(args[0])
     end
-
-    conn.update!(status: 'testing', error_message: nil)
-    broadcast(conn)
-
-    playwright_path = find_playwright_path
-    result = nil
-
-    Playwright.create(playwright_cli_executable_path: playwright_path) do |pw|
-      browser = pw.chromium.launch(
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
-      )
-      context = browser.new_context(
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        locale: 'ja-JP',
-        viewport: { width: 1280, height: 800 }
-      )
-      page = context.new_page
-
-      page.goto(config[:url], waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_timeout(2000)
-
-      # メール入力
-      page.fill(config[:email_sel], conn.email.to_s)
-      # パスワード入力
-      page.fill(config[:pass_sel], conn.password_field.to_s)
-      # 送信
-      page.click(config[:submit_sel])
-      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
-      page.wait_for_timeout(3000)
-
-      if config[:success_check].call(page)
-        result = { status: 'connected', error: nil }
-        # セッションをDBに保存（次回のJob実行で復元用）
-        begin
-          state = context.storage_state
-          conn.update!(session_data: state.to_json)
-        rescue => e
-          Rails.logger.warn "[TestConnection] セッション保存失敗: #{e.message}"
-        end
-      else
-        result = { status: 'error', error: "ログイン失敗（URL: #{page.url}）" }
-      end
-
-      context.close rescue nil
-      browser.close rescue nil
-    end
-
-    if result
-      conn.update!(
-        status: result[:status],
-        error_message: result[:error],
-        last_connected_at: result[:status] == 'connected' ? Time.current : conn.last_connected_at
-      )
-    end
-
-    broadcast(conn)
-  rescue => e
-    conn = ServiceConnection.find_by(id: connection_id)
-    conn&.update!(status: 'error', error_message: e.message)
-    broadcast(conn) if conn
   end
 
   private
 
-  def broadcast(conn)
+  def perform_with_job_id(job_id, service_name)
+    label = LABEL[service_name] || service_name
+    conn = ServiceConnection.find_by(service_name: service_name)
+
+    klass_name = SERVICE_CLASS[service_name]
+    unless klass_name
+      # Zoom等のPlaywright不要サービス
+      conn&.update!(status: 'connected', last_connected_at: Time.current, error_message: nil)
+      broadcast_cable(job_id, type: 'done')
+      broadcast_status(conn)
+      return
+    end
+
+    conn&.update!(status: 'testing', error_message: nil)
+    broadcast_status(conn)
+
+    pw_path = find_playwright_path
+    Playwright.create(playwright_cli_executable_path: pw_path) do |pw|
+      browser = pw.chromium.launch(
+        headless: true,
+        args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--single-process']
+      )
+      ctx_opts = {
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36',
+        locale: 'ja-JP',
+        viewport: { width: 1280, height: 800 },
+      }
+      if conn&.session_data.present?
+        ctx_opts[:storageState] = JSON.parse(conn.session_data) rescue nil
+      end
+
+      ctx = browser.new_context(**ctx_opts.compact)
+      page = ctx.new_page
+
+      begin
+        svc = klass_name.constantize.new
+        svc.instance_variable_set(:@log_callback, ->(msg) {
+          broadcast_cable(job_id, type: 'log', message: msg)
+        })
+
+        if service_name == 'peatix'
+          svc.send(:login_and_get_bearer, page)
+        else
+          svc.send(:ensure_login, page)
+        end
+
+        # セッション保存
+        sd = JSON.generate(ctx.storage_state) rescue nil
+        conn&.update!(
+          session_data: sd,
+          status: 'connected',
+          last_connected_at: Time.current,
+          error_message: nil,
+        )
+        broadcast_cable(job_id, type: 'log', message: "[#{label}] ✅ ログインテスト成功")
+      rescue => e
+        conn&.update!(status: 'error', error_message: e.message.to_s[0, 500])
+        broadcast_cable(job_id, type: 'log', message: "[#{label}] ❌ #{e.message[0, 200]}")
+      ensure
+        ctx.close rescue nil
+        browser.close rescue nil
+      end
+    end
+
+    broadcast_cable(job_id, type: 'done')
+    broadcast_status(conn)
+  rescue => e
+    conn = ServiceConnection.find_by(service_name: service_name)
+    conn&.update!(status: 'error', error_message: e.message.to_s[0, 500])
+    broadcast_cable(job_id, type: 'done') if job_id
+    broadcast_status(conn)
+  end
+
+  # 旧API互換（connection_id のみ）
+  def perform_legacy(connection_id)
+    conn = ServiceConnection.find(connection_id)
+    perform_with_job_id(SecureRandom.hex(8), conn.service_name)
+  end
+
+  def broadcast_cable(job_id, data)
+    ActionCable.server.broadcast("post_#{job_id}", data)
+  end
+
+  def broadcast_status(conn)
     return unless conn
     ActionCable.server.broadcast('service_connections', {
       type: 'status_update',
@@ -156,7 +133,7 @@ class TestConnectionJob < ApplicationJob
     local = Rails.root.join('node_modules', '.bin', 'playwright').to_s
     if File.exist?(local)
       wrapper = '/tmp/playwright-runner.sh'
-      File.write(wrapper, "#!/bin/bash\nexec #{Shellwords.escape(local)} \"\$@\"\n")
+      File.write(wrapper, "#!/bin/bash\nexec #{Shellwords.escape(local)} \"$@\"\n")
       File.chmod(0o755, wrapper)
       return wrapper
     end

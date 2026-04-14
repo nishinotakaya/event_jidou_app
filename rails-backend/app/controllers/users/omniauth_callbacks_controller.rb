@@ -8,7 +8,10 @@ class Users::OmniauthCallbacksController < ActionController::Base
 
     if @user.persisted?
       request.env['warden'].set_user(@user, scope: :user)
-      redirect_to "#{frontend_url}/?login=success", allow_other_host: true
+      # ワンタイムトークンを生成してフロントエンドに渡す
+      token = SecureRandom.hex(32)
+      Rails.cache.write("login_token:#{token}", @user.id, expires_in: 60.seconds)
+      redirect_to "#{frontend_url}/?login=success&token=#{token}", allow_other_host: true
     else
       redirect_to "#{frontend_url}/?login=failed", allow_other_host: true
     end

@@ -83,88 +83,48 @@ module Posting
     def publish_event(page, event_url)
       log("[connpass] 🌐 公開処理中...")
       begin
-        # イベント編集画面に遷移
         edit_url = event_url.sub(/\/$/, '') + '/edit/'
         log("[connpass] 編集画面: #{edit_url}")
         page.goto(edit_url, waitUntil: 'domcontentloaded', timeout: 15_000)
         page.wait_for_load_state('networkidle', timeout: 10_000) rescue nil
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(3000)
 
         # 確認ダイアログを自動承認
-        page.on('dialog', ->(dialog) {
-          log("[connpass] 🌐 アラート: #{dialog.message}")
-          dialog.accept
-        })
+        page.on('dialog', ->(dialog) { dialog.accept })
 
-        # ページ上部のテキストをデバッグ
-        top_text = page.evaluate("document.body.innerText.substring(0, 500)")
-        log("[connpass] ページ上部テキスト: #{top_text.gsub("\n", ' ')[0, 200]}")
-
-        # 「公開」を含む全要素を探す
-        pub_info = page.evaluate(<<~'JS')
+        # span.PublishEvent（「即時公開する」）をクリック
+        clicked = page.evaluate(<<~'JS')
           (() => {
-            const all = [...document.querySelectorAll('a, button, input[type="submit"], span')];
-            for (const el of all) {
-              const text = (el.textContent || el.value || '').trim();
-              if (text.includes('即時公開') || text.includes('公開する')) {
-                const rect = el.getBoundingClientRect();
-                return { found: true, x: rect.x + rect.width/2, y: rect.y + rect.height/2, text: text.substring(0, 30), tag: el.tagName, href: (el.href || '') };
-              }
+            const el = document.querySelector('.PublishEvent');
+            if (el && el.offsetParent) { el.click(); return true; }
+            const spans = [...document.querySelectorAll('span, button, a')].filter(s => s.offsetParent);
+            for (const s of spans) {
+              if (s.textContent.trim() === '即時公開する') { s.click(); return true; }
             }
-            // 「公開」を含む全要素を返す
-            const pubEls = all.filter(el => (el.textContent || el.value || '').includes('公開')).map(el => ({
-              tag: el.tagName, text: (el.textContent || el.value || '').trim().substring(0, 30),
-              href: (el.href || '').substring(0, 60),
-            }));
-            return { found: false, pubElements: pubEls.slice(0, 5) };
+            return false;
           })()
         JS
 
-        if pub_info['found']
-          log("[connpass] 「#{pub_info['text']}」ボタン発見")
-          page.mouse.click(pub_info['x'], pub_info['y'])
-          page.wait_for_timeout(2000)
+        if clicked
+          log("[connpass] 「即時公開する」クリック")
+          page.wait_for_timeout(3000)
 
-          # 確認モーダルの「即時公開する」ボタン（.PopupSubmit）をクリック
-          modal_clicked = page.evaluate(<<~'JS')
+          # 確認ポップアップの .PopupSubmit をクリック
+          page.evaluate(<<~'JS')
             (() => {
-              const btn = document.querySelector('.PopupSubmit, button.PopupSubmit');
-              if (btn && btn.offsetParent !== null) {
-                btn.click();
-                return { found: true, text: btn.textContent.trim() };
+              const popup = document.querySelector('.PopupSubmit');
+              if (popup && popup.offsetParent) { popup.click(); return; }
+              const btns = [...document.querySelectorAll('button, a, span')].filter(b => b.offsetParent);
+              for (const b of btns) {
+                if (b.textContent.trim() === '即時公開する') { b.click(); return; }
               }
-              return { found: false };
             })()
           JS
-          if modal_clicked['found']
-            log("[connpass] モーダル「#{modal_clicked['text']}」クリック")
-          end
-
           page.wait_for_timeout(5000)
           page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
           log("[connpass] 🌐 ✅ 即時公開完了")
         else
-          log("[connpass] ⚠️ 「即時公開する」ボタンが見つかりません。API方式で公開...")
-          # フォールバック: API方式
-          event_id = event_url.match(%r{/event/(\d+)})[1] rescue nil
-          csrftoken = page.evaluate("document.cookie.split(';').find(c => c.trim().startsWith('connpass-csrftoken='))?.split('=')[1]?.trim() || ''")
-          if event_id && csrftoken.present?
-            result = page.evaluate(<<~JS, arg: { eventId: event_id, csrftoken: csrftoken })
-              async ({ eventId, csrftoken }) => {
-                const getRes = await fetch(`/api/event/${eventId}`, { headers: { 'x-requested-with': 'XMLHttpRequest' }, credentials: 'include' });
-                const event = await getRes.json();
-                event.status = 'published';
-                const putRes = await fetch(`/api/event/${eventId}`, {
-                  method: 'PUT',
-                  headers: { 'content-type': 'application/json', 'x-csrftoken': csrftoken, 'x-requested-with': 'XMLHttpRequest' },
-                  credentials: 'include',
-                  body: JSON.stringify(event),
-                });
-                return { ok: putRes.ok, status: putRes.status };
-              }
-            JS
-            log("[connpass] 🌐 #{result['ok'] ? '✅ API公開完了' : '⚠️ API失敗'}")
-          end
+          log("[connpass] ⚠️ 「即時公開する」ボタンが見つかりません")
         end
       rescue => e
         log("[connpass] ⚠️ 公開処理失敗: #{e.message}")

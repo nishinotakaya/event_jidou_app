@@ -13,10 +13,26 @@ const SITE_ICONS = {
 function CalendarEventCard({ item, s, setSelectedDate, onEditItem, onShowInList, handleSyncToGoogle, syncing, userRole }) {
   const [tags, setTags] = useState([]);
   useEffect(() => {
-    if (item.item_type === 'event' || item.type === 'event') {
-      fetchPostingHistory(item.id).then(d => setTags((d || []).filter(h => h.status === 'success'))).catch(() => {});
-    }
-  }, [item.id, item.item_type, item.type]);
+    fetchPostingHistory(item.id).then(d => setTags(d || [])).catch(() => {});
+  }, [item.id]);
+
+  const tagStyle = (h) => {
+    const isError = h.status === 'error' || h.status === 'not_found';
+    const isPlan = h.errorMessage?.includes('プラン');
+    return {
+      fontSize: '10px', padding: '1px 5px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', gap: '2px',
+      background: isError ? (isPlan ? '#fff7ed' : '#fee2e2') : h.published ? '#dcfce7' : '#f3f4f6',
+      color: isError ? (isPlan ? '#c2410c' : '#dc2626') : h.published ? '#16a34a' : '#6b7280',
+      border: `1px solid ${isError ? (isPlan ? '#fdba74' : '#fca5a5') : h.published ? '#bbf7d0' : '#d1d5db'}`,
+    };
+  };
+
+  const tagIcon = (h) => {
+    if (h.status === 'error') return h.errorMessage?.includes('プラン') ? '💰' : '❌';
+    if (h.status === 'not_found') return '❌';
+    if (h.published) return '✅';
+    return '📝';
+  };
 
   return (
     <div className={`calendar-event-card app${s === 'ended' ? ' ended' : ''}`} style={s === 'ended' ? { opacity: 0.65 } : {}}>
@@ -32,12 +48,13 @@ function CalendarEventCard({ item, s, setSelectedDate, onEditItem, onShowInList,
       {tags.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', margin: '4px 0' }}>
           {tags.map((h, i) => (
-            <span key={i} style={{
-              fontSize: '10px', padding: '1px 5px', borderRadius: '8px',
-              background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0',
-            }}>
-              {SITE_ICONS[h.siteName] || '📌'} {h.registrations != null ? `${h.registrations}人` : ''}
-            </span>
+            <a key={i} href={h.eventUrl || '#'} target={h.eventUrl ? '_blank' : undefined} rel="noopener noreferrer"
+              onClick={(e) => { if (!h.eventUrl) e.preventDefault(); }}
+              style={{ ...tagStyle(h), textDecoration: 'none', cursor: h.eventUrl ? 'pointer' : 'default' }}
+              title={`${h.siteLabel} ${h.published ? '(公開済み)' : h.status === 'error' ? '(エラー)' : '(下書き)'}${h.registrations != null ? ` ${h.registrations}人` : ''}`}
+            >
+              {SITE_ICONS[h.siteName] || '📌'} {h.siteLabel} {h.registrations != null ? `(${h.registrations})` : ''} {tagIcon(h)}
+            </a>
           ))}
         </div>
       )}

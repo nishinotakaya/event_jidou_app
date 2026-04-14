@@ -21,21 +21,8 @@ module Posting
         return
       end
 
-      creds = ServiceConnection.credentials_for('jimoty')
-      raise '[ジモティー] メールアドレスが未設定です' if creds[:email].blank?
-
-      log("[ジモティー] ログインフォーム入力中... (URL: #{page.url})")
-      page.fill('input[name="user[email]"]', creds[:email])
-      page.fill('input[name="user[password]"]', creds[:password])
-      page.locator('input[type="submit"]').first.click
-      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
-      page.wait_for_timeout(3000)
-
-      if page.url.include?('/sign_in')
-        body = page.evaluate("document.body?.innerText?.substring(0, 200) || ''") rescue ''
-        raise "[ジモティー] ログイン失敗 (URL: #{page.url}, body: #{body[0, 80]})"
-      end
-      log("[ジモティー] ✅ ログイン完了 → #{page.url}")
+      # ブラウザログイン（Googleログイン）でセッション取得する方式
+      raise '[ジモティー] ログインが必要です。接続管理画面の「ブラウザログイン」からGoogleログインしてください。'
     end
 
     def create_event(page, content, ef)

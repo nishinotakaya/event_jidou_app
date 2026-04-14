@@ -139,9 +139,9 @@ export default function App() {
     setSelectedFolder(folder);
     setSearchQuery('');
     setPage(1);
+    setStatusFilter('all'); // フォルダ内の全イベントを表示（終了含む）
     setShowConnections(false);
     setShowStudents(false);
-    // フォルダ選択時は一覧表示に切り替え（viewerも含む）
     setShowCalendar(false);
   }
 

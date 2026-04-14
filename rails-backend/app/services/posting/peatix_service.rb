@@ -565,29 +565,152 @@ module Posting
         email = creds[:email].presence || ENV['PEATIX_EMAIL'].to_s
         password = creds[:password].presence || ENV['PEATIX_PASSWORD'].to_s
 
-        log("[Peatix] メール入力中...")
-        page.fill('input[name="username"]', email)
-        page.click('#next-button')
-        page.wait_for_timeout(3000)
+        log("[Peatix] メール入力中: #{email}")
 
-        # パスワード入力欄を待つ（複数セレクタ試行）
-        pass_found = false
-        ['input[type="password"]', '#password', 'input[name="password"]'].each do |sel|
+        # 新UI: メールフォームが隠れている場合、「メールアドレスでログイン」を探してクリック
+        revealed = page.evaluate(<<~'JS') rescue false
+          (() => {
+            // username input が既に visible なら何もしない
+            const existing = document.querySelector('input[name="username"]');
+            if (existing && existing.offsetParent !== null) return true;
+
+            // 「メールアドレスでログイン」リンク/ボタンを探してクリック
+            const all = [...document.querySelectorAll('a, button, div, span')];
+            for (const el of all) {
+              const t = (el.textContent || '').trim();
+              if (t.includes('メールアドレスでログイン') || t === 'Log in with email' || t === 'Email login') {
+                el.click();
+                return 'clicked';
+              }
+            }
+            return false;
+          })()
+        JS
+        if revealed == 'clicked'
+          log("[Peatix] 「メールアドレスでログイン」クリック")
+          page.wait_for_timeout(3000)
+        end
+
+        # メール入力欄を待つ（visible の input のみ）
+        email_input_found = false
+        ['input[name="username"]', 'input[type="email"]', '#email', 'input[placeholder*="mail"]'].each do |sel|
           begin
-            page.wait_for_selector(sel, timeout: 5_000)
-            page.fill(sel, password)
-            pass_found = true
+            page.wait_for_selector(sel, timeout: 5_000, state: 'visible')
+            page.fill(sel, email)
+            email_input_found = true
+            log("[Peatix] メール入力欄: #{sel}")
             break
           rescue
             next
           end
         end
-        raise "Peatix パスワード入力欄が見つかりません（CAPTCHA or ページ構造変更の可能性）" unless pass_found
 
-        page.expect_navigation(timeout: 20_000) { page.click('#signin-button') } rescue nil
-        page.wait_for_timeout(3000)
+        unless email_input_found
+          # 最終手段: JS で直接入力
+          js_filled = page.evaluate(<<~JS, arg: email) rescue false
+            (email) => {
+              const inputs = [...document.querySelectorAll('input')].filter(i => i.offsetParent !== null && i.type !== 'hidden');
+              if (inputs.length > 0) {
+                const inp = inputs[0];
+                const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+                if (setter) setter.call(inp, email);
+                else inp.value = email;
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                return { ok: true, name: inp.name, id: inp.id };
+              }
+              return false;
+            }
+          JS
+          if js_filled && js_filled['ok']
+            email_input_found = true
+            log("[Peatix] メールJS直接入力: #{js_filled.inspect}")
+          end
+        end
 
-        raise "Peatix ログイン失敗 (URL: #{page.url})" if page.url.include?('signin') || page.url.include?('login')
+        raise "Peatix メール入力欄が見つかりません" unless email_input_found
+
+        # jQuery Validate + #next-button の流れが Playwright fill と噛み合わない。
+        # JS から直接: (1) username を設定 (2) validate_signin_username を呼ぶ (3) form.submit()
+        log("[Peatix] フォーム送信中...")
+        begin
+          page.expect_navigation(timeout: 20_000, waitUntil: 'domcontentloaded') do
+            page.evaluate(<<~JS, arg: email)
+              async (email) => {
+                // jQuery のフォーム状態も更新
+                const inp = document.querySelector('input[name="username"]');
+                if (inp) {
+                  inp.value = email;
+                  if (window.jQuery) jQuery(inp).val(email).trigger('change').trigger('input');
+                }
+                // AJAX validation を呼ぶ
+                try {
+                  const token = document.querySelector('input[name="form_token"]')?.value || '';
+                  await fetch('/user/validate_signin_username', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: `username=${encodeURIComponent(email)}&form_token=${encodeURIComponent(token)}`,
+                    credentials: 'same-origin',
+                  });
+                } catch {}
+                // フォームを直接submit
+                const form = document.getElementById('signin-form');
+                if (form) form.submit();
+              }
+            JS
+          end
+        rescue => e
+          log("[Peatix] フォーム送信タイムアウト: #{e.message[0, 80]}")
+        end
+        page.wait_for_timeout(2000)
+
+        # パスワード入力欄を待つ（最大15秒）
+        pass_found = false
+        ['input[type="password"]', '#password', 'input[name="password"]'].each do |sel|
+          begin
+            page.wait_for_selector(sel, timeout: 8_000, state: 'visible')
+            page.fill(sel, password)
+            pass_found = true
+            log("[Peatix] パスワード入力: #{sel}")
+            break
+          rescue
+            next
+          end
+        end
+
+        unless pass_found
+          # デバッグ情報を残す
+          page.screenshot(path: Rails.root.join('tmp', 'peatix_login_failed.png').to_s, fullPage: true) rescue nil
+          page_state = page.evaluate(<<~'JS') rescue {}
+            (() => ({
+              url: location.href,
+              title: document.title,
+              body: (document.body?.innerText || '').substring(0, 400),
+              inputs: [...document.querySelectorAll('input')].map(i => ({
+                name: i.name, id: i.id, type: i.type, visible: i.offsetParent !== null
+              })),
+              forms: [...document.querySelectorAll('form')].map(f => ({ id: f.id, action: f.action }))
+            }))()
+          JS
+          log("[Peatix] ❌ ページ状態: #{page_state.to_json[0, 600]}")
+          raise "Peatix パスワード入力欄が見つかりません (URL: #{page.url}, body: #{page_state['body'].to_s[0, 100]})"
+        end
+
+        # ログインボタンクリック → ナビゲーション待ち
+        begin
+          page.expect_navigation(timeout: 20_000, waitUntil: 'domcontentloaded') do
+            login_btn = page.locator('#signin-button, button[type="submit"], input[type="submit"]').first
+            login_btn.click
+          end
+        rescue => e
+          log("[Peatix] ログインクリック後のナビゲーション失敗: #{e.message[0, 80]}")
+        end
+        page.wait_for_timeout(2000)
+
+        if page.url.include?('signin') || page.url.include?('login')
+          body = page.evaluate("document.body?.innerText?.substring(0, 200) || ''") rescue ''
+          raise "Peatix ログイン失敗 (URL: #{page.url}, body: #{body[0, 120]})"
+        end
         log("[Peatix] ✅ ログイン完了 → #{page.url}")
       end
 
