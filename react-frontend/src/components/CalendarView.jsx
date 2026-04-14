@@ -1,8 +1,65 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchCalendarEvents, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../api.js';
+import { fetchCalendarEvents, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fetchPostingHistory } from '../api.js';
 import { getEventStatus } from '../eventStatus.js';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+const SITE_ICONS = {
+  kokuchpro: '🟠', peatix: '🟡', connpass: '🔴', techplay: '🔵',
+  tunagate: '🤝', doorkeeper: '🚪', street_academy: '🎓', eventregist: '📋',
+  luma: '✨', seminar_biz: '💼', jimoty: '📍',
+};
+
+function CalendarEventCard({ item, s, setSelectedDate, onEditItem, onShowInList, handleSyncToGoogle, syncing, userRole }) {
+  const [tags, setTags] = useState([]);
+  useEffect(() => {
+    if (item.item_type === 'event' || item.type === 'event') {
+      fetchPostingHistory(item.id).then(d => setTags((d || []).filter(h => h.status === 'success'))).catch(() => {});
+    }
+  }, [item.id, item.item_type, item.type]);
+
+  return (
+    <div className={`calendar-event-card app${s === 'ended' ? ' ended' : ''}`} style={s === 'ended' ? { opacity: 0.65 } : {}}>
+      <div className="calendar-event-info">
+        <span className={`event-status-badge ${s}`} style={{ marginRight: 8 }}>
+          {s === 'ended' ? '🔴 終了' : '🟢 募集中'}
+        </span>
+        <strong>{item.name}</strong>
+        <span className="calendar-event-time">
+          {item.eventTime || ''}{item.eventEndTime ? `〜${item.eventEndTime}` : ''}
+        </span>
+      </div>
+      {tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', margin: '4px 0' }}>
+          {tags.map((h, i) => (
+            <span key={i} style={{
+              fontSize: '10px', padding: '1px 5px', borderRadius: '8px',
+              background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0',
+            }}>
+              {SITE_ICONS[h.siteName] || '📌'} {h.registrations != null ? `${h.registrations}人` : ''}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="calendar-event-actions">
+        <button className="btn btn-sm btn-teal" onClick={() => { setSelectedDate(null); onEditItem && onEditItem(item); }}>
+          {userRole === 'viewer' ? '詳細' : '編集'}
+        </button>
+        <button className="btn btn-sm btn-secondary" style={{ fontSize: '11px' }} onClick={() => { setSelectedDate(null); onShowInList && onShowInList(item); }}>
+          📋 一覧へ
+        </button>
+        {userRole !== 'viewer' && <button
+          className="btn btn-sm"
+          style={{ background: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' }}
+          onClick={() => handleSyncToGoogle(item)}
+          disabled={syncing === item.id}
+        >
+          {syncing === item.id ? '⏳' : '📅'} GCal登録
+        </button>}
+      </div>
+    </div>
+  );
+}
 
 function getMonthDays(year, month) {
   const firstDay = new Date(year, month, 1).getDay();
@@ -322,37 +379,7 @@ export default function CalendarView({
                   {selectedAppEvents.map((item) => {
                     const s = getEventStatus(item);
                     return (
-                    <div key={item.id} className={`calendar-event-card app${s === 'ended' ? ' ended' : ''}`} style={s === 'ended' ? { opacity: 0.65 } : {}}>
-                      <div className="calendar-event-info">
-                        <span className={`event-status-badge ${s}`} style={{ marginRight: 8 }}>
-                          {s === 'ended' ? '🔴 終了' : '🟢 募集中'}
-                        </span>
-                        <strong>{item.name}</strong>
-                        <span className="calendar-event-time">
-                          {item.eventTime || ''}{item.eventEndTime ? `〜${item.eventEndTime}` : ''}
-                        </span>
-                      </div>
-                      <div className="calendar-event-actions">
-                        <button className="btn btn-sm btn-teal" onClick={() => { setSelectedDate(null); onEditItem && onEditItem(item); }}>
-                          {userRole === 'viewer' ? '詳細' : '編集'}
-                        </button>
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          style={{ fontSize: '11px' }}
-                          onClick={() => { setSelectedDate(null); onShowInList && onShowInList(item); }}
-                        >
-                          📋 一覧へ
-                        </button>
-                        {userRole !== 'viewer' && <button
-                          className="btn btn-sm"
-                          style={{ background: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' }}
-                          onClick={() => handleSyncToGoogle(item)}
-                          disabled={syncing === item.id}
-                        >
-                          {syncing === item.id ? '⏳' : '📅'} GCal登録
-                        </button>}
-                      </div>
-                    </div>
+                    <CalendarEventCard key={item.id} item={item} s={s} setSelectedDate={setSelectedDate} onEditItem={onEditItem} onShowInList={onShowInList} handleSyncToGoogle={handleSyncToGoogle} syncing={syncing} userRole={userRole} />
                     );
                   })}
                 </div>
