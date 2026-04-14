@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchCalendarEvents, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fetchPostingHistory } from '../api.js';
+import { fetchCalendarEvents, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fetchPostingHistory, fetchComments, createComment, deleteComment } from '../api.js';
 import { getEventStatus } from '../eventStatus.js';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -12,8 +12,13 @@ const SITE_ICONS = {
 
 function CalendarEventCard({ item, s, setSelectedDate, onEditItem, onShowInList, handleSyncToGoogle, syncing, userRole }) {
   const [tags, setTags] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState('');
+  const [showComments, setShowComments] = useState(false);
+
   useEffect(() => {
     fetchPostingHistory(item.id).then(d => setTags(d || [])).catch(() => {});
+    fetchComments(item.id).then(setComments).catch(() => {});
   }, [item.id]);
 
   const tagStyle = (h) => {
@@ -45,19 +50,6 @@ function CalendarEventCard({ item, s, setSelectedDate, onEditItem, onShowInList,
           {item.eventTime || ''}{item.eventEndTime ? `〜${item.eventEndTime}` : ''}
         </span>
       </div>
-      {tags.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', margin: '4px 0' }}>
-          {tags.map((h, i) => (
-            <a key={i} href={h.eventUrl || '#'} target={h.eventUrl ? '_blank' : undefined} rel="noopener noreferrer"
-              onClick={(e) => { if (!h.eventUrl) e.preventDefault(); }}
-              style={{ ...tagStyle(h), textDecoration: 'none', cursor: h.eventUrl ? 'pointer' : 'default' }}
-              title={`${h.siteLabel} ${h.published ? '(公開済み)' : h.status === 'error' ? '(エラー)' : '(下書き)'}${h.registrations != null ? ` ${h.registrations}人` : ''}`}
-            >
-              {SITE_ICONS[h.siteName] || '📌'} {h.siteLabel} {h.registrations != null ? `(${h.registrations})` : ''} {tagIcon(h)}
-            </a>
-          ))}
-        </div>
-      )}
       <div className="calendar-event-actions">
         <button className="btn btn-sm btn-teal" onClick={() => { setSelectedDate(null); onEditItem && onEditItem(item); }}>
           {userRole === 'viewer' ? '詳細' : '編集'}
@@ -73,6 +65,70 @@ function CalendarEventCard({ item, s, setSelectedDate, onEditItem, onShowInList,
         >
           {syncing === item.id ? '⏳' : '📅'} GCal登録
         </button>}
+      </div>
+      {tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: 4 }}>
+          {tags.map((h, i) => (
+            <a key={i} href={h.eventUrl || '#'} target={h.eventUrl ? '_blank' : undefined} rel="noopener noreferrer"
+              onClick={(e) => { if (!h.eventUrl) e.preventDefault(); }}
+              style={{ ...tagStyle(h), textDecoration: 'none', cursor: h.eventUrl ? 'pointer' : 'default' }}
+              title={`${h.siteLabel} ${h.published ? '(公開済み)' : h.status === 'error' ? '(エラー)' : '(下書き)'}${h.registrations != null ? ` ${h.registrations}人` : ''}`}
+            >
+              {SITE_ICONS[h.siteName] || '📌'} {h.siteLabel} {h.registrations != null ? `(${h.registrations})` : ''} {tagIcon(h)}
+            </a>
+          ))}
+        </div>
+      )}
+      {/* コメント */}
+      <div style={{ marginTop: 6 }}>
+        <button
+          onClick={() => setShowComments(!showComments)}
+          style={{ background: 'none', border: 'none', fontSize: 11, color: '#6b7280', cursor: 'pointer', padding: 0 }}
+        >
+          💬 コメント({comments.length}) {showComments ? '▲' : '▼'}
+        </button>
+        {showComments && (
+          <div style={{ marginTop: 4, padding: 6, background: '#f9fafb', borderRadius: 6, fontSize: 12 }}>
+            {comments.length === 0 && <p style={{ color: '#9ca3af', margin: 0 }}>コメントなし</p>}
+            {comments.map((c) => (
+              <div key={c.id} style={{ borderBottom: '1px solid #e5e7eb', padding: '4px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <span style={{ fontWeight: 600, color: '#4b5563' }}>{c.userName}</span>
+                  <span style={{ color: '#9ca3af', marginLeft: 6 }}>{new Date(c.createdAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                  <p style={{ margin: '2px 0 0', color: '#374151' }}>{c.body}</p>
+                </div>
+                {userRole !== 'viewer' && (
+                  <button onClick={async () => { await deleteComment(c.id); setComments(comments.filter(x => x.id !== c.id)); }} style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 10 }}>✕</button>
+                )}
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+              <input
+                type="text"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && commentText.trim()) {
+                    const c = await createComment(item.id, commentText.trim());
+                    setComments([...comments, c]);
+                    setCommentText('');
+                  }
+                }}
+                placeholder="コメントを入力..."
+                style={{ flex: 1, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}
+              />
+              <button
+                onClick={async () => {
+                  if (!commentText.trim()) return;
+                  const c = await createComment(item.id, commentText.trim());
+                  setComments([...comments, c]);
+                  setCommentText('');
+                }}
+                style={{ padding: '4px 10px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}
+              >送信</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -318,6 +318,29 @@ export async function updatePostingHistoryUrl(id, eventUrl) {
   return res.json();
 }
 
+// ===== Comments =====
+export async function fetchComments(itemId) {
+  const res = await fetch(`/api/comments?item_id=${encodeURIComponent(itemId)}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function createComment(itemId, body) {
+  const res = await fetch('/api/comments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ item_id: itemId, body }),
+  });
+  if (!res.ok) throw new Error('コメント投稿に失敗しました');
+  return res.json();
+}
+
+export async function deleteComment(id) {
+  const res = await fetch(`/api/comments/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('コメント削除に失敗しました');
+  return res.json();
+}
+
 export async function fetchParticipants(itemId) {
   const res = await fetch(`/api/participants?item_id=${encodeURIComponent(itemId)}`);
   if (!res.ok) return { participants: {}, total: 0 };

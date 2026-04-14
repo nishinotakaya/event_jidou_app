@@ -64,6 +64,11 @@ Rails.application.routes.draw do
     # 参加者
     get   "participants",          to: "participants#index"
     post  "participants/sync",     to: "participants#sync"
+
+    # コメント
+    get    "comments",     to: "comments#index"
+    post   "comments",     to: "comments#create"
+    delete "comments/:id", to: "comments#destroy"
     post  "posting_histories/bulk_mark_success",    to: "posting_histories#bulk_mark_success"
 
     # 投稿（ActionCable + Sidekiq バックグラウンドジョブ）
