@@ -29,9 +29,10 @@ function toPublicUrl(url, siteName) {
     return url.replace(/\/published\/?$/, '/');
   }
   // ストアカ: そのまま公開URL
-  // Luma: manage URL → 公開URL
-  if (siteName === 'luma' && url.includes('/manage/')) {
-    return url.replace('/event/manage/', '/');
+  // Luma: 管理URL・不正URLを公開URLに変換
+  if (siteName === 'luma') {
+    if (url.includes('/manage/')) return url.replace('/event/manage/', '/').replace('luma.com/', 'lu.ma/');
+    if (url === 'about:blank' || url.includes('/create') || url.includes('/signin') || !url.includes('lu.ma/')) return null;
   }
   // つなゲート: /event/edit/XXX → /events/XXX
   if (siteName === 'tunagate' && url.includes('/event/edit/')) {
