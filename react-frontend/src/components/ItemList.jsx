@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import ItemCard from './ItemCard.jsx';
 import { getEventStatus, statusMatchesQuery } from '../eventStatus.js';
+import { syncParticipants } from '../api.js';
 
 const PAGE_SIZE = 9;
 
@@ -257,6 +258,25 @@ export default function ItemList({
             🔍 GitHubスキャン
           </button>
         )}
+
+        {/* 一括参加者同期ボタン（全ユーザー表示） */}
+        <button
+          className="btn btn-sm"
+          onClick={async () => {
+            const eventItems = filtered.filter(i => i.item_type === 'event');
+            if (eventItems.length === 0) { showToast?.('イベントがありません', 'info'); return; }
+            showToast?.(`🔄 ${eventItems.length}件の参加者を一括同期中...`, 'info');
+            let ok = 0, ng = 0;
+            for (const item of eventItems) {
+              try { await syncParticipants(item.id); ok++; } catch { ng++; }
+            }
+            showToast?.(`参加者同期完了（成功:${ok} / 失敗:${ng}）`, ok > 0 ? 'success' : 'error');
+            // データ再読み込みはshowToast後にユーザーが手動リロード
+          }}
+          style={{ fontSize: '12px', background: '#ecfdf5', color: '#059669', border: '1px solid #6ee7b7', fontWeight: 600 }}
+        >
+          🔄 一括参加者同期
+        </button>
 
         {selectMode && (
           <>

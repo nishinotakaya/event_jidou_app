@@ -103,7 +103,7 @@ export default function App() {
         const d = await res.json();
         if (!cancelled && d && d.id) {
           setCurrentUser(d);
-          // viewer はカレンダー表示を強制
+          // viewer はカレンダー表示をデフォルトに（一覧切替は可能）
           if (d.role === 'viewer') {
             setShowCalendar(true);
             setShowConnections(false);
@@ -131,10 +131,6 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     loadAll();
-    // viewer はログイン直後にカレンダー表示を保証
-    if (currentUser.role === 'viewer') {
-      setShowCalendar(true);
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeType, currentUser?.id]);
 
@@ -145,10 +141,8 @@ export default function App() {
     setPage(1);
     setShowConnections(false);
     setShowStudents(false);
-    // viewer はカレンダー固定、管理者は一覧表示に遷移
-    if (currentUser?.role !== 'viewer') {
-      setShowCalendar(false);
-    }
+    // フォルダ選択時は一覧表示に切り替え（viewerも含む）
+    setShowCalendar(false);
   }
 
   // ===== Delete =====
