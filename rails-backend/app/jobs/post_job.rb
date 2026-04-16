@@ -92,13 +92,13 @@ class PostJob < ApplicationJob
         ],
       )
 
-      # オンクラスはイベント投稿時はスキップ（受講生サポートのみ）
-      is_event = item_id.to_s.start_with?('event')
-      if is_event
+      # オンクラスは「受講生サポート」タブからの投稿のみ許可
+      post_type = payload['postType'].to_s
+      unless post_type == 'student'
         skipped = sites.select { |s| s.split(':').first == 'オンクラス' }
         sites = sites.reject { |s| s.split(':').first == 'オンクラス' }
         skipped.each do |s|
-          broadcast(job_id, type: 'log', message: "[オンクラス] ⏭️ イベント投稿ではスキップ（受講生サポートのみ対応）")
+          broadcast(job_id, type: 'log', message: "[オンクラス] ⏭️ 受講生サポート以外ではスキップ")
           broadcast(job_id, type: 'status', site: s.split(':').first, status: 'skipped')
         end
       end

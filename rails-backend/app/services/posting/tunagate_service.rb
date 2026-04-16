@@ -247,11 +247,26 @@ module Posting
         }],
       }
 
-      endpoint = publish ? '/api/event_edit_submit/publish' : '/api/event_edit_submit/draft'
-      res = api_post(endpoint, body)
+      res =
+        if publish
+          submit_publish(body)
+        else
+          api_post('/api/event_edit_submit/draft', body)
+        end
       status = publish ? '公開' : '下書き'
       log("[つなゲート] イベント#{status}保存完了")
       res
+    end
+
+    # /publish が 404 を返すケースに備えて /draft（is_draft: false）へフォールバック
+    def submit_publish(body)
+      api_post('/api/event_edit_submit/publish', body)
+    rescue => e
+      raise unless e.message.include?('404')
+      log('[つなゲート] ⚠️ /publish が 404 → /draft(is_draft:false) にフォールバック')
+      body = body.deep_dup
+      body[:event][:is_draft] = false
+      api_post('/api/event_edit_submit/draft', body)
     end
 
     # ----------------------------------------------------------------

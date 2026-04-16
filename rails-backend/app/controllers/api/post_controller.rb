@@ -13,6 +13,7 @@ module Api
         'openaiApiKey' => params[:openaiApiKey].presence || ENV['OPENAI_API_KEY'],
         'dalleApiKey'  => params[:dalleApiKey].presence,
         'itemId'       => params[:itemId].to_s,
+        'postType'     => params[:postType].to_s,
       }
 
       if payload['sites'].empty?

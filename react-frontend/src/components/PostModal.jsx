@@ -99,6 +99,24 @@ function getEditUrl(siteName, eventUrl) {
   }
 }
 
+// 本文中の「日時：2026年5月16日（土） 20:30〜21:30」から日付・時刻を抽出
+function detectDateTimeFromContent(text) {
+  if (!text) return null;
+  const dateMatch = text.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (!dateMatch) return null;
+  const [, y, m, d] = dateMatch;
+  const startDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const timeMatch = text.match(/(\d{1,2})\s*[:：]\s*(\d{2})\s*[〜~\-–ー]\s*(\d{1,2})\s*[:：]\s*(\d{2})/);
+  if (timeMatch) {
+    return {
+      startDate,
+      startTime: `${String(timeMatch[1]).padStart(2, '0')}:${timeMatch[2]}`,
+      endTime:   `${String(timeMatch[3]).padStart(2, '0')}:${timeMatch[4]}`,
+    };
+  }
+  return { startDate };
+}
+
 const DEFAULT_EVENT_FIELDS = {
   title:        '',
   startDate:    '',
@@ -245,6 +263,32 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
       loadOnclassStudents(false);
     }
   }, [isStudentMode, selectedSites]);
+
+  // 本文中の日時（「日時：YYYY年M月D日 HH:MM〜HH:MM」）と eventFields がズレていたら自動同期
+  useEffect(() => {
+    if (isStudentMode) return;
+    const src = editContent || item?.content || '';
+    const detected = detectDateTimeFromContent(src);
+    if (!detected) return;
+    setEventFields((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      if (detected.startDate && prev.startDate !== detected.startDate) {
+        next.startDate = detected.startDate;
+        next.endDate   = detected.startDate;
+        changed = true;
+      }
+      if (detected.startTime && prev.startTime !== detected.startTime) {
+        next.startTime = detected.startTime;
+        changed = true;
+      }
+      if (detected.endTime && prev.endTime !== detected.endTime) {
+        next.endTime = detected.endTime;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [editContent, item?.content, isStudentMode]);
 
   // Load all settings from DB on mount
   useEffect(() => {
@@ -695,7 +739,9 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
       }
     }
 
-    const effectiveSites = selectedSites.map((s) => s === 'LME' ? `LME:${lmeSubType}` : s);
+    const effectiveSites = selectedSites
+      .filter((s) => isStudentMode || s !== 'オンクラス')
+      .map((s) => s === 'LME' ? `LME:${lmeSubType}` : s);
     const ef = {
       ...currentFields,
       lmeAccount: lmeSubType,
@@ -721,6 +767,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
           openaiApiKey: apiKey,
           dalleApiKey: dalleApiKey || apiKey,
           itemId: item?.id || '',
+          postType: activeType,
         },
         (event) => {
           if (event.type === 'log') {
@@ -1398,8 +1445,8 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
               </div>
             </div>
 
-            {/* Zoom Section (受講生サポートモードでは非表示) */}
-            {!isStudentMode && <div className="zoom-section" style={{ marginTop: '10px', background: '#f0f7ff', border: '1.5px solid #bfdbfe', borderRadius: '10px', padding: '14px' }}>
+            {/* Zoom Section (Gitレビュー時のみ非表示) */}
+            {!isGitReview && <div className="zoom-section" style={{ marginTop: '10px', background: '#f0f7ff', border: '1.5px solid #bfdbfe', borderRadius: '10px', padding: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
                 <label className="form-label" style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#1e40af' }}>
                   Zoom ミーティング

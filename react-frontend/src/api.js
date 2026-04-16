@@ -694,12 +694,12 @@ export async function syncOnclassStudents(onEvent) {
 
 // ===== Post (ActionCable) =====
 // Returns { jobId, subscription } — caller must call subscription.unsubscribe() when done
-export async function postToSites({ content, sites, eventFields, generateImage, imageStyle, openaiApiKey, dalleApiKey, itemId }, onEvent) {
+export async function postToSites({ content, sites, eventFields, generateImage, imageStyle, openaiApiKey, dalleApiKey, itemId, postType }, onEvent) {
   // 1. Enqueue job on Rails backend → get job_id
   const res = await fetch('/api/post', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, sites, eventFields, generateImage, imageStyle, openaiApiKey, dalleApiKey, itemId }),
+    body: JSON.stringify({ content, sites, eventFields, generateImage, imageStyle, openaiApiKey, dalleApiKey, itemId, postType }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
