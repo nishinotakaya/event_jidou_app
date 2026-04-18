@@ -79,6 +79,34 @@ module Posting
         end
       end
 
+      # ----- Zoom URL（オンライン参加情報） -----
+      zoom_url = ef['zoomUrl'].to_s
+      if zoom_url.present?
+        # online_comment テキストエリアまたは入力欄を探す
+        online_field = page.locator("textarea[name='online_comment'], input[name='online_comment'], textarea[name*='online'], #online_comment").first
+        if (online_field.visible?(timeout: 3000) rescue false)
+          zoom_text = "Zoom参加URL: #{zoom_url}"
+          zoom_text += "\nミーティングID: #{ef['zoomId']}" if ef['zoomId'].present?
+          zoom_text += "\nパスコード: #{ef['zoomPasscode']}" if ef['zoomPasscode'].present?
+          online_field.fill(zoom_text)
+          log("[TechPlay] Zoom URL入力完了: #{zoom_url}")
+        else
+          # フォールバック: JS でフィールドを探して入力
+          filled = page.evaluate(<<~JS, arg: zoom_url)
+            (url) => {
+              // online_comment 関連のフィールドを探す
+              const selectors = ['textarea[name*="online"]', 'input[name*="online_comment"]', '#online_comment', '[name="online_url"]'];
+              for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (el) { el.value = url; el.dispatchEvent(new Event('input', { bubbles: true })); return true; }
+              }
+              return false;
+            }
+          JS
+          log(filled ? "[TechPlay] Zoom URL入力完了（JS経由）" : "[TechPlay] ⚠️ Zoom URL欄が見つかりません")
+        end
+      end
+
       # ----- 参加枠名 -----
       slot_name = place
       page.fill("input[name='attendTypes[0][name]']", slot_name)
