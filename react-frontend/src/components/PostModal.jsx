@@ -321,7 +321,10 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
       setApiKey(s.openai_api_key || '');
       setDalleApiKey(s.dalle_api_key || '');
       if (s.post_selected_sites && !isStudentMode) {
-        try { setSelectedSites(JSON.parse(s.post_selected_sites)); } catch {}
+        try {
+          const saved = JSON.parse(s.post_selected_sites).filter((s) => s !== 'オンクラス');
+          setSelectedSites(saved);
+        } catch {}
       }
       if (s.lme_gen_subtype) setLmeSubType(s.lme_gen_subtype);
       setSettingsLoaded(true);
@@ -460,7 +463,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
         lme_passcode:       eventFields.zoomPasscode,
         lme_send_date:      eventFields.lmeSendDate,
         lme_send_time:      eventFields.lmeSendTime,
-        post_selected_sites: JSON.stringify(selectedSites),
+        post_selected_sites: JSON.stringify(isStudentMode ? selectedSites : selectedSites.filter((s) => s !== 'オンクラス')),
         lme_gen_subtype:    lmeSubType,
       }).catch(() => {});
     }, 500);
