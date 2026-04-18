@@ -284,31 +284,67 @@ class RegistrationChecker
     0
   end
 
-  # TechPlay: Inertia.js の data-page JSON から参加者数を取得
+  # TechPlay: セッション Cookie で owner 管理ページから参加者数を取得
   def self.check_techplay(event_url)
-    # owner.techplay.jp/event/XXX/edit → techplay.jp/event/XXX
-    public_url = event_url
-      .sub('owner.techplay.jp', 'techplay.jp')
-      .sub(%r{/edit/?$}, '')
+    # event_url: https://owner.techplay.jp/event/994580/edit
+    event_id = event_url[/event\/(\d+)/, 1]
+    return nil unless event_id
+
+    # 1. セッション Cookie で owner ページを取得
+    conn = ServiceConnection.find_by(service_name: 'techplay')
+    if conn&.session_data.present?
+      html = fetch_techplay_with_session(conn.session_data, "https://owner.techplay.jp/event/#{event_id}/edit")
+      if html && (m = html.match(/data-page="([^"]+)"/))
+        begin
+          page_data = JSON.parse(CGI.unescapeHTML(m[1]))
+          entered = page_data.dig('props', 'event', 'entered')
+          return entered.to_i if entered
+        rescue JSON::ParserError; end
+      end
+    end
+
+    # 2. フォールバック: 公開ページ（ローカル環境用）
+    public_url = "https://techplay.jp/event/#{event_id}"
     html = fetch_html(public_url)
     return nil unless html
-
-    # SPA: data-page 属性に JSON が埋め込まれている → "entered":3 を取得
     if (m = html.match(/data-page="([^"]+)"/))
       begin
         page_data = JSON.parse(CGI.unescapeHTML(m[1]))
         entered = page_data.dig('props', 'event', 'entered')
         return entered.to_i if entered
-      rescue JSON::ParserError
-        # fallthrough
-      end
+      rescue JSON::ParserError; end
     end
-
-    # フォールバック: テキストマッチ
     if (m2 = html.match(/(\d+)\s*人\s*(?:参加|申し込み|interested)/))
       return m2[1].to_i
     end
     0
+  end
+
+  def self.fetch_techplay_with_session(session_json, url)
+    session = JSON.parse(session_json) rescue {}
+    cookies = (session['cookies'] || []).map { |c| "#{c['name']}=#{c['value']}" }.join('; ')
+    return nil if cookies.blank?
+
+    uri = URI(url)
+    req = Net::HTTP::Get.new(uri)
+    req['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+    req['Cookie'] = cookies
+    req['Accept'] = 'text/html'
+    res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 15) { |h| h.request(req) }
+
+    # リダイレクト追跡（最大2回）
+    2.times do
+      break unless res.is_a?(Net::HTTPRedirection)
+      uri = URI(res['location'])
+      req = Net::HTTP::Get.new(uri)
+      req['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+      req['Cookie'] = cookies
+      res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 15) { |h| h.request(req) }
+    end
+    res.body if res.is_a?(Net::HTTPSuccess)
+  rescue => e
+    Rails.logger.warn("[RegistrationChecker] TechPlay session fetch error: #{e.message}")
+    nil
   end
 
   # Luma: 管理URLを公開URLに変換してチェック
