@@ -79,31 +79,64 @@ module Posting
         end
       end
 
-      # ----- Zoom URL（オンライン参加情報） -----
+      # ----- オンライン参加方法 (online_type) + Zoom URL -----
       zoom_url = ef['zoomUrl'].to_s
-      if zoom_url.present?
-        # online_comment テキストエリアまたは入力欄を探す
-        online_field = page.locator("textarea[name='online_comment'], input[name='online_comment'], textarea[name*='online'], #online_comment").first
-        if (online_field.visible?(timeout: 3000) rescue false)
-          zoom_text = "Zoom参加URL: #{zoom_url}"
-          zoom_text += "\nミーティングID: #{ef['zoomId']}" if ef['zoomId'].present?
-          zoom_text += "\nパスコード: #{ef['zoomPasscode']}" if ef['zoomPasscode'].present?
-          online_field.fill(zoom_text)
-          log("[TechPlay] Zoom URL入力完了: #{zoom_url}")
-        else
-          # フォールバック: JS でフィールドを探して入力
-          filled = page.evaluate(<<~JS, arg: zoom_url)
-            (url) => {
-              // online_comment 関連のフィールドを探す
-              const selectors = ['textarea[name*="online"]', 'input[name*="online_comment"]', '#online_comment', '[name="online_url"]'];
-              for (const sel of selectors) {
-                const el = document.querySelector(sel);
-                if (el) { el.value = url; el.dispatchEvent(new Event('input', { bubbles: true })); return true; }
+      if zoom_url.present? || place.include?('オンライン')
+        # online_type を "link"（URLを設定する）に変更 → online_comment 欄が表示される
+        page.evaluate(<<~JS)
+          (() => {
+            // ラジオボタン方式
+            const radios = document.querySelectorAll('input[name="online_type"]');
+            for (const r of radios) {
+              if (r.value === 'link') {
+                r.checked = true;
+                r.dispatchEvent(new Event('change', { bubbles: true }));
+                r.dispatchEvent(new Event('input', { bubbles: true }));
+                return;
               }
-              return false;
             }
-          JS
-          log(filled ? "[TechPlay] Zoom URL入力完了（JS経由）" : "[TechPlay] ⚠️ Zoom URL欄が見つかりません")
+            // セレクト方式
+            const sel = document.querySelector('select[name="online_type"]');
+            if (sel) {
+              sel.value = 'link';
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          })()
+        JS
+        page.wait_for_timeout(1000)
+        log('[TechPlay] オンライン参加方法: URL設定（link）に変更')
+
+        if zoom_url.present?
+          zoom_text = "お時間になりましたら、下記URLよりご入室ください。\n#{zoom_url}"
+          zoom_text += "\n\nミーティングID: #{ef['zoomId']}" if ef['zoomId'].present?
+          zoom_text += "\nパスコード: #{ef['zoomPasscode']}" if ef['zoomPasscode'].present?
+
+          # online_comment テキストエリアに入力
+          online_field = page.locator("textarea[name='online_comment'], #online_comment, textarea[name*='online']").first
+          if (online_field.visible?(timeout: 3000) rescue false)
+            online_field.fill(zoom_text)
+            log("[TechPlay] Zoom URL入力完了: #{zoom_url}")
+          else
+            # Vue reactivity 対応: JS で直接セット
+            page.evaluate(<<~JS, arg: zoom_text)
+              (text) => {
+                const selectors = ['textarea[name="online_comment"]', '#online_comment', 'textarea[name*="online"]'];
+                for (const sel of selectors) {
+                  const el = document.querySelector(sel);
+                  if (el) {
+                    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+                                || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+                    if (setter) setter.call(el, text);
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                  }
+                }
+                return false;
+              }
+            JS
+            log("[TechPlay] Zoom URL入力完了（JS経由）")
+          end
         end
       end
 
