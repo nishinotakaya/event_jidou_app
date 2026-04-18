@@ -38,6 +38,13 @@ module Api
         results['doorkeeper'] = count || 0
       end
 
+      # TechPlay: 公開ページJSON経由
+      tp_history = PostingHistory.find_by(item_id: item_id, site_name: 'techplay', status: 'success')
+      if tp_history&.event_url.present?
+        count = RegistrationChecker.check_techplay(tp_history.event_url)
+        results['techplay'] = count || 0
+      end
+
       # 申し込み数もDBに反映
       results.each do |site, count|
         h = PostingHistory.find_by(item_id: item_id, site_name: site)

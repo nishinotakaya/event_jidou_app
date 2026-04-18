@@ -284,7 +284,7 @@ class RegistrationChecker
     0
   end
 
-  # TechPlay: HTMLから参加者数を取得
+  # TechPlay: Inertia.js の data-page JSON から参加者数を取得
   def self.check_techplay(event_url)
     # owner.techplay.jp/event/XXX/edit → techplay.jp/event/XXX
     public_url = event_url
@@ -292,8 +292,21 @@ class RegistrationChecker
       .sub(%r{/edit/?$}, '')
     html = fetch_html(public_url)
     return nil unless html
-    if (m = html.match(/(\d+)\s*人\s*(?:参加|申し込み|interested)/))
-      return m[1].to_i
+
+    # SPA: data-page 属性に JSON が埋め込まれている → "entered":3 を取得
+    if (m = html.match(/data-page="([^"]+)"/))
+      begin
+        page_data = JSON.parse(CGI.unescapeHTML(m[1]))
+        entered = page_data.dig('props', 'event', 'entered')
+        return entered.to_i if entered
+      rescue JSON::ParserError
+        # fallthrough
+      end
+    end
+
+    # フォールバック: テキストマッチ
+    if (m2 = html.match(/(\d+)\s*人\s*(?:参加|申し込み|interested)/))
+      return m2[1].to_i
     end
     0
   end
