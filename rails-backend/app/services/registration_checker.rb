@@ -56,8 +56,15 @@ class RegistrationChecker
             locale: 'ja-JP',
             viewport: { width: 1280, height: 800 },
           }
-          session_file = Rails.root.join('tmp', "#{h.site_name}_session.json").to_s
-          context_opts[:storageState] = session_file if File.exist?(session_file)
+          # セッション復元: DB優先 → ファイルフォールバック
+          db_conn = ServiceConnection.find_by(service_name: h.site_name)
+          if db_conn&.session_data.present?
+            context_opts[:storageState] = JSON.parse(db_conn.session_data) rescue nil
+          end
+          unless context_opts[:storageState]
+            session_file = Rails.root.join('tmp', "#{h.site_name}_session.json").to_s
+            context_opts[:storageState] = session_file if File.exist?(session_file)
+          end
 
           context = browser.new_context(**context_opts)
           page = context.new_page
@@ -97,6 +104,18 @@ class RegistrationChecker
       m = text.match(/(\d+)\s*人\s*(?:参加|申し込み)/) || text.match(/(\d+)\s*participants?/i)
       m ? m[1].to_i : 0
     when 'techplay'
+      # SPA: data-page JSON から entered を取得
+      json_count = page.evaluate(<<~JS) rescue nil
+        (() => {
+          const el = document.querySelector('[data-page]');
+          if (!el) return null;
+          try {
+            const d = JSON.parse(el.dataset.page);
+            return d?.props?.event?.entered ?? null;
+          } catch { return null; }
+        })()
+      JS
+      return json_count.to_i if json_count
       m = text.match(/(\d+)\s*人\s*(?:参加|申し込み)/) || text.match(/interested\s*(\d+)/i)
       m ? m[1].to_i : 0
     when 'street_academy'
@@ -317,7 +336,7 @@ class RegistrationChecker
     if (m2 = html.match(/(\d+)\s*人\s*(?:参加|申し込み|interested)/))
       return m2[1].to_i
     end
-    0
+    nil # HTTP で取得できなかった場合は nil → Playwright フォールバックへ
   end
 
   def self.fetch_techplay_with_session(session_json, url)
