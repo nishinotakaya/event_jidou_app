@@ -62,6 +62,9 @@ class PostJob < ApplicationJob
               item_id: item_id,
               data: bytes,
             )
+            # JawsDB 5MB上限対策: 古い画像を削除して最新3枚のみ保持
+            excess = GeneratedImage.order(created_at: :desc).offset(3).pluck(:id)
+            GeneratedImage.where(id: excess).delete_all if excess.any?
             broadcast(job_id, type: 'log', message: '🖼️ 画像生成・DB保存完了')
           rescue => e
             broadcast(job_id, type: 'log', message: "⚠️ 画像DB保存失敗: #{e.message}（ファイルは保持）")
