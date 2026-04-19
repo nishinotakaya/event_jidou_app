@@ -287,9 +287,8 @@ Devise.setup do |config|
     access_type: 'offline',
     prompt: 'consent',
   }
-  if ENV['FRONTEND_URL'].present? && Rails.env.production?
-    omniauth_options[:redirect_uri] = "#{ENV['FRONTEND_URL']}/auth/google_oauth2/callback"
-  end
+  # redirect_uri はバックエンド(Heroku)に向ける（セッションCookieの整合性のため）
+  # コールバック成功後に FRONTEND_URL にリダイレクトする
   config.omniauth :google_oauth2,
                   ENV['GOOGLE_CLIENT_ID'],
                   ENV['GOOGLE_CLIENT_SECRET'],
