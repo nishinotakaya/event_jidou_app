@@ -17,6 +17,7 @@ class TestConnectionJob < ApplicationJob
     'seminar_biz'     => 'Posting::SeminarBizService',
     'jimoty'          => 'Posting::JimotyService',
     'seminars'        => 'Posting::SeminarsService',
+    'twitter'         => 'Posting::TwitterService',
   }.freeze
 
   LABEL = {
@@ -24,6 +25,7 @@ class TestConnectionJob < ApplicationJob
     'techplay' => 'TechPlay', 'tunagate' => 'つなゲート', 'doorkeeper' => 'Doorkeeper',
     'street_academy' => 'ストアカ', 'eventregist' => 'EventRegist', 'luma' => 'Luma',
     'seminar_biz' => 'セミナーBiZ', 'jimoty' => 'ジモティー', 'seminars' => 'セミナーズ',
+    'twitter' => 'X (Twitter)',
   }.freeze
 
   # 新API: job_id + service_name

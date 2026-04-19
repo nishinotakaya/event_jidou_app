@@ -58,7 +58,6 @@ module Posting
     end
 
     def ensure_login(page)
-      # セッションファイルベースのログイン（手動ログイン後にセッション保存済み前提）
       page.goto('https://x.com/home', waitUntil: 'domcontentloaded', timeout: 30_000)
       page.wait_for_timeout(3000)
 
@@ -71,8 +70,37 @@ module Posting
         end
       end
 
-      # セッションが無い場合はブラウザログインを促す
-      raise '[X] ログインセッションがありません。接続管理画面の「ブラウザログイン」からXにログインしてください。'
+      # 自動ログイン
+      creds = ServiceConnection.credentials_for('twitter')
+      phone_or_email = creds[:email].presence
+      password = creds[:password].presence
+      raise '[X] ログイン情報が未登録です。接続管理画面から電話番号とパスワードを登録してください。' unless phone_or_email && password
+
+      log('[X] ログイン中...')
+      page.goto(LOGIN_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
+      page.wait_for_timeout(3000)
+
+      # Step 1: 電話番号/メールアドレス入力
+      username_input = page.locator('input[autocomplete="username"], input[name="text"]').first
+      raise '[X] ユーザー名入力欄が見つかりません' unless (username_input.visible?(timeout: 5000) rescue false)
+      username_input.fill(phone_or_email)
+      page.locator('[role="button"]:has-text("次へ"), [role="button"]:has-text("Next")').first.click
+      page.wait_for_timeout(3000)
+
+      # Step 2: パスワード入力
+      pw_input = page.locator('input[name="password"], input[type="password"]').first
+      raise '[X] パスワード入力欄が見つかりません' unless (pw_input.visible?(timeout: 5000) rescue false)
+      pw_input.fill(password)
+      page.locator('[data-testid="LoginForm_Login_Button"], [role="button"]:has-text("ログイン"), [role="button"]:has-text("Log in")').first.click
+      page.wait_for_timeout(5000)
+
+      # ログイン成功確認
+      current = page.url
+      if current.include?('/home') || (current.include?('x.com') && !current.include?('login') && !current.include?('flow'))
+        log('[X] ✅ ログイン完了')
+      else
+        raise "[X] ログイン失敗（現在URL: #{current}）"
+      end
     end
 
     def build_tweet(title, content, event_url, ef)
