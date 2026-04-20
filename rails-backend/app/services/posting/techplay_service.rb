@@ -270,35 +270,66 @@ module Posting
 
     # ===== 公開 =====
     def publish_event(page)
-      # 保存後のページで公開ボタンを探す
+      # 保存直後にモーダルが残っていることがあるので、まずはモーダル内の公開/確認ボタンを優先
+      if click_modal_publish_button(page)
+        page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
+        log("[TechPlay] ✅ 公開完了（保存直後モーダル）→ #{page.url}")
+        return
+      end
+
+      # 通常フロー: 画面内の公開ボタンを探す（モーダルが閉じていることを前提）
       publish_btn = nil
       ['公開する', '公開'].each do |text|
-        btn = page.locator("button:has-text('#{text}'), a:has-text('#{text}')").first
+        # モーダル配下のボタンは除外し、可視＆クリック可能なボタンを取得
+        btn = page.locator("button:has-text('#{text}'):not(.modal button), a:has-text('#{text}'):not(.modal a)").first
         if (btn.visible?(timeout: 2000) rescue false)
           publish_btn = btn
           break
         end
       end
 
-      if publish_btn
-        publish_btn.click
-        page.wait_for_timeout(2000)
-
-        # 確認ダイアログ
-        ['はい', 'OK', '公開する', '確認'].each do |text|
-          confirm = page.locator("button:has-text('#{text}')").first
-          if (confirm.visible?(timeout: 2000) rescue false)
-            confirm.click
-            page.wait_for_timeout(2000)
-            break
-          end
-        end
-
-        page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
-        log("[TechPlay] ✅ 公開完了 → #{page.url}")
-      else
+      unless publish_btn
         log('[TechPlay] ⚠️ 公開ボタンが見つかりません')
+        return
       end
+
+      # クリック前にモーダルが邪魔していれば Escape で閉じる
+      dismiss_blocking_modal(page)
+
+      publish_btn.click(timeout: 10_000, force: true) rescue publish_btn.click(timeout: 10_000)
+      page.wait_for_timeout(2000)
+
+      # 確認モーダル内のボタンを押す
+      click_modal_publish_button(page)
+
+      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
+      log("[TechPlay] ✅ 公開完了 → #{page.url}")
+    end
+
+    # モーダルが開いていれば、その内部の公開/確認ボタンをクリックする
+    def click_modal_publish_button(page)
+      modal = page.locator('.dialog.modal.is-active, .modal.is-active').first
+      return false unless (modal.visible?(timeout: 1000) rescue false)
+
+      %w[公開する 公開 はい OK 確認].each do |text|
+        btn = modal.locator("button:has-text('#{text}'), a:has-text('#{text}')").first
+        if (btn.visible?(timeout: 1000) rescue false)
+          btn.click(timeout: 10_000)
+          page.wait_for_timeout(2000)
+          log("[TechPlay] モーダル内『#{text}』をクリック")
+          return true
+        end
+      end
+      false
+    end
+
+    # クリックを妨げる情報モーダル（キャンセル系）があれば Escape で閉じる
+    def dismiss_blocking_modal(page)
+      modal = page.locator('.dialog.modal.is-active, .modal.is-active').first
+      return unless (modal.visible?(timeout: 500) rescue false)
+
+      page.keyboard.press('Escape') rescue nil
+      page.wait_for_timeout(500)
     end
 
     # --- 削除・中止 ---

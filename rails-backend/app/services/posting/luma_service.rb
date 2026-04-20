@@ -109,6 +109,7 @@ module Posting
       body = {
         event_api_id: event_api_id,
         description: content,
+        description_mirror: build_description(content),
       }
       api_post('/event/update', body) rescue nil
     end
