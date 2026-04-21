@@ -154,50 +154,13 @@ module Posting
         log("[TechPlay] 定員数入力: #{capacity}")
       end
 
-      # ----- 説明文（イベント内容） -----
-      lines = content.split("\n")
-      first_line = lines.first.to_s.gsub(/\A[#\s「『【]+/, '').gsub(/[】』」\s]+\z/, '').strip
-      body_text = (first_line.present? && title_text.include?(first_line)) ? lines.drop(1).join("\n").lstrip : content
-
-      # TechPlayの説明欄はtextareaまたはリッチエディタ
-      desc_filled = false
-      # textarea方式
-      desc_area = page.locator('textarea[name="detail"], textarea#detail, textarea[name="description"]').first
-      if (desc_area.visible?(timeout: 3000) rescue false)
-        desc_area.fill(body_text)
-        desc_filled = true
-        log('[TechPlay] 説明文入力完了（textarea）')
-      end
-      # contenteditable方式
-      unless desc_filled
-        editor = page.locator('[contenteditable="true"]').first
-        if (editor.visible?(timeout: 2000) rescue false)
-          editor.click
-          page.keyboard.type(body_text)
-          desc_filled = true
-          log('[TechPlay] 説明文入力完了（contenteditable）')
-        end
-      end
-      # Vue tiptap/quill方式
-      unless desc_filled
-        page.evaluate(<<~JS, arg: body_text)
-          (text) => {
-            const editors = document.querySelectorAll('.ProseMirror, .ql-editor, .tiptap, [contenteditable]');
-            for (const ed of editors) {
-              if (ed.offsetHeight > 50) {
-                ed.innerHTML = text.replace(/\\n/g, '<br>');
-                ed.dispatchEvent(new Event('input', { bubbles: true }));
-                return true;
-              }
-            }
-            return false;
-          }
-        JS
-        log('[TechPlay] 説明文入力完了（エディタ）')
-      end
-
       # 申込形式・参加費はデフォルトのまま
       log('[TechPlay] 申込形式・参加費はデフォルト値を使用')
+
+      # 本文（説明文）は /event/create には Toast UI Editor が存在しないため、
+      # ここでは入力せず、保存後の /event/{id}/edit ページで入力する。
+      # (旧実装: ここで textarea/contenteditable に書き込もうとしていたが
+      #  そもそも要素が無いため常にスキップされ、サンプルテンプレートのまま保存されていた)
 
       # ----- 保存 -----
       log('[TechPlay] 保存ボタンをクリック...')
@@ -207,7 +170,17 @@ module Posting
       save_btn.click
       page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
       page.wait_for_timeout(3000)
-      log("[TechPlay] ✅ 保存完了 → #{page.url}")
+      log("[TechPlay] ✅ 初回保存完了 → #{page.url}")
+
+      # ----- 本文入力（編集ページに遷移後） -----
+      # /event/{id}/edit に遷移してから Toast UI Editor が初期化される。
+      # Toast UI Editor のインスタンス（Vue $refs.tuiEditor）に対して
+      # invoke('setMarkdown', text) を呼ぶことで本文をセットする。
+      body_text = build_body_text(content, title_text)
+      fill_description(page, body_text)
+
+      # 本文入力後、もう一度保存して本文を永続化
+      save_after_description(page)
 
       # ----- 公開 -----
       publish = ef.dig('publishSites', 'TechPlay')
@@ -219,6 +192,75 @@ module Posting
       end
 
       log("[TechPlay] ✅ 処理完了 → #{page.url}")
+    end
+
+    # 本文用のテキストを組み立てる（タイトルが本文1行目と重複する場合は1行目を除く）
+    def build_body_text(content, title_text)
+      lines = content.to_s.split("\n")
+      first_line = lines.first.to_s.gsub(/\A[#\s「『【]+/, '').gsub(/[】』」\s]+\z/, '').strip
+      (first_line.present? && title_text.include?(first_line)) ? lines.drop(1).join("\n").lstrip : content.to_s
+    end
+
+    # 編集ページの Toast UI Editor に本文をセットする。
+    # ページには 詳細 / 個人情報の取り扱い など複数の Toast UI Editor が並ぶため、
+    # 「個人情報の取り扱い」用エディタ（既定文言「申し込み時にご提供いただいた情報」を含む）
+    # を除いた中で最後のエディタ＝詳細欄、と判定して setMarkdown を呼ぶ。
+    def fill_description(page, body_text)
+      log('[TechPlay] 本文（詳細）入力中... Toast UI Editor の初期化を待機')
+      page.wait_for_selector('.toastui-editor-defaultUI', timeout: 20_000) rescue nil
+      page.wait_for_timeout(4000)
+
+      result = page.evaluate(<<~JS, arg: body_text)
+        (text) => {
+          // 各 Toast UI Editor ラッパーから、上に向かって __vue__.$refs.tuiEditor を探す
+          const findEditor = (wrap) => {
+            let cur = wrap;
+            for (let i = 0; i < 20 && cur; i++) {
+              const v = cur.__vue__;
+              if (v && v.$refs) {
+                for (const k in v.$refs) {
+                  const r = v.$refs[k];
+                  if (r && typeof r.invoke === 'function') return r;
+                }
+              }
+              cur = cur.parentElement;
+            }
+            return null;
+          };
+
+          const wrappers = [...document.querySelectorAll('.toastui-editor-defaultUI')];
+          const editors = wrappers.map(findEditor).filter(Boolean);
+          if (editors.length === 0) return { ok: false, reason: 'no editor' };
+
+          // 「個人情報の取り扱い」欄（既定文言を含む）を除外
+          const PRIVACY_MARK = '申し込み時にご提供いただいた情報';
+          const candidates = editors.filter(ed => {
+            try { return !((ed.invoke('getMarkdown') || '').includes(PRIVACY_MARK)); }
+            catch (e) { return true; }
+          });
+          if (candidates.length === 0) return { ok: false, reason: 'all editors look like privacy' };
+
+          // 詳細欄は通常リストの末尾（最初は概要などの場合がある）
+          const target = candidates[candidates.length - 1];
+          target.invoke('setMarkdown', text);
+          return { ok: true, total: editors.length, candidates: candidates.length };
+        }
+      JS
+      log("[TechPlay] 本文入力結果: #{result.inspect}")
+    end
+
+    # 詳細編集ページでの保存（公開ボタンと干渉しないよう、保存ボタンに限定）
+    def save_after_description(page)
+      log('[TechPlay] 本文反映のため再保存...')
+      save_btn = page.locator("button[type='submit']:has-text('保存')").first
+      unless (save_btn.visible?(timeout: 3000) rescue false)
+        log('[TechPlay] ⚠️ 編集ページに保存ボタンが見つかりません — スキップ')
+        return
+      end
+      save_btn.click(force: true) rescue save_btn.click
+      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
+      page.wait_for_timeout(3000)
+      log("[TechPlay] ✅ 本文を含めた保存完了 → #{page.url}")
     end
 
     # ===== 日時入力 (Vue datetimepicker) =====
