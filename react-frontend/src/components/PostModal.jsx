@@ -306,15 +306,22 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
     }
     fetchZoomSettings().then(setZoomList).catch(() => {});
     fetchAppSettings().then((s) => {
+      // Zoom 情報は「新規作成時は空のまま保存時に自動作成させる」ため、
+      // app_settings からの復元は既存アイテムの編集時のみに限定する。
+      // （新規に pre-fill してしまうと handleSaveContent の `!eventFields.zoomUrl` が
+      //  false になり、Zoom 自動作成がスキップされてしまう）
+      const isEditing = !!item?.id;
       setEventFields((prev) => ({
         ...prev,
         startDate:    item?.eventDate     || s.event_gen_date     || prev.startDate,
         startTime:    item?.eventTime     || s.event_gen_time     || prev.startTime,
         endDate:      item?.eventDate     || s.event_gen_date     || prev.endDate,
         endTime:      item?.eventEndTime  || s.event_gen_end_time || prev.endTime,
-        zoomUrl:      s.lme_zoom_url       || prev.zoomUrl,
-        zoomId:       s.lme_meeting_id     || prev.zoomId,
-        zoomPasscode: (s.lme_passcode && !/\*/.test(s.lme_passcode)) ? s.lme_passcode : prev.zoomPasscode,
+        zoomUrl:      isEditing ? (s.lme_zoom_url   || prev.zoomUrl)   : prev.zoomUrl,
+        zoomId:       isEditing ? (s.lme_meeting_id || prev.zoomId)    : prev.zoomId,
+        zoomPasscode: isEditing && s.lme_passcode && !/\*/.test(s.lme_passcode)
+          ? s.lme_passcode
+          : prev.zoomPasscode,
         lmeSendDate:  s.lme_send_date      || prev.lmeSendDate,
         lmeSendTime:  s.lme_send_time      || prev.lmeSendTime,
       }));
@@ -1364,7 +1371,12 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
           {/* Event Fields */}
           <details className="event-fields-section" open>
             <summary className="event-fields-title">
-              📅 イベント詳細 <span style={{ fontSize: '0.8em', color: '#888' }}>（こくチーズ用・受付期間は開催7日前〜1日前で自動計算）</span>
+              📅 イベント詳細
+              <span style={{ fontSize: '0.8em', color: '#888' }}>
+                {isStudentMode
+                  ? '（日時を入れると Zoom を自動作成します）'
+                  : '（こくチーズ用・受付期間は開催7日前〜1日前で自動計算）'}
+              </span>
             </summary>
 
             <div className="form-group" style={{ marginTop: '10px' }}>
