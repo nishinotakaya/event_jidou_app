@@ -90,6 +90,46 @@ module Api
       render json: { error: e.message }, status: :internal_server_error
     end
 
+    # POST /api/ai/profile
+    # mode='generate' → タイトル/参加対象から主催者プロフィールを新規生成
+    # mode='correct'  → 既存プロフィールを「来たくなる」訴求に添削
+    def profile
+      key  = params[:apiKey].presence || ENV['OPENAI_API_KEY']
+      text = params[:text].to_s
+      mode = params[:mode].presence || 'generate'
+      hint = params[:hint].to_s # 主催者の専門/経歴ヒント（任意）
+
+      return render json: { error: 'OpenAI APIキーを入力してください' }, status: :bad_request unless key
+
+      base_system = <<~SYS.strip
+        あなたはイベント主催者プロフィールを書くプロのコピーライターです。
+        読者が「このイベントに参加したら、こういう未来が見える」と感じる訴求を最重視してください。
+
+        【書き方ルール】
+        - 200〜300字。誇張せず、温度感のある語り口で。
+        - 一人称は柔らかく（私 / わたし）。
+        - 構成は (1) 自己紹介の一文、(2) 提供できる価値・なぜそれを語れるか、(3) 参加すると得られる未来体験 の3層。
+        - 絵文字は1〜2個まで控えめに。
+        - 改行は読みやすさ優先で、長文の塊にしない。
+        - プロフィールの本文のみを返し、見出しや前置きは不要。
+      SYS
+
+      if mode == 'correct'
+        return render json: { error: 'プロフィール本文を入力してください' }, status: :bad_request if text.strip.empty?
+        result = call_openai(key,
+          system: base_system + "\n\n以下の既存プロフィールを、上記ルールに沿って『参加したくなる』訴求に磨き上げてください。",
+          user: text,
+          temperature: 0.5
+        )
+      else
+        user_prompt = "ヒント（任意）：#{hint.presence || '指定なし。汎用のイベント主催者として書いてください。'}"
+        result = call_openai(key, system: base_system, user: user_prompt, temperature: 0.7)
+      end
+      render json: { content: result }
+    rescue => e
+      render json: { error: e.message }, status: :internal_server_error
+    end
+
     private
 
     def call_openai(api_key, system:, user:, temperature: 0.5)

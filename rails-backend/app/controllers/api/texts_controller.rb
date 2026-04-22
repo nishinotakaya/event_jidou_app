@@ -18,6 +18,7 @@ module Api
         event_time:     item_params[:eventTime],
         event_end_time: item_params[:eventEndTime],
         zoom_url:       item_params[:zoomUrl],
+        youtube_url:    item_params[:youtubeUrl],
         onclass_mentions:  params.key?(:onclassMentions) ? Array(params[:onclassMentions]).to_json : nil,
         onclass_channels:  params.key?(:onclassChannels) ? Array(params[:onclassChannels]).to_json : nil,
         student_post_type: params[:studentPostType],
@@ -42,6 +43,7 @@ module Api
       item.event_time     = item_params[:eventTime]     if item_params.key?(:eventTime)
       item.event_end_time = item_params[:eventEndTime]  if item_params.key?(:eventEndTime)
       item.zoom_url       = item_params[:zoomUrl]        if item_params.key?(:zoomUrl)
+      item.youtube_url    = item_params[:youtubeUrl]     if item_params.key?(:youtubeUrl)
       if params.key?(:onclassMentions)
         item.onclass_mentions = Array(params[:onclassMentions]).to_json
       end
@@ -91,7 +93,7 @@ module Api
 
     def item_params
       params.permit(:name, :content, :folder, :eventDate, :eventTime, :eventEndTime,
-                    :zoomUrl, :studentPostType, onclassMentions: [], onclassChannels: [])
+                    :zoomUrl, :youtubeUrl, :studentPostType, onclassMentions: [], onclassChannels: [])
     end
 
     def format_item(item)
@@ -105,6 +107,7 @@ module Api
         eventTime:    item.event_time,
         eventEndTime: item.event_end_time,
         zoomUrl:      item.zoom_url,
+        youtubeUrl:   item.youtube_url,
         createdAt:    item.created_at&.strftime('%Y-%m-%d'),
         updatedAt:    item.updated_at&.strftime('%Y-%m-%d'),
       }

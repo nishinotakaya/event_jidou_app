@@ -274,6 +274,18 @@ export async function aiAgent({ text, prompt, apiKey }) {
   return data;
 }
 
+// 主催者プロフィール生成・添削。mode='generate' | 'correct'
+export async function aiProfile({ text = '', mode = 'generate', hint = '', apiKey }) {
+  const res = await fetch('/api/ai/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, mode, hint, apiKey }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'プロフィール処理に失敗しました');
+  return data;
+}
+
 // ===== Posting History =====
 export async function fetchPostingHistory(itemId) {
   const res = await fetch(`/api/posting_histories/latest?item_id=${encodeURIComponent(itemId)}`);

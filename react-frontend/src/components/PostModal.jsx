@@ -1,5 +1,67 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting, fetchAppSettings, saveAppSettings, fetchServiceConnections, fetchPostingHistory, createText, updateText, aiGenerate, aiCorrect, aiAlignDatetime, aiAgent, fetchOnclassStudents, uploadOnclassImage, createCalendarEvent, uploadImage, checkDuplicateEvent, fetchGeneratedImages, uploadGeneratedImage, deleteGeneratedImage } from '../api.js';
+import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting, fetchAppSettings, saveAppSettings, fetchServiceConnections, fetchPostingHistory, createText, updateText, aiGenerate, aiCorrect, aiAlignDatetime, aiAgent, aiProfile, fetchOnclassStudents, uploadOnclassImage, createCalendarEvent, uploadImage, checkDuplicateEvent, fetchGeneratedImages, uploadGeneratedImage, deleteGeneratedImage } from '../api.js';
+
+// ===== 主催者プロフィール: content への自動埋め込み =====
+// 開始/終了マーカーで本文末尾に挿入する。次回保存時はマーカーで囲まれた既存ブロックを
+// 取り除いてから付け直すので冪等。プロフィール本体が空ならブロック自体を出さない。
+const HOST_PROFILE_START = '<!-- HOST-PROFILE-START -->';
+const HOST_PROFILE_END   = '<!-- HOST-PROFILE-END -->';
+
+function stripHostProfile(content) {
+  if (!content) return '';
+  const re = new RegExp(`\\n*${HOST_PROFILE_START}[\\s\\S]*?${HOST_PROFILE_END}\\n*`, 'g');
+  return content.replace(re, '').replace(/\s+$/, '') + '\n';
+}
+
+function buildHostProfileBlock({ text, iconUrl, youtubeUrl }) {
+  const profile = (text || '').trim();
+  const icon    = (iconUrl || '').trim();
+  const yt      = (youtubeUrl || '').trim();
+  if (!profile && !icon && !yt) return '';
+
+  const lines = [HOST_PROFILE_START, '---', '## 主催者からひとこと'];
+  if (icon)    lines.push(`![](${icon})`);
+  if (profile) lines.push('', profile);
+  if (yt)      lines.push('', `▶ 自己紹介動画: ${yt}`);
+  lines.push(HOST_PROFILE_END);
+  return lines.join('\n');
+}
+
+function appendHostProfile(content, profile) {
+  const stripped = stripHostProfile(content || '');
+  const block    = buildHostProfileBlock(profile);
+  if (!block) return stripped.replace(/\n+$/, '') + '\n';
+  return stripped.replace(/\n+$/, '') + '\n\n' + block + '\n';
+}
+
+// アイコンを 256x256 / JPEG / 容量を抑えてリサイズした File を返す
+async function resizeIconImage(file, maxSize = 256, quality = 0.85) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = dataUrl;
+  });
+
+  // 中央クロップして正方形にしてから縮小
+  const side = Math.min(img.width, img.height);
+  const sx = (img.width - side) / 2;
+  const sy = (img.height - side) / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width  = maxSize;
+  canvas.height = maxSize;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, sx, sy, side, side, 0, 0, maxSize, maxSize);
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+  return new File([blob], (file.name || 'icon').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+}
 
 // 全サイトリスト
 const ALL_SITES = [
@@ -134,6 +196,7 @@ const DEFAULT_EVENT_FIELDS = {
   lmeSendDate:  '',
   lmeSendTime:  '10:00',
   gmailTo:      '',
+  youtubeUrl:   '', // per-event の自己紹介動画 URL（空なら hostProfile.youtubeUrl を採用）
 };
 
 export default function PostModal({ item, folders = [], activeType = 'event', onClose, onSaved, showToast }) {
@@ -225,6 +288,18 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
   const [zoomEditing, setZoomEditing] = useState(false);
   const [showPasscode, setShowPasscode] = useState(true);
   const [zoomLogs, setZoomLogs] = useState([]);
+
+  // 主催者プロフィール（app_settings からロード、編集モーダルで更新）
+  const [hostProfile, setHostProfile] = useState({
+    text: '',
+    iconUrl: '',
+    youtubeUrl: '', // グローバル既定 YouTube URL
+  });
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileAiLoading, setProfileAiLoading] = useState(''); // 'generate' | 'correct' | ''
+  const [iconUploading, setIconUploading] = useState(false);
+  const profileIconInputRef = useRef(null);
 
   // 接続済みサイトのみ表示
   const [connectedServices, setConnectedServices] = useState(new Set());
@@ -324,7 +399,15 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
           : prev.zoomPasscode,
         lmeSendDate:  s.lme_send_date      || prev.lmeSendDate,
         lmeSendTime:  s.lme_send_time      || prev.lmeSendTime,
+        // per-event の YouTube URL（item にあれば優先、無ければ前値）
+        youtubeUrl:   item?.youtubeUrl ?? prev.youtubeUrl,
       }));
+      // 主催者プロフィール（app_settings）。未設定でも空文字で初期化される。
+      setHostProfile({
+        text:       s.host_profile_text       || '',
+        iconUrl:    s.host_profile_icon_url   || '',
+        youtubeUrl: s.host_profile_youtube_url || '',
+      });
       setApiKey(s.openai_api_key || '');
       setDalleApiKey(s.dalle_api_key || '');
       if (s.post_selected_sites && !isStudentMode) {
@@ -580,6 +663,17 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
         } catch (err) { showToast(`Zoom作成失敗: ${err.message}`, 'error'); }
       }
 
+      // 主催者プロフィールを本文末尾に冪等で埋め込む。
+      // YouTube は per-event > グローバルの順で採用。プロフィール本体（テキスト/アイコン/動画）が
+      // 全て空のときはブロックを出さない（=旧マーカーを取り除くだけ）。
+      const effectiveYoutube = (eventFields.youtubeUrl || hostProfile.youtubeUrl || '').trim();
+      content = appendHostProfile(content, {
+        text:       hostProfile.text,
+        iconUrl:    hostProfile.iconUrl,
+        youtubeUrl: effectiveYoutube,
+      });
+      setEditContent(content);
+
       const saveBase = {
         name: editName.trim(),
         content,
@@ -588,6 +682,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
         eventTime: eventFields.startTime || '',
         eventEndTime: eventFields.endTime || '',
         zoomUrl: eventFields.zoomUrl || '',
+        youtubeUrl: eventFields.youtubeUrl || '',
         ...(isStudentMode ? { onclassMentions: selectedMentions, onclassChannels, studentPostType } : {}),
       };
       if (isNew && !createdItemRef.current) {
@@ -619,7 +714,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
       if (onSaved) await onSaved();
     } catch (err) { showToast(err.message, 'error'); }
     finally { setEditSaving(false); }
-  }, [isNew, editName, editContent, eventFields, apiKey, connectedServices, item, onSaved, showToast, syncToGcal, isStudentMode]);
+  }, [isNew, editName, editContent, eventFields, apiKey, connectedServices, item, onSaved, showToast, syncToGcal, isStudentMode, hostProfile, selectedMentions, onclassChannels, studentPostType, editFolder, activeType]);
 
   // 開始日を変更したら終了日・Zoomタイトルの日付も連動
   function handleStartDateChange(val) {
@@ -842,6 +937,61 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
 
   const lmeSelected = selectedSites.includes('LME');
 
+  // ===== 主催者プロフィール編集ハンドラ =====
+  async function handleProfileSave() {
+    setProfileSaving(true);
+    try {
+      await saveAppSettings({
+        host_profile_text:        hostProfile.text || '',
+        host_profile_icon_url:    hostProfile.iconUrl || '',
+        host_profile_youtube_url: hostProfile.youtubeUrl || '',
+      });
+      showToast('主催者プロフィールを保存しました', 'success');
+      setProfileEditOpen(false);
+    } catch (e) {
+      showToast(`プロフィール保存失敗: ${e.message}`, 'error');
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  async function handleProfileAi(mode) {
+    if (!apiKey) { showToast('OpenAI APIキーを設定してください', 'error'); return; }
+    setProfileAiLoading(mode);
+    try {
+      const data = await aiProfile({
+        text: hostProfile.text,
+        mode,
+        hint: editName.trim(), // タイトルをヒントに
+        apiKey,
+      });
+      if (data.content) {
+        setHostProfile((prev) => ({ ...prev, text: data.content }));
+        showToast(mode === 'correct' ? 'プロフィールを添削しました' : 'プロフィールを生成しました', 'success');
+      }
+    } catch (e) {
+      showToast(`AI処理失敗: ${e.message}`, 'error');
+    } finally {
+      setProfileAiLoading('');
+    }
+  }
+
+  async function handleIconUpload(file) {
+    if (!file) return;
+    setIconUploading(true);
+    try {
+      // 容量を抑えるため 256x256 / JPEG にリサイズ（おおむね 30〜50KB）
+      const resized = await resizeIconImage(file, 256, 0.85);
+      const { url } = await uploadImage(resized);
+      setHostProfile((prev) => ({ ...prev, iconUrl: url }));
+      showToast('アイコンをアップロードしました', 'success');
+    } catch (e) {
+      showToast(`アイコンアップロード失敗: ${e.message}`, 'error');
+    } finally {
+      setIconUploading(false);
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={handleOverlayClick}>
       <div className="modal post-modal" onClick={(e) => e.stopPropagation()}>
@@ -851,6 +1001,53 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
         </div>
 
         <div className="modal-body">
+          {/* ===== 主催者プロフィールカード（全イベント共通） ===== */}
+          <div
+            className="host-profile-card"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '12px',
+              padding: '10px 14px', marginBottom: '12px',
+              background: 'linear-gradient(135deg, #faf5ff 0%, #f0f7ff 100%)',
+              border: '1.5px solid #e0d4f7', borderRadius: '10px',
+            }}
+          >
+            {hostProfile.iconUrl ? (
+              <img
+                src={hostProfile.iconUrl}
+                alt="icon"
+                style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: '44px', height: '44px', borderRadius: '50%',
+                  background: '#e2d9f3', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#6b4fa0', fontSize: '20px', fontWeight: 700,
+                }}
+              >👤</div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '11px', color: '#6b4fa0', fontWeight: 700, marginBottom: '2px' }}>主催者プロフィール（全イベント共通で本文に自動付与）</div>
+              <div style={{ fontSize: '12px', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {hostProfile.text ? hostProfile.text.slice(0, 80) + (hostProfile.text.length > 80 ? '…' : '') : '（未設定）クリックして編集 →'}
+              </div>
+              {(eventFields.youtubeUrl || hostProfile.youtubeUrl) && (
+                <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '2px' }}>
+                  ▶ {eventFields.youtubeUrl ? 'このイベント専用動画' : 'グローバル動画'}: {(eventFields.youtubeUrl || hostProfile.youtubeUrl).slice(0, 50)}…
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setProfileEditOpen(true)}
+              style={{ fontSize: '12px' }}
+              disabled={posting}
+            >
+              ✏️ 編集
+            </button>
+          </div>
+
           {/* ===== コンテンツ編集セクション ===== */}
               {/* Name + Generate button — EditModalと完全同一 */}
               <div className="form-group">
@@ -1706,6 +1903,22 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
                 disabled={posting}
               />
             </div>
+
+            <div className="form-group" style={{ marginTop: '10px', paddingBottom: '14px' }}>
+              <label className="form-label">
+                ▶ このイベント専用 YouTube URL
+                <span style={{ color: '#888', fontSize: '0.85em' }}>
+                  （未入力なら主催者プロフィールのグローバル動画を使用）
+                </span>
+              </label>
+              <input
+                className="form-input"
+                value={eventFields.youtubeUrl}
+                onChange={(e) => updateEventField('youtubeUrl', e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=..."
+                disabled={posting}
+              />
+            </div>
           </details>
 
           {/* Image generation */}
@@ -1923,6 +2136,133 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== 主催者プロフィール 編集モーダル ===== */}
+      {profileEditOpen && (
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 100 }}
+          onClick={(e) => { if (e.target === e.currentTarget && !profileSaving) setProfileEditOpen(false); }}
+        >
+          <div className="modal" style={{ maxWidth: '560px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">主催者プロフィール</h2>
+              <button className="modal-close" onClick={() => !profileSaving && setProfileEditOpen(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {/* アイコン */}
+              <div className="form-group" style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                {hostProfile.iconUrl ? (
+                  <img src={hostProfile.iconUrl} alt="icon" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} />
+                ) : (
+                  <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#e2d9f3', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b4fa0', fontSize: 28 }}>👤</div>
+                )}
+                <div style={{ flex: 1 }}>
+                  <input
+                    ref={profileIconInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={(e) => handleIconUpload(e.target.files?.[0])}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => profileIconInputRef.current?.click()}
+                    disabled={iconUploading || profileSaving}
+                  >
+                    {iconUploading ? '⏳ アップロード中...' : '🖼️ アイコンを選択（PNG/JPG）'}
+                  </button>
+                  <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                    自動で 256×256 / JPEG に圧縮（容量を抑えます）
+                  </div>
+                  {hostProfile.iconUrl && (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => setHostProfile((prev) => ({ ...prev, iconUrl: '' }))}
+                      style={{ marginLeft: 6, fontSize: 11, background: '#fee2e2', color: '#991b1b' }}
+                      disabled={profileSaving}
+                    >
+                      🗑 クリア
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* プロフィール本文 + AI ボタン */}
+              <div className="form-group" style={{ marginTop: 12 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  プロフィール本文
+                  <button
+                    type="button"
+                    className="ai-btn ai-btn-generate"
+                    style={{ fontSize: 11, padding: '4px 10px' }}
+                    onClick={() => handleProfileAi('generate')}
+                    disabled={!!profileAiLoading || profileSaving}
+                    title="参加したくなる訴求でAIが新規生成"
+                  >
+                    {profileAiLoading === 'generate' ? <span className="spinner" /> : '✨'} AI生成
+                  </button>
+                  <button
+                    type="button"
+                    className="ai-btn ai-btn-correct"
+                    style={{ fontSize: 11, padding: '4px 10px' }}
+                    onClick={() => handleProfileAi('correct')}
+                    disabled={!!profileAiLoading || profileSaving || !hostProfile.text.trim()}
+                    title="今のプロフィールをAIが添削"
+                  >
+                    {profileAiLoading === 'correct' ? <span className="spinner" /> : '✅'} AI添削
+                  </button>
+                </label>
+                <textarea
+                  className="form-textarea"
+                  rows={8}
+                  value={hostProfile.text}
+                  onChange={(e) => setHostProfile((prev) => ({ ...prev, text: e.target.value }))}
+                  placeholder="例: AIプログラミング講師の◯◯です。これまで200名以上の未経験者が…（参加すると得られる未来体験を語る）"
+                  disabled={profileSaving}
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              {/* グローバル YouTube URL */}
+              <div className="form-group" style={{ marginTop: 12 }}>
+                <label className="form-label">▶ 自己紹介 YouTube URL（グローバル既定）</label>
+                <input
+                  className="form-input"
+                  value={hostProfile.youtubeUrl}
+                  onChange={(e) => setHostProfile((prev) => ({ ...prev, youtubeUrl: e.target.value }))}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  disabled={profileSaving}
+                />
+                <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                  各イベントの「このイベント専用 YouTube URL」が入力されていればそちらを優先します。
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setProfileEditOpen(false)}
+                  disabled={profileSaving}
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleProfileSave}
+                  disabled={profileSaving}
+                >
+                  {profileSaving ? '⏳ 保存中...' : '💾 保存'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

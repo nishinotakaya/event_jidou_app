@@ -127,5 +127,6 @@ Rails.application.routes.draw do
     post "ai/generate",       to: "ai#generate"
     post "ai/align-datetime", to: "ai#align_datetime"
     post "ai/agent",          to: "ai#agent"
+    post "ai/profile",        to: "ai#profile"
   end
 end
