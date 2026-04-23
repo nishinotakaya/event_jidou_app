@@ -20,6 +20,9 @@ class TestConnectionJob < ApplicationJob
     'twitter'         => 'Posting::TwitterService',
   }.freeze
 
+  # Playwright不要・curl(Net::HTTP)ベースでログイン可能なサービス
+  CURL_SERVICES = %w[tunagate].freeze
+
   LABEL = {
     'kokuchpro' => 'こくチーズ', 'connpass' => 'connpass', 'peatix' => 'Peatix',
     'techplay' => 'TechPlay', 'tunagate' => 'つなゲート', 'doorkeeper' => 'Doorkeeper',
@@ -55,6 +58,27 @@ class TestConnectionJob < ApplicationJob
 
     conn&.update!(status: 'testing', error_message: nil)
     broadcast_status(conn)
+
+    # curl ベースのサービスは Playwright を起動せずに直接ログイン
+    if CURL_SERVICES.include?(service_name)
+      begin
+        svc = klass_name.constantize.new
+        svc.instance_variable_set(:@log_callback, ->(msg) {
+          broadcast_cable(job_id, type: 'log', message: msg)
+        })
+        svc.send(:ensure_login, nil)
+        # セッションは各サービス内でDBへ保存済み
+        conn&.reload
+        conn&.update!(status: 'connected', last_connected_at: Time.current, error_message: nil) if conn&.status != 'connected'
+        broadcast_cable(job_id, type: 'log', message: "[#{label}] ✅ ログインテスト成功")
+      rescue => e
+        conn&.update!(status: 'error', error_message: e.message.to_s[0, 500])
+        broadcast_cable(job_id, type: 'log', message: "[#{label}] ❌ #{e.message[0, 200]}")
+      end
+      broadcast_cable(job_id, type: 'done')
+      broadcast_status(conn)
+      return
+    end
 
     pw_path = find_playwright_path
     Playwright.create(playwright_cli_executable_path: pw_path) do |pw|

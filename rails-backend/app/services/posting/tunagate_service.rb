@@ -7,6 +7,11 @@ module Posting
     BASE_URL    = 'https://tunagate.com'
     SIGN_IN_URL = "#{BASE_URL}/users/sign_in"
 
+    # TestConnectionJob からも呼ばれる。curl ベースなので page は使わない。
+    def ensure_login(_page = nil)
+      setup_session!
+    end
+
     private
 
     def execute(_page, content, ef)
