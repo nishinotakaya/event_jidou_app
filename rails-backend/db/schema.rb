@@ -10,10 +10,10 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_04_14_000000) do
+ActiveRecord::Schema[7.2].define(version: 2026_04_24_000000) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "key"
-    t.text "value"
+    t.text "value", size: :medium
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["key"], name: "index_app_settings_on_key", unique: true
@@ -102,6 +102,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_14_000000) do
     t.text "onclass_channels"
     t.string "student_post_type"
     t.string "zoom_url"
+    t.string "youtube_url"
     t.index ["user_id"], name: "index_items_on_user_id"
   end
 

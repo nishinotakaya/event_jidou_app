@@ -403,10 +403,11 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
         youtubeUrl:   item?.youtubeUrl ?? prev.youtubeUrl,
       }));
       // 主催者プロフィール（app_settings）。未設定でも空文字で初期化される。
+      // アイコンは Rails が組み立てた絶対 URL (host_profile_icon_public_url) を使う。
       setHostProfile({
-        text:       s.host_profile_text       || '',
-        iconUrl:    s.host_profile_icon_url   || '',
-        youtubeUrl: s.host_profile_youtube_url || '',
+        text:       s.host_profile_text              || '',
+        iconUrl:    s.host_profile_icon_public_url   || '',
+        youtubeUrl: s.host_profile_youtube_url       || '',
       });
       setApiKey(s.openai_api_key || '');
       setDalleApiKey(s.dalle_api_key || '');
@@ -941,11 +942,26 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
   async function handleProfileSave() {
     setProfileSaving(true);
     try {
-      await saveAppSettings({
+      // iconUrl の種類で送信ペイロードを切り分ける。
+      //  - 'data:...'          → 新規／差し替え（Base64 本体を送る）
+      //  - 空文字              → クリア
+      //  - http(s):// のまま   → 変更なし（icon_data は送らない）
+      const pairs = {
         host_profile_text:        hostProfile.text || '',
-        host_profile_icon_url:    hostProfile.iconUrl || '',
         host_profile_youtube_url: hostProfile.youtubeUrl || '',
-      });
+      };
+      const icon = hostProfile.iconUrl || '';
+      if (!icon) {
+        pairs.host_profile_icon_data = '';
+      } else if (icon.startsWith('data:')) {
+        pairs.host_profile_icon_data = icon;
+      }
+
+      const response = await saveAppSettings(pairs);
+      // サーバー側が組み立てた絶対 URL を以降の表示・投稿埋め込みに使う
+      if (Object.prototype.hasOwnProperty.call(response, 'host_profile_icon_public_url')) {
+        setHostProfile((prev) => ({ ...prev, iconUrl: response.host_profile_icon_public_url || '' }));
+      }
       showToast('主催者プロフィールを保存しました', 'success');
       setProfileEditOpen(false);
     } catch (e) {
@@ -980,13 +996,19 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
     if (!file) return;
     setIconUploading(true);
     try {
-      // 容量を抑えるため 256x256 / JPEG にリサイズ（おおむね 30〜50KB）
+      // 256x256 / JPEG にリサイズしてから Base64 data URL にする。
+      // Heroku は ephemeral filesystem のため、本体は DB(AppSetting) に格納する。
       const resized = await resizeIconImage(file, 256, 0.85);
-      const { url } = await uploadImage(resized);
-      setHostProfile((prev) => ({ ...prev, iconUrl: url }));
-      showToast('アイコンをアップロードしました', 'success');
+      const dataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload  = () => resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(resized);
+      });
+      setHostProfile((prev) => ({ ...prev, iconUrl: dataUrl }));
+      showToast('アイコンを読み込みました（保存で反映されます）', 'success');
     } catch (e) {
-      showToast(`アイコンアップロード失敗: ${e.message}`, 'error');
+      showToast(`アイコン読み込み失敗: ${e.message}`, 'error');
     } finally {
       setIconUploading(false);
     }

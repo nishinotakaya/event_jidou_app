@@ -6,7 +6,11 @@ class AppSetting < ApplicationRecord
     lme_gen_checked lme_gen_subtype lme_send_date lme_send_time
     lme_zoom_url lme_meeting_id lme_passcode
     post_selected_sites
+    host_profile_text host_profile_icon_data host_profile_youtube_url
   ].freeze
+
+  # 主催者プロフィールのアイコン DB キー。Base64 data URL (data:image/jpeg;base64,...) を格納する。
+  HOST_PROFILE_ICON_KEY = 'host_profile_icon_data'
 
   validates :key, presence: true, uniqueness: true
 
