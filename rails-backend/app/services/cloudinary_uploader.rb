@@ -18,13 +18,25 @@ class CloudinaryUploader
     new.upload(file, folder: folder, public_id: public_id)
   end
 
+  # 認証情報の解決順:
+  #   1) CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name (推奨)
+  #   2) CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET の3点セット
   def initialize(url = ENV['CLOUDINARY_URL'])
-    raise ConfigurationError, 'CLOUDINARY_URL が未設定です (cloudinary://api_key:api_secret@cloud_name)' if url.to_s.empty?
-    parsed = URI.parse(url)
-    @api_key    = parsed.user
-    @api_secret = parsed.password
-    @cloud_name = parsed.host
-    raise ConfigurationError, "CLOUDINARY_URL の形式が不正です: #{url}" if [@api_key, @api_secret, @cloud_name].any?(&:nil?)
+    if url && !url.to_s.empty?
+      parsed = URI.parse(url)
+      @api_key    = parsed.user
+      @api_secret = parsed.password
+      @cloud_name = parsed.host
+    else
+      @cloud_name = ENV['CLOUDINARY_CLOUD_NAME']
+      @api_key    = ENV['CLOUDINARY_API_KEY']
+      @api_secret = ENV['CLOUDINARY_API_SECRET']
+    end
+    missing = { 'cloud_name' => @cloud_name, 'api_key' => @api_key, 'api_secret' => @api_secret }.select { |_, v| v.to_s.empty? }.keys
+    unless missing.empty?
+      raise ConfigurationError,
+        "Cloudinary 認証情報が不足: [#{missing.join(', ')}]。CLOUDINARY_URL を1行設定するか、CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET を全て設定してください"
+    end
   end
 
   def upload(file, folder: nil, public_id: nil)
