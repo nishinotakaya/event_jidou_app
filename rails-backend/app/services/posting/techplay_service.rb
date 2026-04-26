@@ -1,9 +1,15 @@
+require 'net/http'
+require 'uri'
+require 'json'
+require 'cgi'
+
 module Posting
   class TechplayService < BaseService
     AUTH_URL      = 'https://owner.techplay.jp/auth'
     DASHBOARD_URL = 'https://owner.techplay.jp/dashboard'
     EVENT_URL     = 'https://owner.techplay.jp/event'
     CREATE_URL    = 'https://owner.techplay.jp/event/create'
+    BASE_URL      = 'https://owner.techplay.jp'
 
     private
 
@@ -172,15 +178,13 @@ module Posting
       page.wait_for_timeout(3000)
       log("[TechPlay] ✅ 初回保存完了 → #{page.url}")
 
-      # ----- 本文入力（編集ページに遷移後） -----
-      # /event/{id}/edit に遷移してから Toast UI Editor が初期化される。
-      # Toast UI Editor のインスタンス（Vue $refs.tuiEditor）に対して
-      # invoke('setMarkdown', text) を呼ぶことで本文をセットする。
+      # ----- 本文入力（編集ページの API を curl で直接叩く） -----
+      # 旧実装は Toast UI Editor の setMarkdown + 「保存」ボタンクリックを使っていたが、
+      # 編集ページの「保存」ボタンは各セクションの編集モード起動が必要で、
+      # クリックが visible にならず本文未保存になるバグがあった。
+      # → セクションごとの実 API (POST /event/:id/edit, JSON _method=put) を直接呼ぶ方式に変更。
       body_text = build_body_text(content, title_text)
-      fill_description(page, body_text)
-
-      # 本文入力後、もう一度保存して本文を永続化
-      save_after_description(page)
+      fill_description_via_api(page, body_text)
 
       # ----- 公開 -----
       publish = ef.dig('publishSites', 'TechPlay')
@@ -201,66 +205,61 @@ module Posting
       (first_line.present? && title_text.include?(first_line)) ? lines.drop(1).join("\n").lstrip : content.to_s
     end
 
-    # 編集ページの Toast UI Editor に本文をセットする。
-    # ページには 詳細 / 個人情報の取り扱い など複数の Toast UI Editor が並ぶため、
-    # 「個人情報の取り扱い」用エディタ（既定文言「申し込み時にご提供いただいた情報」を含む）
-    # を除いた中で最後のエディタ＝詳細欄、と判定して setMarkdown を呼ぶ。
-    def fill_description(page, body_text)
-      log('[TechPlay] 本文（詳細）入力中... Toast UI Editor の初期化を待機')
-      page.wait_for_selector('.toastui-editor-defaultUI', timeout: 20_000) rescue nil
-      page.wait_for_timeout(4000)
+    # 編集ページから cookie + CSRF を取り出し、Net::HTTP で詳細欄を直接更新する。
+    # API: POST /event/:id/edit (Content-Type: application/json)
+    # Body: {"markdown_description": "<本文>", "_method": "put"}
+    # 応答 200 + JSON body に markdown_description が返ればOK。空なら未保存と判定。
+    def fill_description_via_api(page, body_text)
+      log('[TechPlay] 本文（詳細）を API で直接更新...')
+      page.wait_for_selector('meta[name="csrf-token"]', state: 'attached', timeout: 15_000) rescue nil
+      page.wait_for_timeout(1500)
 
-      result = page.evaluate(<<~JS, arg: body_text)
-        (text) => {
-          // 各 Toast UI Editor ラッパーから、上に向かって __vue__.$refs.tuiEditor を探す
-          const findEditor = (wrap) => {
-            let cur = wrap;
-            for (let i = 0; i < 20 && cur; i++) {
-              const v = cur.__vue__;
-              if (v && v.$refs) {
-                for (const k in v.$refs) {
-                  const r = v.$refs[k];
-                  if (r && typeof r.invoke === 'function') return r;
-                }
-              }
-              cur = cur.parentElement;
-            }
-            return null;
-          };
-
-          const wrappers = [...document.querySelectorAll('.toastui-editor-defaultUI')];
-          const editors = wrappers.map(findEditor).filter(Boolean);
-          if (editors.length === 0) return { ok: false, reason: 'no editor' };
-
-          // 「個人情報の取り扱い」欄（既定文言を含む）を除外
-          const PRIVACY_MARK = '申し込み時にご提供いただいた情報';
-          const candidates = editors.filter(ed => {
-            try { return !((ed.invoke('getMarkdown') || '').includes(PRIVACY_MARK)); }
-            catch (e) { return true; }
-          });
-          if (candidates.length === 0) return { ok: false, reason: 'all editors look like privacy' };
-
-          // 詳細欄は通常リストの末尾（最初は概要などの場合がある）
-          const target = candidates[candidates.length - 1];
-          target.invoke('setMarkdown', text);
-          return { ok: true, total: editors.length, candidates: candidates.length };
-        }
-      JS
-      log("[TechPlay] 本文入力結果: #{result.inspect}")
-    end
-
-    # 詳細編集ページでの保存（公開ボタンと干渉しないよう、保存ボタンに限定）
-    def save_after_description(page)
-      log('[TechPlay] 本文反映のため再保存...')
-      save_btn = page.locator("button[type='submit']:has-text('保存')").first
-      unless (save_btn.visible?(timeout: 3000) rescue false)
-        log('[TechPlay] ⚠️ 編集ページに保存ボタンが見つかりません — スキップ')
+      event_id = page.url[%r{/event/(\d+)}, 1]
+      unless event_id
+        log("[TechPlay] ⚠️ event_id を URL から取れず: #{page.url}")
         return
       end
-      save_btn.click(force: true) rescue save_btn.click
-      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
-      page.wait_for_timeout(3000)
-      log("[TechPlay] ✅ 本文を含めた保存完了 → #{page.url}")
+
+      csrf_token = page.evaluate('() => { const m = document.querySelector(\'meta[name="csrf-token"]\'); return m ? m.content : (window.Laravel && window.Laravel.csrfToken) || null; }')
+      unless csrf_token
+        log('[TechPlay] ⚠️ CSRF token 取得失敗 — 詳細欄を更新できません')
+        return
+      end
+
+      cookies = page.context.cookies.select { |c| c['domain'].to_s.include?('techplay.jp') }
+      xsrf = cookies.find { |c| c['name'] == 'XSRF-TOKEN' }
+      unless xsrf
+        log('[TechPlay] ⚠️ XSRF-TOKEN cookie 取得失敗')
+        return
+      end
+
+      uri = URI("#{BASE_URL}/event/#{event_id}/edit")
+      req = Net::HTTP::Post.new(uri)
+      req['Content-Type']     = 'application/json'
+      req['Accept']           = 'application/json, text/plain, */*'
+      req['X-Requested-With'] = 'XMLHttpRequest'
+      req['X-CSRF-TOKEN']     = csrf_token
+      req['X-XSRF-TOKEN']     = CGI.unescape(xsrf['value'])
+      req['Cookie']           = cookies.map { |c| "#{c['name']}=#{c['value']}" }.join('; ')
+      req['Origin']           = BASE_URL
+      req['Referer']          = "#{BASE_URL}/event/#{event_id}/edit"
+      req['User-Agent']       = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36'
+      req.body = JSON.generate('markdown_description' => body_text, '_method' => 'put')
+
+      res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 30) { |http| http.request(req) }
+      log("[TechPlay] 本文API応答: #{res.code} (#{res.body.to_s.bytesize}B)")
+
+      unless res.is_a?(Net::HTTPSuccess)
+        log("[TechPlay] ❌ 本文保存失敗: #{res.body.to_s[0,300]}")
+        return
+      end
+
+      saved = (JSON.parse(res.body) rescue {})['markdown_description'].to_s
+      if saved.empty?
+        log('[TechPlay] ⚠️ 応答に markdown_description が無い — 未保存の疑い')
+      else
+        log("[TechPlay] ✅ 本文保存完了（先頭=#{saved[0,40].inspect}）")
+      end
     end
 
     # ===== 日時入力 (Vue datetimepicker) =====
