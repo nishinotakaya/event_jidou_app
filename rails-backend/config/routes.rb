@@ -31,8 +31,11 @@ Rails.application.routes.draw do
     get "app_settings", to: "app_settings#index"
     put "app_settings", to: "app_settings#update"
 
-    # 主催者プロフィールのアイコン配信（Base64 → バイナリ）
-    get "host_profile/icon", to: "host_profile#icon"
+    # 主催者プロフィールのアイコン
+    # POST: Cloudinary に upload し URL を AppSetting に保存
+    # GET : 旧 Base64 配信（後方互換）
+    post "host_profile/icon", to: "host_profile#upload"
+    get  "host_profile/icon", to: "host_profile#icon"
 
     # サービス接続管理
     get    "service_connections",                    to: "service_connections#index"

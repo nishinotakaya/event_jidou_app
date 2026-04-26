@@ -22,18 +22,26 @@ module Api
 
     private
 
+    # 主催者アイコンの公開 URL を host_profile_icon_public_url として返す。
+    # 優先度:
+    #   (1) 新方式 host_profile_icon_url (Cloudinary の絶対 URL) があればそれを使う
+    #   (2) 旧方式 host_profile_icon_data (Base64) しか無ければ /api/host_profile/icon を組み立てる
     def decorate_host_profile_icon(settings)
-      icon_key = AppSetting::HOST_PROFILE_ICON_KEY
-      return settings unless settings.key?(icon_key)
+      url_key  = AppSetting::HOST_PROFILE_ICON_URL_KEY
+      data_key = AppSetting::HOST_PROFILE_ICON_KEY
 
-      icon_data = settings.delete(icon_key)
-      if icon_data.to_s.start_with?('data:')
-        setting = AppSetting.find_by(key: icon_key)
+      icon_url = settings.delete(url_key).to_s
+      icon_data_present = settings.delete(data_key).to_s.start_with?('data:')
+
+      if !icon_url.empty?
+        settings['host_profile_icon_public_url'] = icon_url
+      elsif icon_data_present
+        setting = AppSetting.find_by(key: data_key)
         version = setting&.updated_at.to_i
-        settings['host_profile_icon_public_url'] =
-          "#{request.base_url}/api/host_profile/icon?v=#{version}"
+        settings['host_profile_icon_public_url'] = "#{request.base_url}/api/host_profile/icon?v=#{version}"
       else
-        settings['host_profile_icon_public_url'] = ''
+        # キーが要求されていた場合のみ空文字を返す
+        settings['host_profile_icon_public_url'] = '' if settings.key?('host_profile_icon_public_url') || true
       end
       settings
     end

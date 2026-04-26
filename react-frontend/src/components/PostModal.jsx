@@ -942,23 +942,18 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
   async function handleProfileSave() {
     setProfileSaving(true);
     try {
-      // iconUrl の種類で送信ペイロードを切り分ける。
-      //  - 'data:...'          → 新規／差し替え（Base64 本体を送る）
-      //  - 空文字              → クリア
-      //  - http(s):// のまま   → 変更なし（icon_data は送らない）
+      // アイコンは upload 時点で AppSetting に保存済み。
+      // ここでは text / youtube_url のみ更新する。クリア時のみ icon_url='' を明示送信。
       const pairs = {
         host_profile_text:        hostProfile.text || '',
         host_profile_youtube_url: hostProfile.youtubeUrl || '',
       };
-      const icon = hostProfile.iconUrl || '';
-      if (!icon) {
-        pairs.host_profile_icon_data = '';
-      } else if (icon.startsWith('data:')) {
-        pairs.host_profile_icon_data = icon;
+      if (!hostProfile.iconUrl) {
+        pairs.host_profile_icon_url  = '';
+        pairs.host_profile_icon_data = '';  // 旧 Base64 もクリア
       }
 
       const response = await saveAppSettings(pairs);
-      // サーバー側が組み立てた絶対 URL を以降の表示・投稿埋め込みに使う
       if (Object.prototype.hasOwnProperty.call(response, 'host_profile_icon_public_url')) {
         setHostProfile((prev) => ({ ...prev, iconUrl: response.host_profile_icon_public_url || '' }));
       }
@@ -996,19 +991,21 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
     if (!file) return;
     setIconUploading(true);
     try {
-      // 256x256 / JPEG にリサイズしてから Base64 data URL にする。
-      // Heroku は ephemeral filesystem のため、本体は DB(AppSetting) に格納する。
+      // 256x256 / JPEG にリサイズしてから Cloudinary に直接 upload。
+      // 戻り値の secure_url を iconUrl にセット（DB保存はサーバ側で同時に実施）。
       const resized = await resizeIconImage(file, 256, 0.85);
-      const dataUrl = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload  = () => resolve(r.result);
-        r.onerror = reject;
-        r.readAsDataURL(resized);
-      });
-      setHostProfile((prev) => ({ ...prev, iconUrl: dataUrl }));
-      showToast('アイコンを読み込みました（保存で反映されます）', 'success');
+      const formData = new FormData();
+      formData.append('image', resized);
+      const res = await fetch('/api/host_profile/icon', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const { url } = await res.json();
+      setHostProfile((prev) => ({ ...prev, iconUrl: url }));
+      showToast('アイコンを Cloudinary にアップロードしました', 'success');
     } catch (e) {
-      showToast(`アイコン読み込み失敗: ${e.message}`, 'error');
+      showToast(`アイコンアップロード失敗: ${e.message}`, 'error');
     } finally {
       setIconUploading(false);
     }
