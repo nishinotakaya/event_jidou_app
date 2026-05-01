@@ -2,6 +2,8 @@ module Posting
   class EventregistService < BaseService
     LOGIN_URL = 'https://eventregist.com/login'
     BASE_URL  = 'https://eventregist.com'
+    # ログイン or イベント送信時に出る reCAPTCHA v2 invisible の sitekey（実機で確認済み）
+    RECAPTCHA_SITEKEY = '6LemfQkTAAAAAFcuS8wnw7Rf7BR9GM_YyqatlUVk'.freeze
 
     private
 
@@ -10,46 +12,34 @@ module Posting
       create_event(page, content, ef)
     end
 
+    # EventRegist は Yahoo Japan SSO 経由の Google ログイン運用。
+    # email/password 直入力フローは使わず、ブラウザで事前に Google ログインさせ、
+    # 取得した Cookie（B / E / L / T / S）を Playwright Context に流し込んだ前提で動かす。
+    # セッション切れ時はジモティ式に「ブラウザログイン」誘導 raise で止める。
     def ensure_login(page)
-      # まずダッシュボードに直接アクセス（セッションが有効ならログイン不要）
-      log('[EventRegist] ログインページへ移動...')
+      log('[EventRegist] ログイン状態を確認中...')
       page.goto("#{BASE_URL}/ticket/list", waitUntil: 'domcontentloaded', timeout: 30_000)
       page.wait_for_timeout(2000)
 
-      unless page.url.include?('/login') || page.url.include?('/signin')
-        log("[EventRegist] ✅ ログイン済み → #{page.url}")
-        return
+      if page.url.include?('/login') || page.url.include?('/signin')
+        raise '[EventRegist] ログインが必要です。接続管理画面の「ブラウザログイン」から Google ログインしてください。'
       end
 
-      creds = ServiceConnection.credentials_for('eventregist')
-      raise '[EventRegist] メールアドレスが未設定です' if creds[:email].blank?
+      log("[EventRegist] ✅ ログイン済み → #{page.url}")
+    end
 
-      log("[EventRegist] ログインフォーム入力中... (URL: #{page.url})")
-      # メールアドレス入力
-      email_input = page.locator('input[type="email"], input[name="email"], input[placeholder*="メール"], input[placeholder*="mail"]').first
-      unless (email_input.visible?(timeout: 5000) rescue false)
-        # ページの状態をデバッグ
-        body = page.evaluate("document.body?.innerText?.substring(0, 200) || ''") rescue ''
-        raise "[EventRegist] メール入力欄が見つかりません (URL: #{page.url}, body: #{body[0, 80]})"
-      end
-      email_input.fill(creds[:email])
+    # フォームに reCAPTCHA が居たら 2Captcha で解いて token を流し込む。
+    # 出ていなければ no-op で抜ける（送信側のフェイルセーフ）。
+    def solve_captcha_if_present(page, page_url)
+      has_captcha = page.evaluate(<<~'JS') rescue false
+        (() => !!(document.querySelector('.g-recaptcha[data-sitekey]') ||
+                  document.querySelector('iframe[src*="recaptcha"]')))()
+      JS
+      return unless has_captcha
 
-      # パスワード入力
-      pw_input = page.locator('input[type="password"]').first
-      raise '[EventRegist] パスワード入力欄が見つかりません' unless (pw_input.visible?(timeout: 3000) rescue false)
-      pw_input.fill(creds[:password])
-
-      # ログインボタン
-      login_btn = page.locator('button[type="submit"], input[type="submit"], button:has-text("ログイン"), button:has-text("Sign in"), button:has-text("Login")').first
-      login_btn.click if (login_btn.visible?(timeout: 3000) rescue false)
-
-      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
-      page.wait_for_timeout(3000)
-
-      if page.url.include?('/login')
-        raise '[EventRegist] ログイン失敗'
-      end
-      log("[EventRegist] ✅ ログイン完了 → #{page.url}")
+      token = solve_recaptcha(page, page_url, sitekey: RECAPTCHA_SITEKEY)
+      inject_recaptcha_token(page, token)
+      log('[EventRegist] reCAPTCHA トークン注入完了')
     end
 
     def create_event(page, content, ef)
@@ -158,6 +148,9 @@ module Posting
       skip_btn.click if (skip_btn.visible?(timeout: 2000) rescue false)
       page.wait_for_timeout(1000)
 
+      # 送信前に reCAPTCHA があれば解く
+      solve_captcha_if_present(page, page.url)
+
       # 保存ボタン
       save_btn = page.locator('button:has-text("保存"), button:has-text("作成"), button:has-text("Save"), button:has-text("Create"), input[type="submit"]').first
       if (save_btn.visible?(timeout: 5000) rescue false)
@@ -256,6 +249,9 @@ module Posting
 
     def publish_event(page)
       page.wait_for_timeout(3000)
+
+      # 公開時にも reCAPTCHA を要求するケースがあるので先に解いておく
+      solve_captcha_if_present(page, page.url)
 
       # 公開ボタンを幅広いセレクタで探す
       publish_btn = page.locator('button:has-text("公開する"), button:has-text("公開"), button:has-text("Publish"), a:has-text("公開する"), a:has-text("公開"), a:has-text("Publish"), input[value*="公開"]').first
