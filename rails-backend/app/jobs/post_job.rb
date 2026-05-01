@@ -184,6 +184,7 @@ class PostJob < ApplicationJob
             'セミナーズ' => Posting::SeminarsService, 'ストアカ' => Posting::StreetAcademyService,
             'EventRegist' => Posting::EventregistService, 'PassMarket' => Posting::PassmarketService,
             'Luma' => Posting::LumaService, 'セミナーBiZ' => Posting::SeminarBizService,
+            'BIZee' => Posting::BizeeService,
             'ジモティー' => Posting::JimotyService, 'LME' => Posting::LmeService,
             'Gmail' => Posting::GmailService, 'X' => Posting::TwitterService,
             'Instagram' => Posting::InstagramService, 'オンクラス' => Posting::OnclassService,
@@ -322,6 +323,7 @@ class PostJob < ApplicationJob
     'everevo'      => 'everevo',
     'Luma'         => 'luma',
     'セミナーBiZ'  => 'seminar_biz',
+    'BIZee'        => 'bizee',
     'ジモティー'   => 'jimoty',
     'LME'         => 'lme',
     'Gmail'        => 'gmail',
@@ -346,6 +348,7 @@ class PostJob < ApplicationJob
     'PassMarket'   => %r{passmarket\.yahoo\.co\.jp/event/\w+},
     'Luma'         => %r{luma\.com/event/manage/evt-\w+|lu\.ma/event/manage/evt-\w+},
     'セミナーBiZ'  => %r{seminar-biz\.com/seminar/\d+/events/\d+},
+    'BIZee'        => %r{bizee\.jp/seminar/[\w-]+/?},
     'ジモティー'   => %r{jmty\.jp/\w+/\w+-\w+/article-\w+},
   }.freeze
 

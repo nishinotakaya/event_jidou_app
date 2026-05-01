@@ -47,6 +47,9 @@ class ParticipantChecker
     'seminar_biz' => {
       participants_url: ->(url) { url },
     },
+    'bizee' => {
+      participants_url: ->(url) { url },
+    },
   }.freeze
 
   def self.check_all(item_id)

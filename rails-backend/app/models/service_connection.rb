@@ -1,7 +1,7 @@
 class ServiceConnection < ApplicationRecord
   SERVICES = %w[
     kokuchpro connpass peatix techplay zoom tunagate doorkeeper
-    street_academy eventregist passmarket luma seminar_biz jimoty gmail
+    street_academy eventregist passmarket luma seminar_biz bizee jimoty gmail
     twitter instagram facebook threads onclass github
   ].freeze
   # コメントアウト: lme, seminars, everevo
@@ -25,6 +25,7 @@ class ServiceConnection < ApplicationRecord
     'everevo'         => { email: 'EVEREVO_EMAIL', password: 'EVEREVO_PASSWORD' },
     'luma'            => { email: 'GOOGLE_EMAIL', password: 'GOOGLE_PASSWORD' },
     'seminar_biz'     => { email: 'SEMINAR_BIZ_EMAIL', password: 'SEMINAR_BIZ_PASSWORD' },
+    'bizee'           => { email: 'BIZEE_EMAIL', password: 'BIZEE_PASSWORD' },
     'jimoty'          => { email: 'JIMOTY_EMAIL', password: 'JIMOTY_PASSWORD' },
     'gmail'           => { email: 'GOOGLE_EMAIL', password: nil },
     'twitter'         => { email: 'TWITTER_EMAIL', password: 'TWITTER_PASSWORD' },
