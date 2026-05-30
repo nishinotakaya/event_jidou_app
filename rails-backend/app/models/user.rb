@@ -15,6 +15,8 @@ class User < ApplicationRecord
   has_many :items, dependent: :destroy
   has_many :folders, dependent: :destroy
   has_many :service_connections, dependent: :destroy
+  has_many :service_accounts, dependent: :destroy
+  has_many :x_posts, dependent: :destroy
 
   def self.from_omniauth(auth)
     # まずprovider+uidで検索

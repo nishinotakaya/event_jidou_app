@@ -1,0 +1,14 @@
+{
+  "name": "post-image",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "beautiful-posts: HTML/CSS テンプレ → satori(SVG) → resvg(PNG) で綺麗な SNS 投稿画像を生成する",
+  "scripts": {
+    "demo": "node demo.js"
+  },
+  "dependencies": {
+    "satori": "^0.12.0",
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

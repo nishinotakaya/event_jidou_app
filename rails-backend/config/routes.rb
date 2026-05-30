@@ -43,6 +43,14 @@ Rails.application.routes.draw do
     put    "service_connections/:id",                to: "service_connections#update"
     delete "service_connections/:id",                to: "service_connections#destroy"
     post   "service_connections/:id/test",           to: "service_connections#test_connection"
+
+    # 複数アカウント管理（X サブ垢・IG 複数運用）
+    get    "service_accounts",              to: "service_accounts#index"
+    post   "service_accounts",              to: "service_accounts#create"
+    put    "service_accounts/:id",          to: "service_accounts#update"
+    delete "service_accounts/:id",          to: "service_accounts#destroy"
+    post   "service_accounts/:id/activate", to: "service_accounts#activate"
+    post   "service_accounts/:id/test",     to: "service_accounts#test"
     post   "service_connections/test_new",           to: "service_connections#test_new"
     post   "service_connections/migrate_from_env",   to: "service_connections#migrate_from_env"
     post   "service_connections/browser_login",      to: "service_connections#browser_login"
@@ -53,6 +61,8 @@ Rails.application.routes.draw do
     post "login", to: "sessions#login"
     delete "logout", to: "sessions#logout"
     get "csrf_token", to: "sessions#csrf_token"
+    # OAuth ワンタイムトークン → session 確立（cross-domain ログイン用）
+    post "sessions/exchange", to: "sessions#exchange"
 
     # Zoomミーティング自動作成
     post "zoom/create_meeting", to: "zoom_settings#create_meeting"
@@ -76,6 +86,17 @@ Rails.application.routes.draw do
     post   "comments",     to: "comments#create"
     delete "comments/:id", to: "comments#destroy"
     post  "posting_histories/bulk_mark_success",    to: "posting_histories#bulk_mark_success"
+
+    # X (Twitter) 自動投稿
+    get    "x/posts",                to: "x#posts"
+    post   "x/posts",                to: "x#create_post"
+    put    "x/posts/:id",            to: "x#update_post"
+    delete "x/posts/:id",            to: "x#destroy_post"
+    post   "x/posts/:id/post_now",   to: "x#post_now"
+    post   "x/generate_month",       to: "x#generate_month"
+    post   "x/connect",              to: "x#connect"
+    post   "x/test",                 to: "x#test"
+    get    "x/status",               to: "x#status"
 
     # 投稿（ActionCable + Sidekiq バックグラウンドジョブ）
     post "post", to: "post#create"

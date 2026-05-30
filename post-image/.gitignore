@@ -1,0 +1,5 @@
+node_modules/
+out/
+# フォント実体はリポジトリに含めない（9MB）。README の手順で取得 → 本番はサブセットを同梱する。
+fonts/*.otf
+fonts/*.ttf
