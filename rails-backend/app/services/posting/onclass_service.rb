@@ -51,8 +51,11 @@ module Posting
 
     def ensure_login(page)
       creds = ServiceConnection.credentials_for('onclass')
-      email = creds[:email].presence || 'takaya314boxing@gmail.com'
-      password = creds[:password].presence || 'takaya314'
+      email = creds[:email].presence
+      password = creds[:password].presence
+      if email.blank? || password.blank?
+        raise '[オンクラス] 認証情報が未設定です。接続管理からメールアドレスとパスワードを登録してください。'
+      end
 
       page.goto("#{BASE_URL}/sign_in", timeout: 30_000, waitUntil: 'load')
       page.wait_for_timeout(3000)

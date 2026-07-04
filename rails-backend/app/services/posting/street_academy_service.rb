@@ -143,9 +143,14 @@ module Posting
         raise '[ストアカ] 保存ボタンが見つかりません'
       end
 
-      # 公開申請
-      request_publish(page)
-      log('[ストアカ] ✅ 処理完了（※講座公開にはストアカの審査が必要です）')
+      # 公開申請（下書き指定時はスキップ＝下書き保存で終了）
+      if ef.dig('publishSites', 'ストアカ')
+        request_publish(page)
+        log('[ストアカ] ✅ 処理完了（※講座公開にはストアカの審査が必要です）')
+      else
+        @published = nil
+        log('[ストアカ] ✅ 下書き保存で完了（公開申請はしていません）')
+      end
     end
 
     def request_publish(page)
@@ -153,7 +158,11 @@ module Posting
 
       # 「講座の公開を申請する」ボタン
       publish_btn = page.locator('#public_application_button')
-      return unless (publish_btn.visible?(timeout: 5000) rescue false)
+      unless (publish_btn.visible?(timeout: 5000) rescue false)
+        log('[ストアカ] ⚠️ 「講座の公開を申請する」ボタンが見つかりません')
+        @published = false
+        return
+      end
 
       publish_btn.click
       page.wait_for_timeout(3000)
@@ -195,6 +204,9 @@ module Posting
       page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
       page.wait_for_timeout(3000)
       log("[ストアカ] 公開申請送信完了 → #{page.url}")
+      # 「申請送信」は完了したが、ストアカの審査が通って実際に公開されるまではタイムラグあり
+      # ここでは送信できた=true とする（審査待ちは UI 上は "公開希望どおり" として扱う）
+      @published = true
     end
 
     # --- 削除・中止 ---

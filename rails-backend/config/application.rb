@@ -41,8 +41,17 @@ module RailsBackend
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
 
-    # ActionCable requires cookie middleware even in api_only mode
-    config.middleware.use ActionDispatch::Cookies
-    config.middleware.use ActionDispatch::Session::CookieStore
+    # ActionCable / OmniAuth は session cookie が必要なので middleware を追加
+    # SameSite/Secure は environments/*.rb 側で session_options を上書きする
+    # NOTE: Devise が initializer で Warden::Manager を末尾に挿入するため、
+    #       単に use すると Warden の方が先に処理されて session が読めない。
+    #       insert_before で Warden の前に Cookies/Session を入れる必要がある。
+    # クロスドメイン OAuth のセッション Cookie。
+    # 属性(SameSite/Secure)を変えた過去の同名 Cookie がブラウザに残ると、古い/重複 Cookie が
+    # 送られて OmniAuth の state 照合に失敗し csrf_detected が起きる。キー名を変えて
+    # 常に新しい Cookie を発行させ、旧 Cookie を無効化する。
+    config.session_store :cookie_store, key: "_announcement_session"
+    config.middleware.insert_before Warden::Manager, ActionDispatch::Cookies
+    config.middleware.insert_before Warden::Manager, ActionDispatch::Session::CookieStore, config.session_options
   end
 end

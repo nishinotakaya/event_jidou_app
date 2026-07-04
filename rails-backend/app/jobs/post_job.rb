@@ -38,8 +38,7 @@ class PostJob < ApplicationJob
       end
     end
 
-    # 画像が未指定の場合は常にAI生成（ストアカ等で必須）
-    generate_image = true if image_path.nil?
+    # 画像生成は payload['generateImage'] が true のときのみ実行
     if image_path.nil? && generate_image
       if dalle_key.blank?
         broadcast(job_id, type: 'log', message: '⚠️ 画像生成: DALL-E APIキーが未設定のためスキップします')
@@ -116,8 +115,8 @@ class PostJob < ApplicationJob
         save_posting_history(item_id, 'ストアカ', 'error', nil, false, '画像未指定（ストアカ公開には画像必須）')
       end
 
-      # SNS（X/Instagram）はポータルサイト投稿後に実行（申し込みURLを取得するため）
-      sns_sites = %w[X Instagram]
+      # SNS（X/Instagram/Threads）はポータルサイト投稿後に実行（申し込みURLを取得するため）
+      sns_sites = %w[X Instagram Threads]
       portal_sites = sites.reject { |s| sns_sites.include?(s.split(':').first) }
       deferred_sites = sites.select { |s| sns_sites.include?(s.split(':').first) }
 
@@ -188,39 +187,67 @@ class PostJob < ApplicationJob
             'ジモティー' => Posting::JimotyService, 'LME' => Posting::LmeService,
             'Gmail' => Posting::GmailService, 'X' => Posting::TwitterService,
             'Instagram' => Posting::InstagramService, 'オンクラス' => Posting::OnclassService,
-            'Facebook' => Posting::FacebookService,
+            'Facebook' => Posting::FacebookService, 'Threads' => Posting::ThreadsService,
           }[site_name]
 
+          svc_instance = nil
           if svc_class.nil?
             broadcast(job_id, type: 'log', message: "[#{site_name}] 未対応サイトです")
           elsif existing&.event_url.present?
             # 既存投稿あり → 更新
             broadcast(job_id, type: 'log', message: "[#{site_name}] 📝 既存投稿を更新中... (#{existing.event_url})")
+            svc_instance = svc_class.new
             begin
-              svc_class.new.update_remote(page, existing.event_url, content, ef, &log_fn)
+              svc_instance.update_remote(page, existing.event_url, content, ef, &log_fn)
             rescue NotImplementedError
-              broadcast(job_id, type: 'log', message: "[#{site_name}] ⚠️ 更新未対応 → 新規作成にフォールバック")
-              svc_class.new.call(page, content, ef, &log_fn)
+              # 更新未対応サイトで新規作成にフォールバックすると同じイベントが重複作成される。
+              # 重複を防ぐためスキップし、既存投稿はそのまま保持する（編集はサイト管理画面で）。
+              broadcast(job_id, type: 'log', message: "[#{site_name}] ⏭️ このサイトは既存投稿の自動更新に未対応です。重複作成を避けてスキップしました（既存を保持）: #{existing.event_url}")
+              broadcast(job_id, type: 'status', site: site_name, status: 'skipped')
+              next
             end
           else
             # 新規作成
-            svc_class.new.call(page, content, ef, &log_fn)
+            svc_instance = svc_class.new
+            svc_instance.call(page, content, ef, &log_fn)
           end
 
           event_url = pick_event_url(site_name, page.url, captured_urls)
           if EVENT_URL_PATTERNS.key?(site_name) && event_url.blank?
             raise "イベントURLを検出できませんでした。公開処理が完了していない可能性があります（最終URL: #{page.url}）"
           end
-          broadcast(job_id, type: 'status', site: site_name, status: 'success')
-          broadcast(job_id, type: 'log', message: "[#{site_name}] 📌 イベントURL: #{event_url}") if event_url.present?
-          update_connection_status(site_name, 'connected')
-          save_posting_history(item_id, site_name, 'success', event_url, ef.dig('publishSites', site_name))
+          api_url = svc_instance.respond_to?(:last_api_request_url) ? svc_instance.last_api_request_url : nil
+
+          # === 公開実態の判定 ===
+          # ユーザーの「公開希望」と、サービス側の実態（svc_instance.published）を突き合わせる。
+          # - publish 希望なし: history.published は nil（=下書き）として記録
+          # - publish 希望あり & 実態 true:  history.published=true、status='success'
+          # - publish 希望あり & 実態 false: history.published=false、status='error'（UI 上で赤くする）
+          # - publish 希望あり & 実態 nil  : サービスが公開実装を持たない／未追跡 → 互換のため希望値を採用
+          requested_publish = ef.dig('publishSites', site_name)
+          actual_published  = svc_instance.respond_to?(:published) ? svc_instance.published : nil
+
+          publish_mismatch = requested_publish && actual_published == false
+          if publish_mismatch
+            broadcast(job_id, type: 'status', site: site_name, status: 'error')
+            broadcast(job_id, type: 'log', message: "[#{site_name}] ❌ 公開に失敗（下書きのまま）。サイト管理画面で確認してください。")
+            update_connection_status(site_name, 'error', '公開に失敗（下書きのまま）')
+            save_posting_history(item_id, site_name, 'error', event_url, false, '公開に失敗（下書きのまま）', api_url)
+          else
+            broadcast(job_id, type: 'status', site: site_name, status: 'success')
+            broadcast(job_id, type: 'log', message: "[#{site_name}] 📌 イベントURL: #{event_url}") if event_url.present?
+            update_connection_status(site_name, 'connected')
+            # actual_published が nil（未追跡）なら互換のため requested_publish を採用
+            published_value = actual_published.nil? ? requested_publish : actual_published
+            save_posting_history(item_id, site_name, 'success', event_url, published_value, nil, api_url)
+          end
           save_session_to_db(context, service_key)
         rescue => e
           broadcast(job_id, type: 'log',    message: "[#{site_name}] ❌ エラー: #{e.message}")
           broadcast(job_id, type: 'status', site: site_name, status: 'error')
           update_connection_status(site_name, 'error', e.message)
-          save_posting_history(item_id, site_name, 'error', nil, false, e.message)
+          api_url = svc_instance.respond_to?(:last_api_request_url) ? svc_instance.last_api_request_url : nil rescue nil
+          save_posting_history(item_id, site_name, 'error', nil, false, e.message, api_url)
         ensure
           context.close rescue nil
           if sequential
@@ -274,6 +301,7 @@ class PostJob < ApplicationJob
             case site_name
             when 'X'         then Posting::TwitterService.new.call(page, content, ef, &log_fn)
             when 'Instagram' then Posting::InstagramService.new.call(page, content, ef, &log_fn)
+            when 'Threads'   then Posting::ThreadsService.new.call(page, content, ef, &log_fn)
             end
 
             event_url = pick_event_url(site_name, page.url, captured_urls)
@@ -294,6 +322,11 @@ class PostJob < ApplicationJob
       browser.close rescue nil
     end
 
+    # === X 告知シリーズの自動生成 ===
+    # X (Twitter) に接続済みなら、イベント日の 1週間前 / 3日前 / 当日朝 / 10分前 の 4 タイミングで
+    # AI 生成の告知ツイートを XPost に登録する。申込 URL は Peatix を優先。
+    enqueue_x_announcement(item_id, event_fields, payload['userId'])
+
     broadcast(job_id, type: 'log', message: '✅ 全サイト処理完了')
     broadcast(job_id, type: 'done')
   rescue => e
@@ -301,6 +334,44 @@ class PostJob < ApplicationJob
     broadcast(job_id, type: 'done')
   ensure
     File.delete(image_path) if image_path && File.exist?(image_path) rescue nil
+  end
+
+  # 投稿済みポータルの URL（Peatix 優先）を拾って、X 告知シリーズを XPost として登録する
+  def enqueue_x_announcement(item_id, event_fields, user_id)
+    return unless user_id
+
+    user = User.find_by(id: user_id)
+    return unless user
+
+    # X 接続が無いなら告知シリーズも生成しない
+    x_conn = ServiceConnection.find_by(user_id: user_id, service_name: 'x')
+    return unless x_conn&.session_data.present?
+
+    # 申込 URL: Peatix > Doorkeeper > その他公開済の順に拾う
+    signup_url = pick_signup_url(item_id)
+    return if signup_url.blank?
+
+    title      = event_fields['title'].presence || 'イベント開催'
+    event_date = event_fields['startDate']
+    event_time = event_fields['startTime']
+    return if event_date.blank?
+
+    created = X::EventAnnouncer.generate_and_save(
+      user: user, item_id: item_id, title: title, event_date: event_date, event_time: event_time, signup_url: signup_url,
+    )
+    Rails.logger.info("[enqueue_x_announcement] item=#{item_id} created #{created.size} XPosts")
+  rescue => e
+    Rails.logger.warn("[enqueue_x_announcement] failed: #{e.class}: #{e.message}")
+  end
+
+  # Peatix → Doorkeeper → 他公開済 の順で公開 URL を 1 つ拾う
+  def pick_signup_url(item_id)
+    base = PostingHistory.where(item_id: item_id, status: 'success', published: true).where.not(event_url: [nil, ''])
+    %w[Peatix Doorkeeper こくチーズ connpass TechPlay つなゲート EventRegist セミナーBiZ ストアカ Luma BIZee ジモティー].each do |site|
+      url = base.where(site_name: site).order(posted_at: :desc).first&.event_url
+      return url if url.present?
+    end
+    base.order(posted_at: :desc).first&.event_url
   end
 
   private
@@ -327,7 +398,7 @@ class PostJob < ApplicationJob
     'ジモティー'   => 'jimoty',
     'LME'         => 'lme',
     'Gmail'        => 'gmail',
-    'X'            => 'twitter',
+    'X'            => 'x',
     'Instagram'    => 'instagram',
     'Facebook'     => 'facebook',
     'Threads'      => 'threads',
@@ -344,7 +415,7 @@ class PostJob < ApplicationJob
     'Doorkeeper'   => %r{doorkeeper\.jp/.+/events/\d+(?!.*edit)},
     'セミナーズ'   => %r{seminars\.jp/s/\d+},
     'ストアカ'     => %r{street-academy\.com/myclass/\d+},
-    'EventRegist'  => %r{eventregist\.com/(?:e/\w+|event/\w+|dashboard)},
+    'EventRegist'  => %r{eventregist\.com/(?:e/\w+|event/\d+(?:/\w+)?)},
     'PassMarket'   => %r{passmarket\.yahoo\.co\.jp/event/\w+},
     'Luma'         => %r{luma\.com/event/manage/evt-\w+|lu\.ma/event/manage/evt-\w+},
     'セミナーBiZ'  => %r{seminar-biz\.com/seminar/\d+/events/\d+},
@@ -368,7 +439,7 @@ class PostJob < ApplicationJob
     nil
   end
 
-  def save_posting_history(item_id, site_name, status, event_url = nil, published = false, error_msg = nil)
+  def save_posting_history(item_id, site_name, status, event_url = nil, published = false, error_msg = nil, api_request_url = nil)
     return if item_id.blank?
     service = SITE_TO_SERVICE[site_name]
     svc_name = service || site_name
@@ -382,6 +453,7 @@ class PostJob < ApplicationJob
         published: published || false,
         error_message: error_msg,
         posted_at: Time.current,
+        api_request_url: api_request_url.presence || existing.api_request_url,
       )
     else
       PostingHistory.create!(
@@ -392,6 +464,7 @@ class PostJob < ApplicationJob
         published: published || false,
         error_message: error_msg,
         posted_at: Time.current,
+        api_request_url: api_request_url,
       )
     end
   rescue => e
