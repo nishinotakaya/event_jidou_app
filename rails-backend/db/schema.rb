@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_07_07_000000) do
+ActiveRecord::Schema[7.2].define(version: 2026_07_07_010000) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "key"
     t.text "value", size: :medium
@@ -120,6 +120,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_07_000000) do
     t.date "last_sent_on"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.text "message_template"
     t.index ["enabled", "weekday"], name: "index_meeting_notifications_on_enabled_and_weekday"
   end
 

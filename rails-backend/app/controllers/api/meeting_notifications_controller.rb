@@ -50,12 +50,13 @@ module Api
     def notification_params
       params.require(:meetingNotification).permit(
         :name, :onclassChannel, :zoomUrl, :meetingId, :passcode,
-        :weekday, :startTime, :endTime, :notifyTime, :enabled
+        :weekday, :startTime, :endTime, :notifyTime, :enabled, :messageTemplate
       ).transform_keys do |key|
         {
           "onclassChannel" => "onclass_channel", "zoomUrl" => "zoom_url",
           "meetingId" => "meeting_id", "startTime" => "start_time",
-          "endTime" => "end_time", "notifyTime" => "notify_time"
+          "endTime" => "end_time", "notifyTime" => "notify_time",
+          "messageTemplate" => "message_template"
         }.fetch(key, key)
       end
     end
@@ -73,6 +74,8 @@ module Api
         endTime: m.end_time,
         notifyTime: m.notify_time,
         enabled: m.enabled,
+        messageTemplate: m.message_template,
+        defaultTemplate: MeetingNotification::DEFAULT_TEMPLATE,
         lastSentOn: m.last_sent_on&.iso8601
       }
     end

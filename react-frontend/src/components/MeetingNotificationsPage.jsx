@@ -12,6 +12,18 @@ import {
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
+// バックエンド MeetingNotification::DEFAULT_TEMPLATE と同じ既定文面。
+// APIから defaultTemplate が取れない場合（新規追加時など）のフォールバック。
+const DEFAULT_TEMPLATE_FALLBACK = [
+  '{greeting}',
+  '本日のミーティングURLになります。',
+  '{date} {time} よろしくお願いします！',
+  '{zoom_url}',
+  '',
+  'ミーティング ID: {meeting_id}',
+  'パスコード: {passcode}',
+].join('\n');
+
 export default function MeetingNotificationsPage({ showToast }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +40,8 @@ export default function MeetingNotificationsPage({ showToast }) {
   const [formEndTime, setFormEndTime] = useState('22:30');
   const [formNotifyTime, setFormNotifyTime] = useState('19:30');
   const [formEnabled, setFormEnabled] = useState(true);
+  const [formMessageTemplate, setFormMessageTemplate] = useState('');
+  const [defaultTemplate, setDefaultTemplate] = useState('');
   const [saving, setSaving] = useState(false);
 
   // チャンネル選択肢（取得失敗時はテキスト入力にフォールバック）
@@ -102,6 +116,7 @@ export default function MeetingNotificationsPage({ showToast }) {
     setFormEndTime('22:30');
     setFormNotifyTime('19:30');
     setFormEnabled(true);
+    setFormMessageTemplate('');
     setSelectedZoomSettingId('');
     loadChannelsIfNeeded();
     loadZoomSettingsIfNeeded();
@@ -119,6 +134,8 @@ export default function MeetingNotificationsPage({ showToast }) {
     setFormEndTime(item.endTime || '');
     setFormNotifyTime(item.notifyTime || '');
     setFormEnabled(!!item.enabled);
+    setFormMessageTemplate(item.messageTemplate || '');
+    if (item.defaultTemplate) setDefaultTemplate(item.defaultTemplate);
     setSelectedZoomSettingId('');
     loadChannelsIfNeeded();
     loadZoomSettingsIfNeeded();
@@ -146,6 +163,7 @@ export default function MeetingNotificationsPage({ showToast }) {
       endTime: formEndTime,
       notifyTime: formNotifyTime,
       enabled: formEnabled,
+      messageTemplate: formMessageTemplate,
     };
 
     setSaving(true);
@@ -179,6 +197,7 @@ export default function MeetingNotificationsPage({ showToast }) {
         endTime: item.endTime,
         notifyTime: item.notifyTime,
         enabled: !item.enabled,
+        messageTemplate: item.messageTemplate,
       });
       setNotifications((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
       showToast(updated.enabled ? '有効にしました' : '無効にしました', 'success');
@@ -485,6 +504,33 @@ export default function MeetingNotificationsPage({ showToast }) {
                 />
                 有効にする（自動通知を送信する）
               </label>
+
+              <div className="form-group" style={{ marginTop: '12px' }}>
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>メッセージ本文（空ならAIが挨拶を自動生成）</span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '12px', padding: '2px 8px' }}
+                    onClick={() => setFormMessageTemplate(defaultTemplate || DEFAULT_TEMPLATE_FALLBACK)}
+                  >
+                    既定の文面を挿入
+                  </button>
+                </label>
+                <textarea
+                  className="form-input"
+                  rows={8}
+                  value={formMessageTemplate}
+                  onChange={(e) => setFormMessageTemplate(e.target.value)}
+                  placeholder={'空欄なら毎回AIが短い挨拶を作り、既定の文面で送信します。\n自由に編集したい場合は「既定の文面を挿入」から編集してください。'}
+                  style={{ fontFamily: 'inherit', lineHeight: 1.6, resize: 'vertical' }}
+                />
+                <p style={{ fontSize: '12px', color: '#6b7280', margin: '6px 0 0' }}>
+                  差し込みタグ: <code>{'{greeting}'}</code>（AI挨拶） <code>{'{date}'}</code>（開催日） <code>{'{time}'}</code>（時刻）
+                  <code>{'{zoom_url}'}</code> <code>{'{meeting_id}'}</code> <code>{'{passcode}'}</code> <code>{'{name}'}</code>（チーム名）
+                  <br />日付・Zoom情報はタグ経由で毎回正しく差し込まれます。「プレビュー」で実際の文面を確認できます。
+                </p>
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={handleCancelForm} disabled={saving}>

@@ -31,26 +31,34 @@ class MeetingNotificationComposer
   end
 
   def call
-    greeting = generate_greeting.presence || DEFAULT_GREETING
-    [
-      greeting,
-      "本日のミーティングURLになります。",
-      "#{@config.meeting_date_label(@date)} #{@config.meeting_time_label} よろしくお願いします！",
-      @config.zoom_url,
-      "",
-      id_line,
-      passcode_line
-    ].compact.reject(&:empty?).join("\n").sub(/\n(?=ミーティング ID)/, "\n\n")
+    template = @config.message_template.presence || MeetingNotification::DEFAULT_TEMPLATE
+    render(drop_blank_lines(template))
   end
 
   private
 
-  def id_line
-    @config.meeting_id.present? ? "ミーティング ID: #{@config.formatted_meeting_id}" : nil
+  # meeting_id / passcode が空なら、その値を差し込む行ごと削除する
+  # （「ミーティング ID: 」のような空行を残さないため）
+  def drop_blank_lines(template)
+    lines = template.lines
+    lines = lines.reject { |line| line.include?("{meeting_id}") } if @config.meeting_id.blank?
+    lines = lines.reject { |line| line.include?("{passcode}") } if @config.passcode.blank?
+    lines.join
   end
 
-  def passcode_line
-    @config.passcode.present? ? "パスコード: #{@config.passcode}" : nil
+  # プレースホルダを実値へ置換する。{greeting} が含まれる場合のみ AI 挨拶を生成する。
+  def render(template)
+    substitutions = {
+      "{date}"       => @config.meeting_date_label(@date),
+      "{time}"       => @config.meeting_time_label,
+      "{zoom_url}"   => @config.zoom_url.to_s,
+      "{meeting_id}" => @config.formatted_meeting_id,
+      "{passcode}"   => @config.passcode.to_s,
+      "{name}"       => @config.name.to_s
+    }
+    substitutions["{greeting}"] = (generate_greeting.presence || DEFAULT_GREETING) if template.include?("{greeting}")
+
+    substitutions.reduce(template) { |text, (key, value)| text.gsub(key, value) }.strip
   end
 
   def generate_greeting

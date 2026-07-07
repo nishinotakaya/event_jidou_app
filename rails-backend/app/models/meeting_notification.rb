@@ -5,6 +5,19 @@ class MeetingNotification < ApplicationRecord
   WEEKDAY_LABELS = %w[日 月 火 水 木 金 土].freeze
   TIME_FORMAT = /\A\d{1,2}:\d{2}\z/
 
+  # 本文テンプレート。message_template 未設定時のデフォルト。
+  # 使えるプレースホルダ: {greeting}(AI生成の挨拶) {date} {time} {zoom_url}
+  #   {meeting_id} {passcode} {name}(チーム名)
+  DEFAULT_TEMPLATE = <<~TEXT.strip.freeze
+    {greeting}
+    本日のミーティングURLになります。
+    {date} {time} よろしくお願いします！
+    {zoom_url}
+
+    ミーティング ID: {meeting_id}
+    パスコード: {passcode}
+  TEXT
+
   validates :name, :onclass_channel, :zoom_url, presence: true
   validates :weekday, inclusion: { in: 0..6 }
   validates :start_time, :notify_time, format: { with: TIME_FORMAT, message: "は HH:MM 形式で入力してください" }

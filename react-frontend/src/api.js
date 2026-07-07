@@ -724,11 +724,11 @@ export async function listMeetingNotifications() {
   return res.json();
 }
 
-export async function createMeetingNotification({ name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled }) {
+export async function createMeetingNotification({ name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled, messageTemplate }) {
   const res = await fetch('/api/meeting_notifications', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ meetingNotification: { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled } }),
+    body: JSON.stringify({ meetingNotification: { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled, messageTemplate } }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -737,11 +737,11 @@ export async function createMeetingNotification({ name, onclassChannel, zoomUrl,
   return res.json();
 }
 
-export async function updateMeetingNotification(id, { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled }) {
+export async function updateMeetingNotification(id, { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled, messageTemplate }) {
   const res = await fetch(`/api/meeting_notifications/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ meetingNotification: { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled } }),
+    body: JSON.stringify({ meetingNotification: { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled, messageTemplate } }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
