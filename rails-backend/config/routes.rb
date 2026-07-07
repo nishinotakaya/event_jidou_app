@@ -1,7 +1,7 @@
 Rails.application.routes.draw do
-  devise_for :users, path: '', controllers: {
-    omniauth_callbacks: 'users/omniauth_callbacks',
-    sessions: 'users/sessions',
+  devise_for :users, path: "", controllers: {
+    omniauth_callbacks: "users/omniauth_callbacks",
+    sessions: "users/sessions"
   }
   get "up" => "rails/health#show", as: :rails_health_check
 
@@ -85,7 +85,7 @@ Rails.application.routes.draw do
     get    "comments",     to: "comments#index"
     post   "comments",     to: "comments#create"
     delete "comments/:id", to: "comments#destroy"
-    post  "posting_histories/bulk_mark_success",    to: "posting_histories#bulk_mark_success"
+    post "posting_histories/bulk_mark_success",    to: "posting_histories#bulk_mark_success"
 
     # X (Twitter) 自動投稿
     get    "x/posts",                to: "x#posts"
@@ -112,6 +112,15 @@ Rails.application.routes.draw do
     post   "onclass/sync", to: "onclass#sync"
     post   "onclass/sync_sidekiq", to: "onclass#sync_sidekiq"
     post   "onclass/upload_image", to: "onclass#upload_image"
+    get    "onclass/channels", to: "onclass#channels"
+
+    # 定例ミーティング通知設定
+    get    "meeting_notifications",              to: "meeting_notifications#index"
+    post   "meeting_notifications",              to: "meeting_notifications#create"
+    put    "meeting_notifications/:id",          to: "meeting_notifications#update"
+    delete "meeting_notifications/:id",          to: "meeting_notifications#destroy"
+    post   "meeting_notifications/:id/send_now", to: "meeting_notifications#send_now"
+    get    "meeting_notifications/:id/preview",  to: "meeting_notifications#preview"
 
     # GitHubレビュー
     get    "github_reviews",                     to: "github_reviews#index"

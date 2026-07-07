@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_04_24_000000) do
+ActiveRecord::Schema[7.2].define(version: 2026_07_07_000000) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "key"
     t.text "value", size: :medium
@@ -106,6 +106,23 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_24_000000) do
     t.index ["user_id"], name: "index_items_on_user_id"
   end
 
+  create_table "meeting_notifications", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "onclass_channel", null: false
+    t.string "zoom_url", null: false
+    t.string "meeting_id"
+    t.string "passcode"
+    t.integer "weekday", default: 0, null: false
+    t.string "start_time", default: "22:00", null: false
+    t.string "end_time", default: "22:30"
+    t.string "notify_time", default: "19:30", null: false
+    t.boolean "enabled", default: true, null: false
+    t.date "last_sent_on"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["enabled", "weekday"], name: "index_meeting_notifications_on_enabled_and_weekday"
+  end
+
   create_table "onclass_students", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "name"
     t.string "course"
@@ -129,8 +146,28 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_24_000000) do
     t.datetime "updated_at", null: false
     t.integer "registrations"
     t.datetime "registrations_checked_at"
+    t.string "api_request_url"
     t.index ["item_id", "site_name"], name: "index_posting_histories_on_item_id_and_site_name"
     t.index ["item_id"], name: "index_posting_histories_on_item_id"
+  end
+
+  create_table "service_accounts", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
+    t.bigint "user_id"
+    t.string "service_name", null: false
+    t.string "label"
+    t.string "handle"
+    t.text "session_data"
+    t.string "email"
+    t.string "encrypted_password_field"
+    t.string "encrypted_password_field_iv"
+    t.string "status", default: "disconnected"
+    t.boolean "is_active", default: false, null: false
+    t.datetime "last_connected_at"
+    t.text "error_message"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id", "service_name"], name: "index_service_accounts_on_user_id_and_service_name"
+    t.index ["user_id"], name: "index_service_accounts_on_user_id"
   end
 
   create_table "service_connections", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
@@ -173,6 +210,25 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_24_000000) do
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
   end
 
+  create_table "x_posts", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.text "content", null: false
+    t.string "image_url"
+    t.datetime "scheduled_at", null: false
+    t.string "status", default: "pending", null: false
+    t.datetime "posted_at"
+    t.string "tweet_id"
+    t.string "tweet_url"
+    t.text "error_message"
+    t.string "item_id"
+    t.string "source", default: "manual"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["item_id"], name: "index_x_posts_on_item_id"
+    t.index ["status", "scheduled_at"], name: "index_x_posts_on_status_and_scheduled_at"
+    t.index ["user_id", "scheduled_at"], name: "index_x_posts_on_user_id_and_scheduled_at"
+  end
+
   create_table "zoom_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "zoom_url"
     t.string "meeting_id"
@@ -185,5 +241,6 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_24_000000) do
 
   add_foreign_key "folders", "users"
   add_foreign_key "items", "users"
+  add_foreign_key "service_accounts", "users"
   add_foreign_key "service_connections", "users"
 end

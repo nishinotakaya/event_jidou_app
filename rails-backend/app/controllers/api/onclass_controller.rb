@@ -8,6 +8,16 @@ module Api
       render json: { ok: true, job_id: job_id }
     end
 
+    # GET /api/onclass/channels
+    # コミュニティのチャンネル一覧（設定画面の選択肢用）
+    def channels
+      client = OnclassApiClient.from_service_connection
+      client.sign_in!
+      render json: { channels: client.channels.map { |c| { id: c["id"], name: c["name"] } } }
+    rescue => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+
     # GET /api/onclass/students
     # DBから即返却（期限内のフロントコースのみ）
     def students
