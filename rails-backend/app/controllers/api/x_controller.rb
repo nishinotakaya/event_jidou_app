@@ -16,20 +16,20 @@ module Api
         content: params[:content].to_s,
         scheduled_at: parse_time(params[:scheduled_at]) || 10.minutes.from_now,
         image_url: params[:image_url],
-        source: params[:source].presence || 'manual',
+        source: params[:source].presence || "manual",
         item_id: params[:item_id],
       )
       if post.save
         render json: { post: serialize(post) }
       else
-        render json: { error: post.errors.full_messages.join(', ') }, status: :unprocessable_entity
+        render json: { error: post.errors.full_messages.join(", ") }, status: :unprocessable_entity
       end
     end
 
     # PUT /api/x/posts/:id
     def update_post
       post = current_user.x_posts.find_by(id: params[:id])
-      return render json: { error: 'not found' }, status: :not_found unless post
+      return render json: { error: "not found" }, status: :not_found unless post
 
       attrs = {}
       attrs[:content]      = params[:content]      if params.key?(:content)
@@ -38,14 +38,14 @@ module Api
       if post.update(attrs)
         render json: { post: serialize(post) }
       else
-        render json: { error: post.errors.full_messages.join(', ') }, status: :unprocessable_entity
+        render json: { error: post.errors.full_messages.join(", ") }, status: :unprocessable_entity
       end
     end
 
     # DELETE /api/x/posts/:id
     def destroy_post
       post = current_user.x_posts.find_by(id: params[:id])
-      return render json: { error: 'not found' }, status: :not_found unless post
+      return render json: { error: "not found" }, status: :not_found unless post
       post.destroy!
       render json: { ok: true }
     end
@@ -55,15 +55,20 @@ module Api
     # 成功/失敗をその場でフロントへ返す。投稿済みは二重投稿防止のため弾く。
     def post_now
       post = current_user.x_posts.find_by(id: params[:id])
-      return render json: { error: 'not found' }, status: :not_found unless post
-      return render json: { error: 'すでに投稿済みです' }, status: :unprocessable_entity if post.status == 'posted'
+      return render json: { error: "not found" }, status: :not_found unless post
+
+      # 既に投稿済み（毎分cronが先に投稿したケース含む）は失敗扱いにせず、
+      # 成功として tweet_url を返す。ユーザーの「今すぐ投稿」が空振りに見えるのを防ぐ。
+      if post.status == "posted"
+        return render json: { ok: true, already_posted: true, post: serialize(post) }
+      end
 
       post.update!(scheduled_at: Time.current)
       result = X::Publisher.new(post).call
       if result.ok?
         render json: { ok: true, post: serialize(post.reload) }
       else
-        connected = ServiceConnection.where(user_id: current_user.id, service_name: 'x').where.not(session_data: [nil, '']).exists?
+        connected = ServiceConnection.where(user_id: current_user.id, service_name: "x").where.not(session_data: [ nil, "" ]).exists?
         render json: { ok: false, error: result.error, needs_connect: !connected, post: serialize(post.reload) }, status: :unprocessable_entity
       end
     end
@@ -83,7 +88,7 @@ module Api
     def connect
       session_payload = { auth_token: params[:auth_token].to_s.strip, ct0: params[:ct0].to_s.strip }
       if session_payload[:auth_token].empty? || session_payload[:ct0].empty?
-        return render json: { error: 'auth_token と ct0 が必要です' }, status: :unprocessable_entity
+        return render json: { error: "auth_token と ct0 が必要です" }, status: :unprocessable_entity
       end
 
       # 疎通確認
@@ -92,9 +97,9 @@ module Api
         return render json: { error: "X 認証失敗: #{result[:error] || result[:status]}" }, status: :unprocessable_entity
       end
 
-      conn = ServiceConnection.find_or_initialize_by(user_id: current_user.id, service_name: 'x')
+      conn = ServiceConnection.find_or_initialize_by(user_id: current_user.id, service_name: "x")
       conn.session_data = session_payload.to_json
-      conn.status = 'connected'
+      conn.status = "connected"
       conn.last_connected_at = Time.current
       conn.error_message = nil
       conn.save!
@@ -103,29 +108,29 @@ module Api
 
     # POST /api/x/test
     def test
-      conn = ServiceConnection.find_by(user_id: current_user.id, service_name: 'x')
-      return render json: { ok: false, error: '未接続' }, status: :ok if conn.nil? || conn.session_data.blank?
+      conn = ServiceConnection.find_by(user_id: current_user.id, service_name: "x")
+      return render json: { ok: false, error: "未接続" }, status: :ok if conn.nil? || conn.session_data.blank?
 
       result = X::Client.new(conn.session_data).verify
       if result[:ok]
-        conn.update(status: 'connected', last_connected_at: Time.current, error_message: nil)
+        conn.update(status: "connected", last_connected_at: Time.current, error_message: nil)
         render json: { ok: true, screen_name: result[:screen_name] }
       else
-        conn.update(status: 'error', error_message: result[:error].to_s[0, 500])
+        conn.update(status: "error", error_message: result[:error].to_s[0, 500])
         render json: { ok: false, error: result[:error] || result[:status] }
       end
     end
 
     # GET /api/x/status
     def status
-      conn = ServiceConnection.find_by(user_id: current_user.id, service_name: 'x')
+      conn = ServiceConnection.find_by(user_id: current_user.id, service_name: "x")
       render json: {
-        connected: conn&.status == 'connected',
+        connected: conn&.status == "connected",
         screen_name: nil, # verify を毎回叩かない
         last_connected_at: conn&.last_connected_at,
         pending_count: current_user.x_posts.pending.count,
         posted_count:  current_user.x_posts.posted.count,
-        failed_count:  current_user.x_posts.failed.count,
+        failed_count:  current_user.x_posts.failed.count
       }
     end
 
@@ -136,7 +141,7 @@ module Api
         id: p.id, content: p.content, image_url: p.image_url,
         scheduled_at: p.scheduled_at, status: p.status,
         posted_at: p.posted_at, tweet_url: p.tweet_url,
-        error_message: p.error_message, source: p.source, item_id: p.item_id,
+        error_message: p.error_message, source: p.source, item_id: p.item_id
       }
     end
 
