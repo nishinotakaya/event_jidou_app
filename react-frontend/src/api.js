@@ -1,5 +1,18 @@
 import { createConsumer } from '@rails/actioncable';
 
+// 本番（Vercel）では /api・/auth・/users を Heroku 直叩き + credentials: 'include' に書き換える。
+// Vercel proxy 経由だと cookie ドメインが vercel.app と heroku.com で食い違って session が共有できないため。
+// 既存の fetch('/api/...') を1箇所も書き換えずに対応するため、グローバル fetch をパッチする。
+if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.__apiFetchPatched) {
+  const API_ORIGIN = 'https://announcement-d656a48fc066.herokuapp.com';
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) =>
+    (typeof input === 'string' && /^\/(api|auth|users|cable)(\/|$|\?)/.test(input))
+      ? originalFetch(API_ORIGIN + input, { ...init, credentials: init.credentials || 'include' })
+      : originalFetch(input, init);
+  window.__apiFetchPatched = true;
+}
+
 // WebSocket URL（Vercel経由はWebSocket非対応のため、本番はHerokuに直接接続）
 const CABLE_URL = window.location.hostname === 'localhost'
   ? '/cable'
@@ -702,6 +715,66 @@ export async function syncOnclassStudents(onEvent) {
       }
     );
   });
+}
+
+// ===== Meeting Notifications (定例ミーティング通知) =====
+export async function listMeetingNotifications() {
+  const res = await fetch('/api/meeting_notifications');
+  if (!res.ok) throw new Error('定例ミーティング通知の取得に失敗しました');
+  return res.json();
+}
+
+export async function createMeetingNotification({ name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled }) {
+  const res = await fetch('/api/meeting_notifications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ meetingNotification: { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled } }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || '定例ミーティング通知の作成に失敗しました');
+  }
+  return res.json();
+}
+
+export async function updateMeetingNotification(id, { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled }) {
+  const res = await fetch(`/api/meeting_notifications/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ meetingNotification: { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled } }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || '定例ミーティング通知の更新に失敗しました');
+  }
+  return res.json();
+}
+
+export async function deleteMeetingNotification(id) {
+  const res = await fetch(`/api/meeting_notifications/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('定例ミーティング通知の削除に失敗しました');
+  return res.json();
+}
+
+// オンクラスへ実投稿する。破壊的操作のため呼び出し側で確認ダイアログを出すこと。
+export async function sendMeetingNotificationNow(id) {
+  const res = await fetch(`/api/meeting_notifications/${id}/send_now`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '送信に失敗しました');
+  return data;
+}
+
+export async function previewMeetingNotification(id) {
+  const res = await fetch(`/api/meeting_notifications/${id}/preview`);
+  if (!res.ok) throw new Error('プレビューの取得に失敗しました');
+  return res.json();
+}
+
+export async function fetchOnclassChannels() {
+  const res = await fetch('/api/onclass/channels');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || 'チャンネル一覧の取得に失敗しました');
+  return data;
 }
 
 // ===== Post (ActionCable) =====

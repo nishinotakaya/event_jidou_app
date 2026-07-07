@@ -7,6 +7,7 @@ import CalendarView from './components/CalendarView.jsx';
 import LoginPage from './components/LoginPage.jsx';
 import StudentsPage from './components/StudentsPage.jsx';
 import UsersPage from './components/UsersPage.jsx';
+import MeetingNotificationsPage from './components/MeetingNotificationsPage.jsx';
 import DetailModal from './components/DetailModal.jsx';
 import XPage from './components/x/XPage.jsx';
 import AnnouncementPanel from './components/AnnouncementPanel.jsx';
@@ -367,6 +368,7 @@ export default function App() {
                           {item({ key: 'main', label: 'イベント一覧', active: activePage === 'main' && !showStudents && !showConnections && !showUsers, onClick: () => { setActivePage('main'); setShowStudents(false); setShowConnections(false); setShowUsers(false); } })}
                           {item({ key: 'ann', label: '告知', active: activePage === 'announcements', onClick: () => setActivePage('announcements') })}
                           {item({ key: 'x',   label: '𝕏 自動', active: activePage === 'x', onClick: () => setActivePage('x') })}
+                          {item({ key: 'meetingNotifications', label: '📅 定例ミーティング通知', active: activePage === 'meetingNotifications', onClick: () => setActivePage('meetingNotifications') })}
 
                           {sectionLabel('表示')}
                           {item({ key: 'cal', label: showCalendar ? '📋 一覧で見る' : '📅 カレンダーで見る', active: activePage === 'main' && showCalendar, onClick: () => { setActivePage('main'); setShowCalendar(!showCalendar); setShowConnections(false); setShowStudents(false); setShowUsers(false); } })}
@@ -411,6 +413,11 @@ export default function App() {
         {/* ===== /announcements ページ ===== */}
         {activePage === 'announcements' && (
           <AnnouncementPanel showToast={showToast} />
+        )}
+
+        {/* ===== 定例ミーティング通知ページ ===== */}
+        {activePage === 'meetingNotifications' && (
+          <MeetingNotificationsPage showToast={showToast} />
         )}
 
         {/* Service Connections (toggle) */}

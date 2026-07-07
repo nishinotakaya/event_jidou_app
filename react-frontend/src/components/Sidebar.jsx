@@ -48,19 +48,42 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <p className="sidebar-title" onClick={() => { onSelectFolder(null); onTypeChange('event'); }} style={{ cursor: 'pointer' }}>イベント管理</p>
+        <p className="sidebar-title" onClick={() => { onSelectFolder(null); onTypeChange('event'); onNavigate?.('main'); }} style={{ cursor: 'pointer' }}>イベント管理</p>
         <div className="type-tabs">
           <button
             className={`type-tab ${activeType === 'event' ? 'active' : ''}`}
-            onClick={() => onTypeChange('event')}
+            onClick={() => { onTypeChange('event'); onNavigate?.('main'); }}
           >
             イベント
           </button>
           <button
             className={`type-tab ${activeType === 'student' ? 'active' : ''}`}
-            onClick={() => onTypeChange('student')}
+            onClick={() => { onTypeChange('student'); onNavigate?.('main'); }}
           >
             受講生サポート
+          </button>
+        </div>
+        <div className="type-tabs" style={{ marginTop: '6px' }}>
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('students')}
+            title="受講生一覧ページへ"
+          >
+            🎓 受講生管理
+          </button>
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('x')}
+            title="X 自動投稿ページへ"
+          >
+            𝕏 X 管理
+          </button>
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('meetingNotifications')}
+            title="定例ミーティング通知ページへ"
+          >
+            📅 定例通知
           </button>
         </div>
       </div>
