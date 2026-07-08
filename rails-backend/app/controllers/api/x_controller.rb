@@ -141,7 +141,8 @@ module Api
         id: p.id, content: p.content, image_url: p.image_url,
         scheduled_at: p.scheduled_at, status: p.status,
         posted_at: p.posted_at, tweet_url: p.tweet_url,
-        error_message: p.error_message, source: p.source, item_id: p.item_id
+        error_message: p.error_message, source: p.source, item_id: p.item_id,
+        retry_waiting: p.retry_waiting?
       }
     end
 

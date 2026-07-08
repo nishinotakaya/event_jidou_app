@@ -16,6 +16,16 @@ class XPost < ApplicationRecord
   scope :due,       ->(now = Time.current) { pending.where("scheduled_at <= ?", now) }
   scope :for_range, ->(from, to) { where(scheduled_at: from..to) }
 
+  # X の日次上限に自らぶつからないための、直近24時間（ローリング）の投稿数。
+  def self.posted_in_last_24h(user_id, now = Time.current)
+    where(user_id: user_id).posted.where("posted_at >= ?", now - 24.hours).count
+  end
+
+  # 再送待ち（＝上限等で先送りされた pending。error_message に理由が入っている）
+  def retry_waiting?
+    status == "pending" && error_message.present?
+  end
+
   def post_now!
     update!(scheduled_at: Time.current) if scheduled_at > Time.current
   end
