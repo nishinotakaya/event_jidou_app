@@ -15,7 +15,16 @@ class XPostScheduledJob
 
     due.each do |post|
       result = X::Publisher.new(post).call
-      Rails.logger.error("[XPostScheduledJob] post=#{post.id} 投稿失敗: #{result.error}") unless result.ok?
+      next if result.ok?
+
+      # 日次上限に当たったら、この回の残りも同じ上限で弾かれるので即打ち切る
+      # （当該ポストは Publisher 側で再送予定に先送り済み）。
+      if result.rate_limited
+        Rails.logger.warn("[XPostScheduledJob] X日次上限のため今回の残りをスキップ")
+        break
+      end
+
+      Rails.logger.error("[XPostScheduledJob] post=#{post.id} 投稿失敗: #{result.error}")
     end
   end
 end
