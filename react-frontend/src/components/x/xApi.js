@@ -29,6 +29,7 @@ function toCamelPost(p) {
     postedAt: p.posted_at ?? null,
     tweetUrl: p.tweet_url ?? null,
     errorMessage: p.error_message ?? null,
+    retryWaiting: p.retry_waiting ?? false,
     source: p.source,
     itemId: p.item_id ?? null,
   };

@@ -6,6 +6,13 @@ const STATUS_BADGE = {
   failed:  { label: '失敗',   bg: '#fee2e2', color: '#b91c1c', border: '#fca5a5' },
 };
 
+const RETRY_WAITING_BADGE = { label: '再送待ち', bg: '#fef3c7', color: '#92400e', border: '#fcd34d' };
+
+// X の1日投稿上限等で先送りされた pending 投稿かどうかを判定する。
+function isRetryWaiting(post) {
+  return !!post.retryWaiting || (post.status === 'pending' && !!post.errorMessage);
+}
+
 function formatScheduledAt(iso) {
   if (!iso) return '-';
   const d = new Date(iso);
@@ -73,7 +80,8 @@ export default function XPostList({ posts, loading, onEdit, onChanged, onNeedCon
         </thead>
         <tbody>
           {posts.map((post) => {
-            const badge = STATUS_BADGE[post.status] || STATUS_BADGE.pending;
+            const retryWaiting = isRetryWaiting(post);
+            const badge = retryWaiting ? RETRY_WAITING_BADGE : (STATUS_BADGE[post.status] || STATUS_BADGE.pending);
             return (
               <tr key={post.id} style={{ borderTop: '1px solid #f0ecf8' }}>
                 <td style={td()}>{formatScheduledAt(post.scheduledAt)}</td>
@@ -92,6 +100,21 @@ export default function XPostList({ posts, loading, onEdit, onChanged, onNeedCon
                       wordBreak: 'break-word',
                     }}>
                       失敗理由: {post.errorMessage}
+                    </div>
+                  )}
+                  {retryWaiting && post.errorMessage && (
+                    <div style={{
+                      marginTop: 6,
+                      fontSize: '11px',
+                      color: '#92400e',
+                      background: '#fffbeb',
+                      border: '1px solid #fde68a',
+                      borderRadius: 6,
+                      padding: '4px 8px',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}>
+                      再送待ち: {post.errorMessage}
                     </div>
                   )}
                 </td>

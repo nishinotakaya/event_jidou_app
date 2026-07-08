@@ -28,6 +28,11 @@ function dateKey(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// X の1日投稿上限等で先送りされた pending 投稿かどうかを判定する。
+function isRetryWaiting(post) {
+  return !!post.retryWaiting || (post.status === 'pending' && !!post.errorMessage);
+}
+
 function formatTime(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return '';
@@ -136,8 +141,8 @@ export default function XCalendar({ posts, onEditPost, onCreateOnDate, onChanged
                       key={p.id}
                       style={{
                         fontSize: 10,
-                        background: p.status === 'posted' ? '#dcfce7' : p.status === 'failed' ? '#fee2e2' : '#ede9fe',
-                        color: p.status === 'posted' ? '#166534' : p.status === 'failed' ? '#b91c1c' : '#5b21b6',
+                        background: p.status === 'posted' ? '#dcfce7' : p.status === 'failed' ? '#fee2e2' : isRetryWaiting(p) ? '#fef3c7' : '#ede9fe',
+                        color: p.status === 'posted' ? '#166534' : p.status === 'failed' ? '#b91c1c' : isRetryWaiting(p) ? '#92400e' : '#5b21b6',
                         borderRadius: 4,
                         padding: '1px 4px',
                         whiteSpace: 'nowrap',
@@ -185,6 +190,9 @@ export default function XCalendar({ posts, onEditPost, onCreateOnDate, onChanged
                     {p.status === 'failed' && (
                       <span style={{ fontSize: '11px', padding: '1px 8px', borderRadius: '999px', background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', fontWeight: 600 }}>失敗</span>
                     )}
+                    {isRetryWaiting(p) && (
+                      <span style={{ fontSize: '11px', padding: '1px 8px', borderRadius: '999px', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', fontWeight: 600 }}>再送待ち</span>
+                    )}
                   </div>
                   <div
                     style={{ fontSize: '13px', color: '#2d1b52', whiteSpace: 'pre-wrap', cursor: 'pointer' }}
@@ -196,6 +204,11 @@ export default function XCalendar({ posts, onEditPost, onCreateOnDate, onChanged
                   {p.status === 'failed' && p.errorMessage && (
                     <div style={{ marginTop: 6, fontSize: '11px', color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                       失敗理由: {p.errorMessage}
+                    </div>
+                  )}
+                  {isRetryWaiting(p) && p.errorMessage && (
+                    <div style={{ marginTop: 6, fontSize: '11px', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      再送待ち: {p.errorMessage}
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
