@@ -777,6 +777,18 @@ export async function fetchOnclassChannels() {
   return data;
 }
 
+// 常に有効な繰り返しZoomミーティングを新規生成し { zoomUrl, meetingId, passcode } を返す
+export async function generateMeetingZoom({ name } = {}) {
+  const res = await fetch('/api/meeting_notifications/generate_zoom', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || 'Zoom自動生成に失敗しました');
+  return data;
+}
+
 // ===== Post (ActionCable) =====
 // Returns { jobId, subscription } — caller must call subscription.unsubscribe() when done
 export async function postToSites({ content, sites, eventFields, generateImage, imageStyle, openaiApiKey, dalleApiKey, itemId, postType }, onEvent) {

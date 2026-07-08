@@ -18,16 +18,19 @@ class MeetingNotification < ApplicationRecord
     パスコード: {passcode}
   TEXT
 
+  # weekday が nil = 「曜日設定なし」。この場合は自動送信せず、手動送信（今すぐ送信）専用になる。
   validates :name, :onclass_channel, :zoom_url, presence: true
-  validates :weekday, inclusion: { in: 0..6 }
+  validates :weekday, inclusion: { in: 0..6 }, allow_nil: true
   validates :start_time, :notify_time, format: { with: TIME_FORMAT, message: "は HH:MM 形式で入力してください" }
 
   scope :enabled, -> { where(enabled: true) }
 
   # 現在時刻（JST）が「送信すべき瞬間」を過ぎていて、今日まだ送っていなければ true。
   # cron は数分間隔で回るため、notify_time を過ぎた最初の実行で 1 回だけ送る。
+  # 曜日未設定（weekday=nil）は自動送信の対象外（手動送信のみ）。
   def due?(now = ZONE.now)
     return false unless enabled?
+    return false if weekday.nil?
     return false unless now.wday == weekday
     return false if last_sent_on == now.to_date
 

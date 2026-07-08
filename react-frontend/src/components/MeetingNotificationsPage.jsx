@@ -8,6 +8,7 @@ import {
   previewMeetingNotification,
   fetchOnclassChannels,
   fetchZoomSettings,
+  generateMeetingZoom,
 } from '../api.js';
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -53,6 +54,7 @@ export default function MeetingNotificationsPage({ showToast }) {
   const [zoomSettings, setZoomSettings] = useState(null); // null=未取得
   const [zoomSettingsLoading, setZoomSettingsLoading] = useState(false);
   const [selectedZoomSettingId, setSelectedZoomSettingId] = useState('');
+  const [generatingZoom, setGeneratingZoom] = useState(false);
 
   // プレビュー
   const [previewItem, setPreviewItem] = useState(null);
@@ -129,7 +131,7 @@ export default function MeetingNotificationsPage({ showToast }) {
     setFormZoomUrl(item.zoomUrl || '');
     setFormMeetingId(item.meetingId || '');
     setFormPasscode(item.passcode || '');
-    setFormWeekday(item.weekday ?? 0);
+    setFormWeekday(item.weekday ?? '');
     setFormStartTime(item.startTime || '');
     setFormEndTime(item.endTime || '');
     setFormNotifyTime(item.notifyTime || '');
@@ -145,6 +147,22 @@ export default function MeetingNotificationsPage({ showToast }) {
     setEditingItem(null);
   }
 
+  async function handleGenerateZoom() {
+    setGeneratingZoom(true);
+    try {
+      const res = await generateMeetingZoom({ name: formName.trim() });
+      setFormZoomUrl(res.zoomUrl || '');
+      setFormMeetingId(res.meetingId || '');
+      setFormPasscode(res.passcode || '');
+      setSelectedZoomSettingId('');
+      showToast('Zoomミーティングを自動生成しました', 'success');
+    } catch (e) {
+      showToast(`Zoom自動生成に失敗: ${e.message}`, 'error');
+    } finally {
+      setGeneratingZoom(false);
+    }
+  }
+
   async function handleSubmit() {
     if (!formName.trim()) return showToast('チーム名を入力してください', 'error');
     if (!formChannel.trim()) return showToast('投稿先チャンネルを入力してください', 'error');
@@ -158,7 +176,7 @@ export default function MeetingNotificationsPage({ showToast }) {
       zoomUrl: formZoomUrl.trim(),
       meetingId: formMeetingId.trim(),
       passcode: formPasscode.trim(),
-      weekday: Number(formWeekday),
+      weekday: formWeekday === '' ? null : Number(formWeekday),
       startTime: formStartTime,
       endTime: formEndTime,
       notifyTime: formNotifyTime,
@@ -285,7 +303,7 @@ export default function MeetingNotificationsPage({ showToast }) {
                 <tr key={item.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                   <td style={{ padding: '10px 8px', fontWeight: 500 }}>{item.name}</td>
                   <td style={{ padding: '10px 8px', color: '#6b7280' }}>{item.onclassChannel}</td>
-                  <td style={{ padding: '10px 8px', textAlign: 'center' }}>{WEEKDAY_LABELS[item.weekday]}</td>
+                  <td style={{ padding: '10px 8px', textAlign: 'center' }}>{item.weekday == null ? '設定なし' : `${WEEKDAY_LABELS[item.weekday]}曜`}</td>
                   <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                     {item.startTime}{item.endTime ? `〜${item.endTime}` : ''}
                   </td>
@@ -424,13 +442,27 @@ export default function MeetingNotificationsPage({ showToast }) {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Zoom URL <span className="form-label-required">*</span></label>
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Zoom URL <span className="form-label-required">*</span></span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '12px', padding: '2px 8px' }}
+                    onClick={handleGenerateZoom}
+                    disabled={generatingZoom}
+                  >
+                    {generatingZoom ? '生成中…' : 'Zoom URLを自動生成'}
+                  </button>
+                </label>
                 <input
                   className="form-input"
                   value={formZoomUrl}
                   onChange={(e) => setFormZoomUrl(e.target.value)}
                   placeholder="https://zoom.us/j/..."
                 />
+                <p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0' }}>
+                  「自動生成」で、常に有効な繰り返しZoomミーティングを新規作成しURL/ID/パスコードを自動入力します。
+                </p>
               </div>
 
               <div className="form-row">
@@ -458,12 +490,18 @@ export default function MeetingNotificationsPage({ showToast }) {
                 <select
                   className="form-select"
                   value={formWeekday}
-                  onChange={(e) => setFormWeekday(Number(e.target.value))}
+                  onChange={(e) => setFormWeekday(e.target.value)}
                 >
+                  <option value="">設定なし（自動送信しない・手動送信のみ）</option>
                   {WEEKDAY_LABELS.map((label, weekdayNumber) => (
                     <option key={weekdayNumber} value={weekdayNumber}>{label}曜日</option>
                   ))}
                 </select>
+                {formWeekday === '' && (
+                  <p style={{ fontSize: '12px', color: '#92400e', margin: '4px 0 0' }}>
+                    「設定なし」は自動送信されません。「今すぐ送信」で手動送信する用途向けです。
+                  </p>
+                )}
               </div>
 
               <div className="form-row-3">

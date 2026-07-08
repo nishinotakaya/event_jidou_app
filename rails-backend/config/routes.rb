@@ -116,6 +116,7 @@ Rails.application.routes.draw do
 
     # 定例ミーティング通知設定
     get    "meeting_notifications",              to: "meeting_notifications#index"
+    post   "meeting_notifications/generate_zoom", to: "meeting_notifications#generate_zoom"
     post   "meeting_notifications",              to: "meeting_notifications#create"
     put    "meeting_notifications/:id",          to: "meeting_notifications#update"
     delete "meeting_notifications/:id",          to: "meeting_notifications#destroy"

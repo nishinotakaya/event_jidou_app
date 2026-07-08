@@ -45,10 +45,21 @@ module Api
       render json: { text: MeetingNotificationComposer.new(notification).call }
     end
 
+    # POST /api/meeting_notifications/generate_zoom
+    # 常に有効な繰り返しZoomミーティングを新規作成し、URL/ID/パスコードを返す（保存はしない）。
+    # フォームの「Zoom URL自動生成」ボタンから呼ばれ、返値を各フィールドへ流し込む。
+    def generate_zoom
+      title = params[:name].to_s.strip.presence || "定例ミーティング"
+      result = ZoomService.new.create_recurring_meeting(title: title)
+      render json: { ok: true, zoomUrl: result[:zoom_url], meetingId: result[:meeting_id], passcode: result[:passcode] }
+    rescue => e
+      render json: { ok: false, error: e.message }, status: :unprocessable_entity
+    end
+
     private
 
     def notification_params
-      params.require(:meetingNotification).permit(
+      permitted = params.require(:meetingNotification).permit(
         :name, :onclassChannel, :zoomUrl, :meetingId, :passcode,
         :weekday, :startTime, :endTime, :notifyTime, :enabled, :messageTemplate
       ).transform_keys do |key|
@@ -59,6 +70,9 @@ module Api
           "messageTemplate" => "message_template"
         }.fetch(key, key)
       end
+      # 曜日が空（""）なら「設定なし」= nil にする（自動送信しない）
+      permitted["weekday"] = permitted["weekday"].presence if permitted.key?("weekday")
+      permitted
     end
 
     def serialize(m)

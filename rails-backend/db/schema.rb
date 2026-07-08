@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_07_07_010000) do
+ActiveRecord::Schema[7.2].define(version: 2026_07_08_000000) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "key"
     t.text "value", size: :medium
@@ -112,7 +112,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_07_010000) do
     t.string "zoom_url", null: false
     t.string "meeting_id"
     t.string "passcode"
-    t.integer "weekday", default: 0, null: false
+    t.integer "weekday"
     t.string "start_time", default: "22:00", null: false
     t.string "end_time", default: "22:30"
     t.string "notify_time", default: "19:30", null: false
