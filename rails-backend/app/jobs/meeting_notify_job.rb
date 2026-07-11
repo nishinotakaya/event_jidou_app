@@ -5,6 +5,8 @@
 # ActiveJob ではなくネイティブ Sidekiq::Job として定義する。
 class MeetingNotifyJob
   include Sidekiq::Job
+  # 定期実行なので失敗しても次回で拾える。リトライ storm を防ぐためリトライしない。
+  sidekiq_options retry: false
 
   def perform
     configs = MeetingNotification.enabled.select(&:due?)
@@ -20,6 +22,10 @@ class MeetingNotifyJob
     rescue => e
       Rails.logger.error("[MeetingNotifyJob] #{config.name} 送信失敗: #{e.message}")
     end
+  rescue ActiveRecord::StatementInvalid => e
+    raise unless e.message.to_s.include?("max_questions")
+
+    Rails.logger.warn("[MeetingNotifyJob] DBクエリ上限のため今回はスキップ")
   end
 
   # 1 件の通知を実際に投稿する。cron（due 判定済み）とテスト送信の両方から使う。

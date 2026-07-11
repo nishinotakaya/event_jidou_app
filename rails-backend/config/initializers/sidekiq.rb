@@ -8,7 +8,7 @@ Sidekiq.configure_server do |config|
   config.on(:startup) do
     schedule = {
       "x_post_scheduled" => {
-        "cron"  => "* * * * *",
+        "cron"  => "*/5 * * * *",
         "class" => "XPostScheduledJob"
       },
       # 定例ミーティング通知: 5分間隔で判定（曜日・送信時刻の判定は due?(JST) 側で行う。
