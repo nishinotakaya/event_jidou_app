@@ -45,7 +45,8 @@ module Posting
         client.create_chat(
           channel_id:       channel["id"],
           text:             compose_text(body, targets),
-          mention_targets:  targets,
+          # API が期待するのは {target_id:, role:} のみ（name/id ではない）。
+          mention_targets:  targets.map { |t| { target_id: t[:target_id], role: t[:role] } },
           attachment_paths: attachment_paths,
         )
         log("[オンクラス] ✅ チャンネル「#{channel['name']}」送信完了")
@@ -83,7 +84,8 @@ module Posting
           log("[オンクラス] ⚠️ メンション候補なし: #{name}")
           next
         end
-        { id: address["id"], name: address["name"], role: address["mention_role"] }
+        # target_id が API 本命のキー。name は本文の「@名前」表示用に保持する。
+        { target_id: address["id"], name: address["name"], role: address["mention_role"] }
       end
     end
 
