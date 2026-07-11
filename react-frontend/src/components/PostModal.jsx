@@ -66,7 +66,7 @@ async function resizeIconImage(file, maxSize = 256, quality = 0.85) {
 // 全サイトリスト
 const ALL_SITES = [
   'こくチーズ', 'Peatix', 'connpass', 'TechPlay', 'つなゲート', 'Doorkeeper',
-  'ストアカ', 'EventRegist', 'Luma', 'セミナーBiZ', 'ジモティー', 'Gmail', 'X', 'Instagram', 'Facebook', 'Threads',
+  'ストアカ', 'EventRegist', 'Luma', 'セミナーBiZ', 'BIZee', 'ジモティー', 'Gmail', 'X', 'Instagram', 'Facebook', 'Threads',
   /* 'PassMarket' — サービス終了 */
   /* 'セミナーズ' — セミナー作成ページへの遷移がブロックされるため一時停止 */
 ];
@@ -99,9 +99,10 @@ const SITE_TO_SERVICE = {
   'TechPlay': 'techplay', 'つなゲート': 'tunagate', 'Doorkeeper': 'doorkeeper',
   'セミナーズ': 'seminars', 'ストアカ': 'street_academy', 'EventRegist': 'eventregist',
   'PassMarket': 'passmarket', 'Luma': 'luma', 'セミナーBiZ': 'seminar_biz',
+  'BIZee': 'bizee',
   'ジモティー': 'jimoty',
   'Gmail': 'gmail',
-  'X': 'twitter',
+  'X': 'x',
   'Instagram': 'instagram',
   'Facebook': 'facebook',
   'Threads': 'threads',
@@ -109,7 +110,7 @@ const SITE_TO_SERVICE = {
 };
 
 // 下書き非対応サイト（チェック=公開投稿、未チェック=投稿しない）
-const PUBLISH_ONLY_SITES = new Set(['ストアカ', 'Luma', 'LME', 'Gmail', 'X', 'Instagram', 'Facebook', 'Threads', 'オンクラス']);
+const PUBLISH_ONLY_SITES = new Set(['ストアカ', 'Luma', 'LME', 'BIZee', 'Gmail', 'X', 'Instagram', 'Facebook', 'Threads', 'オンクラス']);
 
 // 公開URLから各サイトの編集ページURLを導出
 function getEditUrl(siteName, eventUrl) {
@@ -624,22 +625,14 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
   // コンテンツ保存（新規: Zoom自動作成→イベント作成、編集: 更新）
   const handleSaveContent = useCallback(async () => {
     if (!editName.trim()) { showToast('タイトルを入力してください', 'error'); return; }
-    // 新規イベント作成時に日時重複チェック
-    if (isNew && !isStudentMode && eventFields.startDate) {
-      const dup = await checkDuplicateEvent({ eventDate: eventFields.startDate, eventTime: eventFields.startTime, excludeId: item?.id });
-      if (dup.duplicate) { showToast(`⚠️ ${dup.message}`, 'error'); return; }
-    }
+    // 同タイトル・同日時の重複チェックは廃止（同じ告知を複数回出すユースケースのため）
     setEditSaving(true);
     try {
       let content = editContent;
 
-      // 日時自動調整
-      if (eventFields.startDate && apiKey && content.trim()) {
-        try {
-          const res = await aiAlignDatetime({ text: content, eventDate: eventFields.startDate, eventTime: eventFields.startTime, eventEndTime: eventFields.endTime, apiKey });
-          if (res.content) { content = res.content; setEditContent(content); }
-        } catch (_) {}
-      }
+      // NOTE: 以前はここで aiAlignDatetime を自動実行し本文を書き換えていたが、
+      // 「保存で勝手に添削される」ため廃止。日時調整・添削は専用ボタン（📅/添削）でのみ行う。
+      // 保存は原則いま書かれている内容をそのまま保存する。
 
       // 新規作成時: Zoom自動作成
       if (isNew && connectedServices.has('zoom') && eventFields.startDate && !eventFields.zoomUrl) {
