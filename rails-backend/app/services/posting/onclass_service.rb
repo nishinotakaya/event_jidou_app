@@ -34,13 +34,17 @@ module Posting
 
       all_channels = client.channels
 
+      # オンクラス（受講生コミュニティ）はMarkdownを解釈しないため、主催者プロフィール
+      # ブロック（マーケ用・生Markdown）は投稿しない。本文はユーザーが書いたものだけにする。
+      body = strip_auto_blocks(content)
+
       channel_names.each do |channel_name|
         channel = find_channel(all_channels, channel_name)
         targets = resolve_mention_targets(channel["id"], mention_names)
         log("[オンクラス] チャンネル「#{channel['name']}」にメッセージ送信中...（メンション#{targets.length}名）")
         client.create_chat(
           channel_id:       channel["id"],
-          text:             compose_text(content, targets),
+          text:             compose_text(body, targets),
           mention_targets:  targets,
           attachment_paths: attachment_paths,
         )
@@ -88,6 +92,14 @@ module Posting
 
       mention_line = targets.map { |t| "@#{t[:name]}" }.join(" ")
       "#{mention_line} \n#{content}"
+    end
+
+    # 自動生成された主催者プロフィールブロック（マーカーで囲まれた生Markdown）を除去する。
+    # 過去の自動追記で本文に焼き込まれた分も含め、オンクラスには出さない。
+    def strip_auto_blocks(content)
+      content.to_s
+             .gsub(/\n*<!-- HOST-PROFILE-START -->.*?<!-- HOST-PROFILE-END -->\n*/m, "\n")
+             .strip
     end
 
     def fallback_mention_names
