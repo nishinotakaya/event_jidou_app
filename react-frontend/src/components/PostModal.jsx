@@ -628,45 +628,11 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
     // 同タイトル・同日時の重複チェックは廃止（同じ告知を複数回出すユースケースのため）
     setEditSaving(true);
     try {
-      let content = editContent;
+      const content = editContent;
 
-      // NOTE: 以前はここで aiAlignDatetime を自動実行し本文を書き換えていたが、
-      // 「保存で勝手に添削される」ため廃止。日時調整・添削は専用ボタン（📅/添削）でのみ行う。
-      // 保存は原則いま書かれている内容をそのまま保存する。
-
-      // 新規作成時: Zoom自動作成
-      if (isNew && connectedServices.has('zoom') && eventFields.startDate && !eventFields.zoomUrl) {
-        showToast('Zoomミーティング自動作成中...', 'success');
-        try {
-          await createZoomMeeting(
-            { title: editName.trim(), startDate: eventFields.startDate, startTime: eventFields.startTime || '10:00', duration: 120 },
-            (ev) => {
-              if (ev.type === 'result' && ev.data) {
-                const zu = ev.data.zoomUrl || '';
-                const zm = ev.data.meetingId || '';
-                const zp = ev.data.passcode || '';
-                setEventFields((prev) => ({ ...prev, zoomUrl: zu, zoomId: zm, zoomPasscode: zp }));
-                const zoomBlock = `\n\n■ Zoom参加情報\n参加URL: ${zu}\nミーティングID: ${zm}\nパスコード: ${zp}`;
-                content += zoomBlock;
-                saveAppSettings({ lme_zoom_url: zu, lme_meeting_id: zm, lme_passcode: zp }).catch(() => {});
-              }
-            }
-          );
-          fetchZoomSettings().then(setZoomList).catch(() => {});
-          showToast('Zoom作成完了', 'success');
-        } catch (err) { showToast(`Zoom作成失敗: ${err.message}`, 'error'); }
-      }
-
-      // 主催者プロフィールを本文末尾に冪等で埋め込む。
-      // YouTube は per-event > グローバルの順で採用。プロフィール本体（テキスト/アイコン/動画）が
-      // 全て空のときはブロックを出さない（=旧マーカーを取り除くだけ）。
-      const effectiveYoutube = (eventFields.youtubeUrl || hostProfile.youtubeUrl || '').trim();
-      content = appendHostProfile(content, {
-        text:       hostProfile.text,
-        iconUrl:    hostProfile.iconUrl,
-        youtubeUrl: effectiveYoutube,
-      });
-      setEditContent(content);
+      // 保存はいま書かれている内容をそのまま保存する。
+      // AI日時調整・添削・Zoom自動作成・プロフィール自動埋め込みは保存では一切行わない
+      // （それぞれ専用ボタンでのみ実行する）。ユーザー要望により自動処理を全廃。
 
       const saveBase = {
         name: editName.trim(),
@@ -797,46 +763,9 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
     setSiteStatuses({});
     setPostDone(false);
 
-    // Zoom URLが未設定 かつ オンライン開催 → Zoomミーティングを自動作成
+    // Zoom は投稿時に自動作成しない（ユーザー要望）。必要なときは「Zoom作成」ボタンで
+    // 明示的に作成し、Zoom URL 欄に入った状態で投稿する。
     let currentFields = { ...eventFields };
-    const isOnline = !currentFields.place || currentFields.place.includes('オンライン');
-    if (isOnline && !currentFields.zoomUrl && connectedServices.has('zoom')) {
-      setLogs((prev) => [...prev, { type: 'log', text: '🎥 Zoomミーティングを自動作成中...' }]);
-      try {
-        let zoomDone = false;
-        await createZoomMeeting(
-          {
-            title: currentFields.zoomTitle || currentFields.title || item?.name || 'ミーティング',
-            startDate: currentFields.startDate,
-            startTime: currentFields.startTime || '10:00',
-            duration: 120,
-          },
-          (event) => {
-            if (event.type === 'log') {
-              setLogs((prev) => [...prev, { type: 'log', text: `[Zoom] ${event.message}` }]);
-            } else if (event.type === 'error') {
-              setLogs((prev) => [...prev, { type: 'error', text: `[Zoom] ${event.message}` }]);
-            } else if (event.type === 'result' && event.data) {
-              currentFields = {
-                ...currentFields,
-                zoomTitle: event.data.title || event.data.label || '',
-                zoomUrl: event.data.zoomUrl || '',
-                zoomId: event.data.meetingId || '',
-                zoomPasscode: (event.data.passcode && !/\*/.test(event.data.passcode)) ? event.data.passcode : '',
-              };
-              setEventFields(currentFields);
-              setZoomAutoCreated(true);
-              zoomDone = true;
-              setLogs((prev) => [...prev, { type: 'log', text: '🎥 ✅ Zoomミーティング作成完了' }]);
-            }
-          }
-        );
-        // Zoom設定リスト更新
-        fetchZoomSettings().then(setZoomList).catch(() => {});
-      } catch (err) {
-        setLogs((prev) => [...prev, { type: 'error', text: `[Zoom] 自動作成失敗: ${err.message}（Zoom無しで投稿を続行します）` }]);
-      }
-    }
 
     const effectiveSites = selectedSites
       .filter((s) => isStudentMode || s !== 'オンクラス')
