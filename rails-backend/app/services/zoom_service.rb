@@ -112,7 +112,68 @@ class ZoomService
     { zoom_url: data["join_url"].to_s, meeting_id: formatted_id, passcode: data["password"].to_s }
   end
 
+  # ミーティングのタイトル（topic）を変更する。PATCH /v2/meetings/{id}
+  def update_meeting(meeting_id:, title:)
+    id = normalize_meeting_id(meeting_id)
+    raise "ミーティングIDが不正です" if id.blank?
+
+    log("[Zoom API] タイトル変更: #{id} → #{title}")
+    token = fetch_access_token
+    uri = URI("https://api.zoom.us/v2/meetings/#{id}")
+    req = Net::HTTP::Patch.new(uri)
+    req["Authorization"] = "Bearer #{token}"
+    req["Content-Type"]  = "application/json"
+    req.body = { topic: title }.to_json
+    http = Net::HTTP.new(uri.host, uri.port); http.use_ssl = true
+    res = http.request(req)
+
+    unless res.code.to_i == 204
+      error_body = JSON.parse(res.body) rescue {}
+      raise "Zoomタイトル変更失敗 (#{res.code}): #{error_body['message'] || res.body}"
+    end
+
+    log("[Zoom API] ✅ タイトル変更完了")
+    { meeting_id: id, title: title }
+  end
+
+  # ミーティングを削除する。DELETE /v2/meetings/{id}
+  def delete_meeting(meeting_id:)
+    id = normalize_meeting_id(meeting_id)
+    raise "ミーティングIDが不正です" if id.blank?
+
+    log("[Zoom API] ミーティング削除: #{id}")
+    token = fetch_access_token
+    uri = URI("https://api.zoom.us/v2/meetings/#{id}")
+    req = Net::HTTP::Delete.new(uri)
+    req["Authorization"] = "Bearer #{token}"
+    http = Net::HTTP.new(uri.host, uri.port); http.use_ssl = true
+    res = http.request(req)
+
+    # 204=削除成功, 404=既に存在しない（冪等に成功扱い）
+    unless [ 204, 404 ].include?(res.code.to_i)
+      error_body = JSON.parse(res.body) rescue {}
+      raise "Zoom削除失敗 (#{res.code}): #{error_body['message'] || res.body}"
+    end
+
+    log("[Zoom API] ✅ 削除完了")
+    { meeting_id: id, deleted: true }
+  end
+
+  # Zoom URL（.../j/<id>?...）またはスペース入りID・生IDから、数字のみのミーティングIDを取り出す
+  def self.extract_meeting_id(zoom_url_or_id)
+    str = zoom_url_or_id.to_s
+    if (m = str.match(%r{/j/(\d+)}))
+      m[1]
+    else
+      str.gsub(/\D/, "").presence
+    end
+  end
+
   private
+
+  def normalize_meeting_id(value)
+    self.class.extract_meeting_id(value)
+  end
 
   def log(msg)
     @log.call(msg.to_s)

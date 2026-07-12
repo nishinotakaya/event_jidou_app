@@ -66,6 +66,8 @@ Rails.application.routes.draw do
 
     # Zoomミーティング自動作成
     post "zoom/create_meeting", to: "zoom_settings#create_meeting"
+    post "zoom/update_meeting", to: "zoom_settings#update_meeting"
+    post "zoom/delete_meeting", to: "zoom_settings#delete_meeting"
 
     # 投稿履歴
     get   "posting_histories",                      to: "posting_histories#index"

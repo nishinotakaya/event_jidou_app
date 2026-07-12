@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting, fetchAppSettings, saveAppSettings, fetchServiceConnections, fetchPostingHistory, createText, updateText, aiGenerate, aiCorrect, aiAlignDatetime, aiAgent, aiProfile, fetchOnclassStudents, uploadOnclassImage, createCalendarEvent, uploadImage, checkDuplicateEvent, fetchGeneratedImages, uploadGeneratedImage, deleteGeneratedImage } from '../api.js';
+import { postToSites, fetchZoomSettings, saveZoomSetting, deleteZoomSetting, createZoomMeeting, updateZoomMeeting, deleteZoomMeeting, fetchAppSettings, saveAppSettings, fetchServiceConnections, fetchPostingHistory, createText, updateText, aiGenerate, aiCorrect, aiAlignDatetime, aiAgent, aiProfile, fetchOnclassStudents, uploadOnclassImage, createCalendarEvent, uploadImage, checkDuplicateEvent, fetchGeneratedImages, uploadGeneratedImage, deleteGeneratedImage } from '../api.js';
 
 // ===== 主催者プロフィール: content への自動埋め込み =====
 // 開始/終了マーカーで本文末尾に挿入する。次回保存時はマーカーで囲まれた既存ブロックを
@@ -460,6 +460,41 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
       showToast(err.message, 'error');
     } finally {
       setZoomSaving(false);
+    }
+  }
+
+  // 現在のZoom URLのミーティングのタイトルを実際に変更する（Zoom API）
+  async function handleRenameZoom() {
+    if (!eventFields.zoomUrl) return;
+    const current = eventFields.zoomTitle || editName.trim() || item?.name || '';
+    const title = window.prompt('Zoomミーティングの新しいタイトルを入力してください', current);
+    if (title == null) return;
+    if (!title.trim()) { showToast('タイトルを入力してください', 'error'); return; }
+    setZoomCreating(true);
+    try {
+      await updateZoomMeeting({ zoomUrl: eventFields.zoomUrl, title: title.trim() });
+      setEventFields((prev) => ({ ...prev, zoomTitle: title.trim() }));
+      showToast('Zoomミーティングのタイトルを変更しました', 'success');
+    } catch (e) {
+      showToast(`Zoom名変更に失敗: ${e.message}`, 'error');
+    } finally {
+      setZoomCreating(false);
+    }
+  }
+
+  // 現在のZoom URLのミーティングを実際に削除する（Zoom API）
+  async function handleDeleteZoom() {
+    if (!eventFields.zoomUrl) return;
+    if (!window.confirm('このZoomミーティングを削除しますか？（Zoom側の会議も削除されます）')) return;
+    setZoomCreating(true);
+    try {
+      await deleteZoomMeeting({ zoomUrl: eventFields.zoomUrl });
+      setEventFields((prev) => ({ ...prev, zoomTitle: '', zoomUrl: '', zoomId: '', zoomPasscode: '' }));
+      showToast('Zoomミーティングを削除しました', 'success');
+    } catch (e) {
+      showToast(`Zoom削除に失敗: ${e.message}`, 'error');
+    } finally {
+      setZoomCreating(false);
     }
   }
 
@@ -1696,15 +1731,37 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
                     <span style={{ fontSize: '13px', fontWeight: 600, color: '#1e40af' }}>
                       🎥 Zoom 詳細
                     </span>
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => setZoomEditing(true)}
-                      disabled={posting}
-                      style={{ fontSize: '11px' }}
-                    >
-                      ✏️ 編集
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={handleRenameZoom}
+                        disabled={posting || zoomCreating}
+                        title="Zoomミーティングのタイトルを実際に変更する"
+                        style={{ fontSize: '11px' }}
+                      >
+                        🏷️ Zoom名変更
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={handleDeleteZoom}
+                        disabled={posting || zoomCreating}
+                        title="Zoomミーティングを削除する"
+                        style={{ fontSize: '11px', color: '#b91c1c' }}
+                      >
+                        🗑️ Zoom削除
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => setZoomEditing(true)}
+                        disabled={posting}
+                        style={{ fontSize: '11px' }}
+                      >
+                        ✏️ 編集
+                      </button>
+                    </div>
                   </div>
 
                   {eventFields.zoomTitle && (

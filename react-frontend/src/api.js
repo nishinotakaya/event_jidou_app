@@ -159,6 +159,30 @@ export async function createZoomMeeting({ title, startDate, startTime, duration 
   onEvent({ type: 'done' });
 }
 
+// Zoom URL のミーティングのタイトル(topic)を変更する
+export async function updateZoomMeeting({ zoomUrl, title }) {
+  const res = await fetch('/api/zoom/update_meeting', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ zoomUrl, title }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'Zoomタイトル変更に失敗しました');
+  return data;
+}
+
+// Zoom URL のミーティングを削除する
+export async function deleteZoomMeeting({ zoomUrl }) {
+  const res = await fetch('/api/zoom/delete_meeting', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ zoomUrl }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'Zoom削除に失敗しました');
+  return data;
+}
+
 // ===== App Settings (DB-backed KVS) =====
 export async function fetchAppSettings(keys) {
   const query = keys ? `?keys=${keys.join(',')}` : '';
