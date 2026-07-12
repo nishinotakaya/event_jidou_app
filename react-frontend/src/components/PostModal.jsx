@@ -878,7 +878,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
     } finally {
       setPosting(false);
     }
-  }, [selectedSites, lmeSubType, eventFields, publishSites, generateImage, imageStyle, pickedImage, apiKey, dalleApiKey, item, showToast, connectedServices, selectedMentions, onclassChannels, studentPostType]);
+  }, [editContent, editName, editFolder, activeType, isNew, selectedSites, lmeSubType, eventFields, publishSites, generateImage, imageStyle, pickedImage, apiKey, dalleApiKey, item, showToast, connectedServices, selectedMentions, onclassChannels, studentPostType, onSaved]);
 
   // オーバーレイクリックではモーダルを閉じない（✕ボタンとキャンセルボタンのみ）
   function handleOverlayClick() {}
