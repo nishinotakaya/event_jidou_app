@@ -483,7 +483,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
   }
 
   // 現在のZoom URLのミーティングを実際に削除する（Zoom API）
-  async function handleDeleteZoom() {
+  async function handleDeleteZoomMeeting() {
     if (!eventFields.zoomUrl) return;
     if (!window.confirm('このZoomミーティングを削除しますか？（Zoom側の会議も削除されます）')) return;
     setZoomCreating(true);
@@ -1745,7 +1745,7 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
                       <button
                         type="button"
                         className="btn btn-sm"
-                        onClick={handleDeleteZoom}
+                        onClick={handleDeleteZoomMeeting}
                         disabled={posting || zoomCreating}
                         title="Zoomミーティングを削除する"
                         style={{ fontSize: '11px', color: '#b91c1c' }}
