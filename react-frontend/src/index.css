@@ -61,6 +61,20 @@ body {
   gap: 6px;
 }
 
+/* ページ遷移リンク（受講生管理〜リサーチ）は項目数が多く横並びだと潰れるので縦一列に並べる */
+.page-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.page-nav .type-tab {
+  flex: none;
+  padding: 7px 10px;
+  text-align: left;
+}
+
 .type-tab {
   flex: 1;
   padding: 6px 8px;

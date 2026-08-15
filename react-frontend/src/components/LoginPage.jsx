@@ -63,7 +63,7 @@ export default function LoginPage({ onLogin }) {
         {/* Google Login */}
         <a
           href="#"
-          onClick={() => { window.location.href = '/auth/google_oauth2'; }}
+          onClick={() => { window.location.href = 'https://announcement-d656a48fc066.herokuapp.com/auth/google_oauth2'; }}
           style={{
             display: 'flex',
             alignItems: 'center',

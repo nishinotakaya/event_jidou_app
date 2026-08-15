@@ -1300,14 +1300,14 @@ export default function PostModal({ item, folders = [], activeType = 'event', on
                 <div className="agent-input-row">
                   <input
                     className="agent-input"
-                    placeholder="AIへの指示を入力（例：もっと短くしてください）"
+                    placeholder="AIへの指示を入力（例：もっと短くして／YouTube URLを貼ると動画告知文を生成）"
                     value={agentPrompt}
                     onChange={(e) => setAgentPrompt(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { if (!agentPrompt.trim() || !editContent.trim()) return; setAiLoading('agent'); aiAgent({ text: editContent, prompt: agentPrompt, apiKey }).then(async (d) => { if (d.result) { setEditContent(d.result); await autoSave(d.result); showToast('エージェント・保存完了', 'success'); } }).catch((err) => showToast(err.message, 'error')).finally(() => setAiLoading('')); } }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { if (!agentPrompt.trim() || (!editContent.trim() && !/youtu\.be|youtube\.com/.test(agentPrompt))) return; setAiLoading('agent'); aiAgent({ text: editContent, prompt: agentPrompt, apiKey }).then(async (d) => { if (d.result) { setEditContent(d.result); await autoSave(d.result); showToast('エージェント・保存完了', 'success'); } }).catch((err) => showToast(err.message, 'error')).finally(() => setAiLoading('')); } }}
                   />
                   <button
                     className="ai-btn ai-btn-agent"
-                    onClick={async () => { if (!agentPrompt.trim() || !editContent.trim()) return; setAiLoading('agent'); try { const d = await aiAgent({ text: editContent, prompt: agentPrompt, apiKey }); if (d.result) { setEditContent(d.result); await autoSave(d.result); showToast('エージェント・保存完了', 'success'); } } catch (e) { showToast(e.message, 'error'); } finally { setAiLoading(''); } }}
+                    onClick={async () => { if (!agentPrompt.trim() || (!editContent.trim() && !/youtu\.be|youtube\.com/.test(agentPrompt))) return; setAiLoading('agent'); try { const d = await aiAgent({ text: editContent, prompt: agentPrompt, apiKey }); if (d.result) { setEditContent(d.result); await autoSave(d.result); showToast('エージェント・保存完了', 'success'); } } catch (e) { showToast(e.message, 'error'); } finally { setAiLoading(''); } }}
                     disabled={!!aiLoading}
                   >
                     実行

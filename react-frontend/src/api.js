@@ -853,3 +853,47 @@ export async function postToSites({ content, sites, eventFields, generateImage, 
     );
   });
 }
+
+// ===== 交流会リサーチ（複数サイト横断検索） =====
+export async function searchCrossSiteEvents({ keyword, sites, locations }) {
+  const res = await fetch('/api/research/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword, sites, locations }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || '横断検索に失敗しました');
+  }
+  return res.json();
+}
+
+// Peatix のようにサーバー（Heroku）のIPを弾くサイトは、ブラウザから直接APIを叩き、
+// 整形だけサーバー側（Api::ResearchController#normalize）に任せる。
+export async function searchViaBrowserFallback({ site, fallback, locations }) {
+  const pages = await Promise.all(
+    (fallback.urls || []).map((url) => fetchAndNormalizePage({ site, url, headers: fallback.headers, locations }))
+  );
+  const results = pages.flat();
+  const seenUrls = new Set();
+  return results.filter((result) => !seenUrls.has(result.url) && seenUrls.add(result.url));
+}
+
+async function fetchAndNormalizePage({ site, url, headers, locations }) {
+  const siteRes = await fetch(url, { headers: headers || {} });
+  if (!siteRes.ok) throw new Error(`${site} への直接アクセスに失敗しました（HTTP ${siteRes.status}）`);
+  const payload = await siteRes.text();
+  if (!payload.trim()) throw new Error(`${site} が空のレスポンスを返しました`);
+
+  const res = await fetch('/api/research/normalize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ site, payload, locations }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `${site} の取得結果を整形できませんでした`);
+  }
+  const data = await res.json();
+  return data.results || [];
+}

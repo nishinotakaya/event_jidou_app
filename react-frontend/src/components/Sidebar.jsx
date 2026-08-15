@@ -63,7 +63,7 @@ export default function Sidebar({
             受講生サポート
           </button>
         </div>
-        <div className="type-tabs" style={{ marginTop: '6px' }}>
+        <div className="page-nav">
           <button
             className="type-tab"
             onClick={() => onNavigate?.('students')}
@@ -84,6 +84,13 @@ export default function Sidebar({
             title="定例ミーティング通知ページへ"
           >
             📅 定例通知
+          </button>
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('research')}
+            title="交流会リサーチページへ"
+          >
+            🔎 リサーチ
           </button>
         </div>
       </div>
