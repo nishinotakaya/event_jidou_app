@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>新たな働き方セミナー</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --bg2:#111a35;
+    --fg:#f5f7ff;
+    --sub:#a9b3d6;
+    --accent:#ffd166;
+    --accent2:#06d6a0;
+    --danger:#ef476f;
+    --line:rgba(255,255,255,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--fg);font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;-webkit-font-smoothing:antialiased}
+  body{display:flex;flex-direction:column;align-items:center;gap:32px;padding:48px 24px}
+  .slide{
+    width:min(1100px,96vw);
+    aspect-ratio:16/9;
+    background:linear-gradient(135deg,var(--bg2) 0%,#1a2454 100%);
+    border-radius:24px;
+    padding:64px 72px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5);
+    position:relative;
+    overflow:hidden;
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .slide::before{
+    content:"";position:absolute;inset:0;
+    background:radial-gradient(circle at 90% 10%,rgba(255,209,102,.15),transparent 40%),
+               radial-gradient(circle at 10% 90%,rgba(6,214,160,.15),transparent 40%);
+    pointer-events:none;
+  }
+  .num{position:absolute;top:24px;right:32px;color:var(--sub);font-size:14px;letter-spacing:.2em}
+  h1{font-size:64px;line-height:1.2;letter-spacing:.02em}
+  h2{font-size:44px;line-height:1.3;margin-bottom:32px;border-left:8px solid var(--accent);padding-left:20px}
+  h3{font-size:28px;color:var(--accent);margin-bottom:12px}
+  p,li{font-size:24px;line-height:1.7;color:var(--fg)}
+  ul{list-style:none;display:grid;gap:14px}
+  li{display:flex;align-items:center;gap:14px}
+  .check::before{content:"✅";font-size:28px}
+  .pin::before{content:"📌";font-size:28px}
+  .warn::before{content:"⚠️";font-size:28px}
+  .lead{font-size:32px;color:var(--sub);margin-top:24px}
+  .accent{color:var(--accent)}
+  .accent2{color:var(--accent2)}
+  .danger{color:var(--danger)}
+  .center{text-align:center;align-items:center}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:32px}
+  .card{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:16px;padding:28px}
+  .flow{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:32px}
+  .flow .node{flex:1;background:rgba(255,255,255,.06);border:2px solid var(--line);border-radius:18px;padding:24px 16px;text-align:center}
+  .flow .node.up{border-color:var(--accent)}
+  .flow .node.down{border-color:var(--accent2)}
+  .flow .arrow{font-size:40px;color:var(--sub)}
+  .pill{display:inline-block;background:var(--accent);color:#1a1a1a;font-weight:700;padding:6px 16px;border-radius:999px;font-size:18px;margin-bottom:16px;letter-spacing:.05em}
+  .cta{background:linear-gradient(135deg,var(--accent),#ffb347);color:#1a1a1a;text-align:center}
+  .cta h1{font-size:72px}
+  .cta .btn{display:inline-block;margin-top:32px;background:#0b1020;color:#fff;padding:20px 56px;border-radius:999px;font-size:28px;font-weight:700;box-shadow:0 12px 30px rgba(0,0,0,.25)}
+  .meta{display:grid;grid-template-columns:auto 1fr;gap:16px 28px;font-size:24px;margin-top:16px}
+  .meta dt{color:var(--accent);font-weight:700}
+  .apps{display:flex;gap:24px;flex-wrap:wrap;margin-top:24px}
+  .app{background:rgba(255,255,255,.08);padding:14px 24px;border-radius:14px;font-size:24px;font-weight:600}
+  @media print{
+    body{background:#fff;gap:0;padding:0}
+    .slide{box-shadow:none;border-radius:0;page-break-after:always;width:100vw;aspect-ratio:auto;height:100vh}
+  }
+</style>
+</head>
+<body>
+
+<!-- 1 -->
+<section class="slide center">
+  <span class="num">01 / 07</span>
+  <h1>今の働き方に<br><span class="accent">不安</span>を感じていませんか？</h1>
+  <p class="lead">— 新しい一歩を、一緒に。 —</p>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <span class="num">02 / 07</span>
+  <h2>こんな悩み、ありませんか？</h2>
+  <ul>
+    <li>・ 将来の収入が不安</li>
+    <li>・ スキルが足りない気がする</li>
+    <li>・ 転職が怖いと感じる</li>
+    <li>・ 今の職場に満足できない</li>
+    <li>・ 仕事にやりがいを感じない</li>
+  </ul>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <span class="num">03 / 07</span>
+  <h2>放置すると、こんなリスクが…</h2>
+  <ul>
+    <li class="check"><span>収入が減少する可能性</span></li>
+    <li class="check"><span>職場環境が悪化する</span></li>
+    <li class="check"><span>スキルが陳腐化する</span></li>
+    <li class="check"><span>自信を失うことがある</span></li>
+  </ul>
+</section>
+
+<!-- 4 上流→下流 -->
+<section class="slide">
+  <span class="num">04 / 07</span>
+  <span class="pill">仕組みを知ろう</span>
+  <h2>アプリは「<span class="accent">上流 → 下流</span>」で動いている</h2>
+  <div class="flow">
+    <div class="node up">
+      <h3>上流</h3>
+      <p>企画・設計</p>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node">
+      <h3 style="color:var(--fg)">バックエンド</h3>
+      <p>サーバー・DB</p>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node down">
+      <h3 style="color:var(--accent2)">フロントエンド</h3>
+      <p>画面・UI</p>
+    </div>
+  </div>
+  <p class="lead" style="margin-top:32px">まずは <span class="accent2">下流（フロントエンド）</span> から始めるのが近道。</p>
+</section>
+
+<!-- 5 アプリを作る仕事 -->
+<section class="slide">
+  <span class="num">05 / 07</span>
+  <h2>「アプリを作る」仕事って？</h2>
+  <p>みんなが毎日使っている、あの便利なサービス。<br>すべて誰かが「フロントエンド × バックエンド」で作っています。</p>
+  <div class="apps">
+    <div class="app">💬 LINE</div>
+    <div class="app">📷 Instagram</div>
+    <div class="app">🛒 Amazon</div>
+    <div class="app">🎬 YouTube</div>
+    <div class="app">🚕 Uber</div>
+  </div>
+  <p class="lead" style="margin-top:32px">あなたが作る側になれたら？</p>
+</section>
+
+<!-- 6 得られること -->
+<section class="slide">
+  <span class="num">06 / 07</span>
+  <h2>このセミナーで得られること</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>📌 安定収入</h3>
+      <p>稼げる職種・働き方の選択肢を知る</p>
+    </div>
+    <div class="card">
+      <h3>📌 必要スキル</h3>
+      <p>下流から始める学習ロードマップ</p>
+    </div>
+    <div class="card">
+      <h3>📌 不安の解消</h3>
+      <p>転職の進め方とリアルな実例</p>
+    </div>
+    <div class="card">
+      <h3>📌 仕組みの理解</h3>
+      <p>上流→下流／フロント↔バック</p>
+    </div>
+  </div>
+</section>
+
+<!-- 7 CTA -->
+<section class="slide cta center">
+  <span class="num" style="color:#333">07 / 07</span>
+  <h1>新しい働き方を<br>見つけるチャンス。</h1>
+  <dl class="meta" style="margin:32px auto 0;text-align:left">
+    <dt>日時</dt><dd>2026年4月15日（水） 20:30 〜 21:30</dd>
+    <dt>対象</dt><dd>プログラミングに興味がある方 / 初学者の方</dd>
+    <dt>形式</dt><dd>オンライン開催</dd>
+  </dl>
+  <a class="btn" href="#">👉 お申し込みはこちら</a>
+</section>
+
+</body>
+</html>
