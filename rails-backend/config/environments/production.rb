@@ -47,6 +47,11 @@ Rails.application.configure do
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
   config.force_ssl = true
 
+  # Vercel(別ドメイン) → Heroku のクロスサイトで session cookie を保持するため
+  # SameSite=None; Secure を有効化（OAuth callback の CSRF 検証成立に必須）
+  config.session_options[:same_site] = :none
+  config.session_options[:secure] = true
+
   # Skip http-to-https redirect for the default health check endpoint.
   # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 

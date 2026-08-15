@@ -123,11 +123,14 @@ module Posting
           page.wait_for_timeout(5000)
           page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
           log("[connpass] 🌐 ✅ 即時公開完了")
+          @published = true
         else
           log("[connpass] ⚠️ 「即時公開する」ボタンが見つかりません")
+          @published = false
         end
       rescue => e
         log("[connpass] ⚠️ 公開処理失敗: #{e.message}")
+        @published = false
       end
     end
 

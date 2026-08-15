@@ -8,6 +8,7 @@ gem "puma", ">= 5.0"
 gem "rack-cors"
 gem "redis", ">= 4.0.1"       # ActionCable (production) + Sidekiq
 gem "sidekiq", "~> 7.0"       # background jobs (production)
+gem "sidekiq-cron", "~> 2.0"  # cron scheduler for XPostScheduledJob
 gem "playwright-ruby-client", "1.58.1"  # npm playwright 1.58.2 と一致させる
 gem "devise", "~> 4.9"
 gem "omniauth-google-oauth2", "~> 1.1"

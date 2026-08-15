@@ -200,7 +200,7 @@ module Posting
         when /名|太郎/   then el.fill('貴也')
         when /せい|にほん/ then el.fill('にしの')
         when /めい|たろう/ then el.fill('たかや')
-        when /電話/       then el.fill('09012345678')
+        when /電話/       then el.fill('09063115200')
         end
       end
 
@@ -252,8 +252,10 @@ module Posting
 
         page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
         log("[セミナーズ] ✅ 公開完了 → #{page.url}")
+        @published = true
       else
         log('[セミナーズ] ⚠️ 公開ボタンが見つかりません')
+        @published = false
       end
     end
   end

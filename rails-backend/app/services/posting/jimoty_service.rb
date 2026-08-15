@@ -129,6 +129,8 @@ module Posting
         else
           log("[ジモティー] ✅ 投稿完了 → #{final_url}")
         end
+        # ジモティーは公開フラグなし・投稿即公開
+        @published = true
       else
         raise '[ジモティー] 投稿ボタンが見つかりません'
       end

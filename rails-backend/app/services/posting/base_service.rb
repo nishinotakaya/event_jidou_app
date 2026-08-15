@@ -1,7 +1,14 @@
 module Posting
   class BaseService
+    # 公開試行の実態:
+    #   nil   = 公開試行していない（publishSites が false で下書きのまま）
+    #   true  = 公開ボタンを押せた／API が公開状態を返した
+    #   false = 公開を希望されたが、実際には公開できなかった（ボタン未検出・API 失敗 等）
+    attr_reader :published
+
     def call(page, content, event_fields = {}, &log_callback)
       @log_callback = log_callback
+      @published = nil
       execute(page, content, event_fields)
     end
 
@@ -70,11 +77,13 @@ module Posting
         break
       end
 
+      @published = published
       if published
         log("[#{self.class.name.split('::').last.sub('Service', '')}] ✅ 公開完了")
       else
         log("[#{self.class.name.split('::').last.sub('Service', '')}] ⚠️ 公開ボタンが見つかりません（既に公開済みの可能性）")
       end
+      published
     end
 
     def log(msg)

@@ -260,6 +260,7 @@ module Posting
         end
       status = publish ? '公開' : '下書き'
       log("[つなゲート] イベント#{status}保存完了")
+      @published = true if publish
       res
     end
 

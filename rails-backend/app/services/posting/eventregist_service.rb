@@ -271,9 +271,11 @@ module Posting
           confirm_btn.click if (confirm_btn.visible?(timeout: 3000) rescue false)
           page.wait_for_timeout(3000)
           log("[EventRegist] ✅ 公開完了（JS） → #{page.url}")
+          @published = true
           return
         end
         log('[EventRegist] ⚠️ 公開ボタンが見つかりません')
+        @published = false
         return
       end
 
@@ -283,6 +285,7 @@ module Posting
       confirm_btn.click if (confirm_btn.visible?(timeout: 3000) rescue false)
       page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
       log("[EventRegist] ✅ 公開完了 → #{page.url}")
+      @published = true
     end
 
     # --- 削除・中止 ---

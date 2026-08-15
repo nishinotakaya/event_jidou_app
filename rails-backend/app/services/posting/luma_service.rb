@@ -23,6 +23,8 @@ module Posting
       slug = event_data.dig('event', 'url')
       public_url = slug ? "https://lu.ma/#{slug}" : "https://luma.com/event/manage/#{event_api_id}"
       log("[Luma] ✅ イベント作成完了 → #{public_url}")
+      # Luma は visibility=public で作成しているため公開状態
+      @published = true
       public_url
     end
 

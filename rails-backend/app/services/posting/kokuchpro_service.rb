@@ -296,11 +296,14 @@ module Posting
           page.wait_for_timeout(5000)
           page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
           log("[こくチーズ] 🌐 ✅ 公開完了")
+          @published = true
         else
           log("[こくチーズ] ⚠️ 「公開する」ボタンが見つかりません")
+          @published = false
         end
       rescue => e
         log("[こくチーズ] ⚠️ 公開処理失敗: #{e.message}")
+        @published = false
       end
     end
 
@@ -701,8 +704,8 @@ module Posting
     end
 
     def parse_tel(raw)
-      return '03-1234-5678' if raw.blank?
-      raw =~ /^\d{2,4}-\d{4}-\d{4}$/ ? raw : '03-1234-5678'
+      return '090-6311-5200' if raw.blank?
+      raw =~ /^\d{2,4}-\d{4}-\d{4}$/ ? raw : '090-6311-5200'
     end
 
     # --- 削除・中止 ---

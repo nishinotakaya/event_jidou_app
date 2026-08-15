@@ -138,6 +138,10 @@ Rails.application.routes.draw do
     # 日時重複チェック
     post "check_duplicate_event", to: "texts#check_duplicate"
 
+    # 交流会リサーチ（複数サイト横断検索）
+    post "research/search", to: "research#search"
+    post "research/normalize", to: "research#normalize"
+
     # 画像アップロード（汎用）
     post "upload_image", to: "images#upload"
 
@@ -167,5 +171,6 @@ Rails.application.routes.draw do
     post "ai/align-datetime", to: "ai#align_datetime"
     post "ai/agent",          to: "ai#agent"
     post "ai/profile",        to: "ai#profile"
+    post "ai/youtube-announce", to: "ai#youtube_announce"
   end
 end
