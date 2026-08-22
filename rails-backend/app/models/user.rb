@@ -1,14 +1,14 @@
 class User < ApplicationRecord
   devise :database_authenticatable, :registerable,
          :recoverable, :rememberable, :validatable,
-         :omniauthable, omniauth_providers: [:google_oauth2]
+         :omniauthable, omniauth_providers: [ :google_oauth2 ]
 
   ROLES = %w[admin editor viewer].freeze
   validates :role, inclusion: { in: ROLES }
 
-  def admin?  = role == 'admin'
-  def editor? = role == 'editor'
-  def viewer? = role == 'viewer'
+  def admin?  = role == "admin"
+  def editor? = role == "editor"
+  def viewer? = role == "viewer"
   def can_edit?  = admin? || editor?
   def can_post?  = admin? || editor?
 
@@ -17,6 +17,7 @@ class User < ApplicationRecord
   has_many :service_connections, dependent: :destroy
   has_many :service_accounts, dependent: :destroy
   has_many :x_posts, dependent: :destroy
+  has_many :research_favorites, dependent: :destroy
 
   def self.from_omniauth(auth)
     # まずprovider+uidで検索

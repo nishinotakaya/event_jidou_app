@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_07_08_000000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_22_000000) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "key"
     t.text "value", size: :medium
@@ -152,6 +152,26 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_08_000000) do
     t.index ["item_id"], name: "index_posting_histories_on_item_id"
   end
 
+  create_table "research_favorites", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "url", limit: 512, null: false
+    t.string "site", null: false
+    t.string "site_label"
+    t.text "title", null: false
+    t.datetime "starts_at"
+    t.string "datetime_text"
+    t.text "venue"
+    t.text "address"
+    t.string "organizer"
+    t.integer "participants"
+    t.integer "capacity"
+    t.text "image_url"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id", "url"], name: "index_research_favorites_on_user_id_and_url", unique: true
+    t.index ["user_id"], name: "index_research_favorites_on_user_id"
+  end
+
   create_table "service_accounts", charset: "utf8mb4", collation: "utf8mb4_unicode_ci", force: :cascade do |t|
     t.bigint "user_id"
     t.string "service_name", null: false
@@ -242,6 +262,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_08_000000) do
 
   add_foreign_key "folders", "users"
   add_foreign_key "items", "users"
+  add_foreign_key "research_favorites", "users"
   add_foreign_key "service_accounts", "users"
   add_foreign_key "service_connections", "users"
 end

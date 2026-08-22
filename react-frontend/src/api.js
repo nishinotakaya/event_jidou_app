@@ -886,6 +886,34 @@ export async function searchViaBrowserFallback({ site, fallback, locations, date
   return results.filter((result) => !seenUrls.has(result.url) && seenUrls.add(result.url));
 }
 
+// ===== 交流会リサーチのお気に入り（星） =====
+// 検索結果はサイトから毎回取り直すので、星を付けた時点の表示内容ごとサーバーに保存する。
+export async function fetchResearchFavorites() {
+  const res = await fetch('/api/research/favorites');
+  if (!res.ok) throw new Error('お気に入りの取得に失敗しました');
+  const data = await res.json();
+  return data.results || [];
+}
+
+export async function addResearchFavorite(event) {
+  const res = await fetch('/api/research/favorites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'お気に入りに追加できませんでした');
+  }
+  return res.json();
+}
+
+export async function removeResearchFavorite(url) {
+  const res = await fetch(`/api/research/favorites?url=${encodeURIComponent(url)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('お気に入りから外せませんでした');
+  return res.json();
+}
+
 async function fetchAndNormalizePage({ site, url, headers, locations, dateFrom, dateTo }) {
   const siteRes = await fetch(url, { headers: headers || {} });
   if (!siteRes.ok) throw new Error(`${site} への直接アクセスに失敗しました（HTTP ${siteRes.status}）`);

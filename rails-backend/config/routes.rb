@@ -141,6 +141,9 @@ Rails.application.routes.draw do
     # 交流会リサーチ（複数サイト横断検索）
     post "research/search", to: "research#search"
     post "research/normalize", to: "research#normalize"
+    get    "research/favorites", to: "research_favorites#index"
+    post   "research/favorites", to: "research_favorites#create"
+    delete "research/favorites", to: "research_favorites#destroy"
 
     # 画像アップロード（汎用）
     post "upload_image", to: "images#upload"

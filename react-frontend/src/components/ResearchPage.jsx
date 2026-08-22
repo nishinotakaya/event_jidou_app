@@ -1,5 +1,11 @@
-import { useState } from 'react';
-import { searchCrossSiteEvents, searchViaBrowserFallback } from '../api.js';
+import { useState, useEffect } from 'react';
+import {
+  searchCrossSiteEvents,
+  searchViaBrowserFallback,
+  fetchResearchFavorites,
+  addResearchFavorite,
+  removeResearchFavorite,
+} from '../api.js';
 
 // バックエンド Api::ResearchController::SERVICES と対応
 const SITES = [
@@ -83,6 +89,60 @@ const DATE_INPUT_STYLE = {
   padding: '3px 8px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '12px', color: '#1f2937',
 };
 
+// 検索結果とお気に入り一覧で同じ見た目にしたいので、カードは1箇所で持つ。
+// 星ボタンはリンク（<a>）の中に入れず兄弟にしている（入れ子にすると星クリックでもサイトが開いてしまう）。
+function EventCard({ event, siteMeta, favorited, onToggleFavorite }) {
+  return (
+    <div style={{ display: 'flex', gap: '8px', padding: '12px 14px', borderRadius: '10px', border: '1px solid #e5e7eb', background: '#fff', alignItems: 'flex-start' }}>
+      <a
+        href={event.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ display: 'flex', gap: '12px', flex: 1, minWidth: 0, textDecoration: 'none', color: 'inherit', alignItems: 'flex-start' }}
+      >
+        {event.imageUrl && (
+          <img
+            src={event.imageUrl}
+            alt=""
+            style={{ width: '96px', height: '64px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        )}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '4px' }}>
+            <span style={{ padding: '1px 8px', borderRadius: '999px', background: siteMeta[event.site]?.color || '#6b7280', color: '#fff', fontSize: '11px', fontWeight: 600 }}>
+              {event.siteLabel}
+            </span>
+            {event.datetimeText && (
+              <span style={{ fontSize: '12px', color: '#374151', fontWeight: 600 }}>📅 {event.datetimeText}</span>
+            )}
+          </div>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {event.title}
+          </div>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px', color: '#6b7280' }}>
+            {event.venue && <span>📍 {event.venue}</span>}
+            {event.organizer && <span>👤 {event.organizer}</span>}
+            {event.participants != null && (
+              <span>👥 {event.participants}{event.capacity ? `/${event.capacity}` : ''}人</span>
+            )}
+          </div>
+        </div>
+      </a>
+      <button
+        type="button"
+        onClick={() => onToggleFavorite(event)}
+        title={favorited ? 'お気に入りから外す' : 'お気に入りに追加'}
+        aria-label={favorited ? 'お気に入りから外す' : 'お気に入りに追加'}
+        aria-pressed={favorited}
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '20px', lineHeight: 1, padding: '2px 4px', color: favorited ? '#f59e0b' : '#d1d5db', flexShrink: 0 }}
+      >
+        {favorited ? '★' : '☆'}
+      </button>
+    </div>
+  );
+}
+
 export default function ResearchPage({ showToast }) {
   const [keyword, setKeyword] = useState('経営者 交流会');
   const [selectedSites, setSelectedSites] = useState(SITES.map((s) => s.key));
@@ -95,6 +155,15 @@ export default function ResearchPage({ showToast }) {
   const [siteErrors, setSiteErrors] = useState({});
   const [countsBySite, setCountsBySite] = useState({});
   const [siteFilter, setSiteFilter] = useState('all'); // 結果一覧の絞り込み
+  const [favorites, setFavorites] = useState([]); // 星を付けたイベント（サーバー保存）
+  const [showFavorites, setShowFavorites] = useState(false); // true = お気に入りだけを表示
+
+  // 星の付き外しは検索前から見えていてほしいので、ページを開いた時点で読む。
+  useEffect(() => {
+    fetchResearchFavorites()
+      .then(setFavorites)
+      .catch((err) => showToast(err.message, 'error'));
+  }, [showToast]);
 
   function toggleSite(key) {
     setSelectedSites((prev) =>
@@ -177,6 +246,27 @@ export default function ResearchPage({ showToast }) {
     return { results, errors, counts };
   }
 
+  const favoriteUrls = new Set(favorites.map((favorite) => favorite.url));
+
+  // 星は連打されるので、先に画面を更新してから通信する（失敗したら元に戻して知らせる）。
+  async function toggleFavorite(event) {
+    const wasFavorited = favoriteUrls.has(event.url);
+    const previousFavorites = favorites;
+    setFavorites(wasFavorited
+      ? favorites.filter((favorite) => favorite.url !== event.url)
+      : [ ...favorites, event ]);
+    try {
+      if (wasFavorited) {
+        await removeResearchFavorite(event.url);
+      } else {
+        await addResearchFavorite(event);
+      }
+    } catch (err) {
+      setFavorites(previousFavorites);
+      showToast(err.message, 'error');
+    }
+  }
+
   const todayText = formatDate(new Date());
   const datePresets = buildDatePresets(new Date());
   const dateRangeSummary = appliedRange
@@ -201,8 +291,17 @@ export default function ResearchPage({ showToast }) {
     <div style={{ padding: '0 24px 24px' }}>
       {/* 検索条件 */}
       <div style={{ borderRadius: '12px', border: '1.5px solid #e2d9f3', background: '#faf8ff', padding: '16px', marginBottom: '16px' }}>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#5b21b6', marginBottom: '8px' }}>
-          🔎 交流会リサーチ — 複数サイトを一斉検索
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: '#5b21b6' }}>
+            🔎 交流会リサーチ — 複数サイトを一斉検索
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowFavorites((shown) => !shown)}
+            style={{ padding: '3px 12px', borderRadius: '999px', border: '1px solid #fcd34d', background: showFavorites ? '#f59e0b' : '#fff', color: showFavorites ? '#fff' : '#b45309', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            {showFavorites ? '★ お気に入り表示中' : `☆ お気に入り ${favorites.length}`}
+          </button>
         </div>
 
         {/* キーワード入力 + 検索ボタン */}
@@ -337,8 +436,44 @@ export default function ResearchPage({ showToast }) {
         </div>
       )}
 
+      {/* お気に入り一覧（検索していなくても見られる） */}
+      {showFavorites && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
+              ★ お気に入り {favorites.length}件
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowFavorites(false)}
+              style={{ padding: '3px 10px', borderRadius: '999px', border: '1px solid #d1d5db', background: '#fff', color: '#6b7280', fontSize: '12px', cursor: 'pointer' }}
+            >
+              検索結果に戻る
+            </button>
+          </div>
+
+          {favorites.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0', fontSize: '14px' }}>
+              検索結果の ☆ を押すと、ここに貯まります
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {favorites.map((event) => (
+                <EventCard
+                  key={`favorite-${event.url}`}
+                  event={event}
+                  siteMeta={siteMeta}
+                  favorited
+                  onToggleFavorite={toggleFavorite}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
       {/* 結果一覧 */}
-      {results !== null && (
+      {!showFavorites && results !== null && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
@@ -373,49 +508,20 @@ export default function ResearchPage({ showToast }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {visibleResults.map((event, index) => (
-                <a
+                <EventCard
                   key={`${event.site}-${event.url}-${index}`}
-                  href={event.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: 'flex', gap: '12px', padding: '12px 14px', borderRadius: '10px', border: '1px solid #e5e7eb', background: '#fff', textDecoration: 'none', color: 'inherit', alignItems: 'flex-start' }}
-                >
-                  {event.imageUrl && (
-                    <img
-                      src={event.imageUrl}
-                      alt=""
-                      style={{ width: '96px', height: '64px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }}
-                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                    />
-                  )}
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '4px' }}>
-                      <span style={{ padding: '1px 8px', borderRadius: '999px', background: siteMeta[event.site]?.color || '#6b7280', color: '#fff', fontSize: '11px', fontWeight: 600 }}>
-                        {event.siteLabel}
-                      </span>
-                      {event.datetimeText && (
-                        <span style={{ fontSize: '12px', color: '#374151', fontWeight: 600 }}>📅 {event.datetimeText}</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {event.title}
-                    </div>
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px', color: '#6b7280' }}>
-                      {event.venue && <span>📍 {event.venue}</span>}
-                      {event.organizer && <span>👤 {event.organizer}</span>}
-                      {event.participants != null && (
-                        <span>👥 {event.participants}{event.capacity ? `/${event.capacity}` : ''}人</span>
-                      )}
-                    </div>
-                  </div>
-                </a>
+                  event={event}
+                  siteMeta={siteMeta}
+                  favorited={favoriteUrls.has(event.url)}
+                  onToggleFavorite={toggleFavorite}
+                />
               ))}
             </div>
           )}
         </>
       )}
 
-      {results === null && !searching && (
+      {!showFavorites && results === null && !searching && (
         <div style={{ textAlign: 'center', color: '#9ca3af', padding: '60px 0', fontSize: '14px' }}>
           キーワードを入力して「一斉検索」を押すと、選択したサイトを横断してイベントを探します
         </div>
