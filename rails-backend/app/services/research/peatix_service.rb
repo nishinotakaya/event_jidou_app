@@ -1,17 +1,28 @@
 module Research
-  # Peatix（peatix.com）のイベント検索。
-  # 検索ページが内部で使う JSON API（/search/events）を直接叩く。
+  # Peatix（peatix.com）のイベント検索。経営者交流会のヒット数が最も多い（「経営者 交流会」で 752 件）。
+  # 検索ページが内部で使う JSON API（/search/events）を直接叩く。HTML パースより壊れにくい。
+  # ※ X-Requested-With を付けないと JSON ではなく HTML が返るので必須。
   #
-  # ⚠️ Peatix は Heroku などデータセンターIPからのアクセスに対し 200 + 空ボディを返してブロックする。
-  # そのため本番ではブラウザから直接 API を叩き（CORS 許可済み）、そのレスポンスを
-  # Api::ResearchController#normalize 経由で parse_response に渡してくる経路がある。
+  # ⚠️ 本番（Heroku）からは 200 + 空ボディで弾かれる（データセンターIPブロック）。
+  # ただしこの検索APIは access-control-allow-origin: * かつ preflight で X-Requested-With を許可しており、
+  # ブラウザ（＝ユーザーの回線）からなら取得できる。そこで本番では、
+  #
+  #   ResearchController#search が失敗を検知
+  #     → browserFallbacks（search_api_urls）をフロントへ返す
+  #     → フロントがブラウザから直接 fetch
+  #     → 本文を Api::ResearchController#normalize に POST
+  #     → ここの parse_response でサーバー側と同じ整形をかける
+  #
+  # という経路で救っている。整形ロジックを JS に写経しないための parse_response 公開である。
   class PeatixService < BaseService
     SITE_KEY = "peatix".freeze
     SITE_LABEL = "Peatix".freeze
     SEARCH_URL = "https://peatix.com/search/events".freeze
+    # 1リクエストで取れる件数。50 までは正常に返ることを実測済み
     PAGE_SIZE = 50
 
-    # ブラウザ側フォールバックが叩く検索APIのURL（ページ分まとめて返す）
+    # ブラウザ側フォールバックが叩く検索APIのURL。
+    # サーバー側と件数を揃えるため、1ページ目だけでなく MAX_SEARCH_PAGES 分まとめて渡す。
     def self.search_api_urls(keyword)
       (1..MAX_SEARCH_PAGES).map do |page_number|
         "#{SEARCH_URL}?q=#{CGI.escape(keyword)}&country=JP&p=#{page_number}&size=#{PAGE_SIZE}"
@@ -32,6 +43,7 @@ module Research
     end
 
     # 検索APIのレスポンス本文（JSON文字列）を共通フォーマットに整形する。
+    # サーバー取得・ブラウザ取得のどちらの経路もここを通す（＝整形の実装は1つだけ）。
     def parse_response(body, locations = [])
       events = JSON.parse(body).dig("json_data", "events") || []
 

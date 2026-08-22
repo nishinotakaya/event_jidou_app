@@ -40,7 +40,9 @@ module Research
       area_slug ? "#{CATEGORY_URL}+#{area_slug}/" : "#{CATEGORY_URL}/"
     end
 
-    # カテゴリ一覧を複数ページ分まとめて取得する
+    # カテゴリ一覧を複数ページ分まとめて取得する。
+    # 1ページに JSON-LD が2ブロック（Event の配列 と ItemList）入っていて中身が重複するため、
+    # 40件取れても実質20件。呼び出し側の uniq が必須。
     def parse_category(url)
       fetch_pages { |page_number| parse_events(http_get("#{url}?page=#{page_number}")) }
     end

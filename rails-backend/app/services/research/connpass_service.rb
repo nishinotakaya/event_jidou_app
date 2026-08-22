@@ -1,7 +1,7 @@
 module Research
   # connpass（connpass.com）のイベント検索。
   # 検索結果はサーバーレンダリングされた HTML（div.event_list が1イベント）。
-  # start_from で今日以降に絞る（デフォルトの並びが開催日昇順なので直近が先頭に来る）。
+  # start_from / start_to で開催日を絞る（デフォルトの並びが開催日昇順なので直近が先頭に来る）。
   class ConnpassService < BaseService
     SITE_KEY = "connpass".freeze
     SITE_LABEL = "connpass".freeze
@@ -15,8 +15,9 @@ module Research
     }.freeze
 
     def search(keyword, locations = [])
-      start_from = Time.now.getlocal(JST_OFFSET).strftime("%Y/%m/%d")
-      url = "#{SEARCH_URL}?q=#{CGI.escape(keyword)}&start_from=#{CGI.escape(start_from)}"
+      # start_from は常に「今日以降」（DateRange が過去日をクランプ済み）、start_to は指定時のみ。
+      url = "#{SEARCH_URL}?q=#{CGI.escape(keyword)}&start_from=#{date_range.from_param}"
+      url += "&start_to=#{date_range.to_param}" if date_range.to_param
       locations.filter_map { |location| PREFECTURE_PARAMS[location] }.each do |prefecture_param|
         url += "&prefectures=#{prefecture_param}"
       end

@@ -855,11 +855,12 @@ export async function postToSites({ content, sites, eventFields, generateImage, 
 }
 
 // ===== 交流会リサーチ（複数サイト横断検索） =====
-export async function searchCrossSiteEvents({ keyword, sites, locations }) {
+// dateFrom / dateTo は 'YYYY-MM-DD'（省略可）。省略しても終了したイベントはサーバー側で落とされる。
+export async function searchCrossSiteEvents({ keyword, sites, locations, dateFrom, dateTo }) {
   const res = await fetch('/api/research/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keyword, sites, locations }),
+    body: JSON.stringify({ keyword, sites, locations, dateFrom, dateTo }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -868,18 +869,24 @@ export async function searchCrossSiteEvents({ keyword, sites, locations }) {
   return res.json();
 }
 
-// Peatix のようにサーバー（Heroku）のIPを弾くサイトは、ブラウザから直接APIを叩き、
-// 整形だけサーバー側（Api::ResearchController#normalize）に任せる。
-export async function searchViaBrowserFallback({ site, fallback, locations }) {
+// Peatix のようにサーバー（Heroku）のIPを弾くサイト向けのフォールバック。
+// 取得はブラウザ（＝ユーザーの回線なので弾かれない）、整形と開催日フィルタはサーバー
+// （Api::ResearchController#normalize）に任せることで、整形ロジックを JS に写経せずに済ませている。
+//
+// fallback は検索レスポンスの browserFallbacks[site] がそのまま渡ってくる:
+//   { urls: [1ページ目, 2ページ目, 3ページ目], headers: { 'X-Requested-With': ... } }
+// URL とヘッダをサーバーに決めさせているのは、サイト固有の作法（Peatix は X-Requested-With 必須）を
+// フロントに散らかさないため。ページ間で同じイベントが返ることがあるので URL で重複を除く。
+export async function searchViaBrowserFallback({ site, fallback, locations, dateFrom, dateTo }) {
   const pages = await Promise.all(
-    (fallback.urls || []).map((url) => fetchAndNormalizePage({ site, url, headers: fallback.headers, locations }))
+    (fallback.urls || []).map((url) => fetchAndNormalizePage({ site, url, headers: fallback.headers, locations, dateFrom, dateTo }))
   );
   const results = pages.flat();
   const seenUrls = new Set();
   return results.filter((result) => !seenUrls.has(result.url) && seenUrls.add(result.url));
 }
 
-async function fetchAndNormalizePage({ site, url, headers, locations }) {
+async function fetchAndNormalizePage({ site, url, headers, locations, dateFrom, dateTo }) {
   const siteRes = await fetch(url, { headers: headers || {} });
   if (!siteRes.ok) throw new Error(`${site} への直接アクセスに失敗しました（HTTP ${siteRes.status}）`);
   const payload = await siteRes.text();
@@ -888,7 +895,7 @@ async function fetchAndNormalizePage({ site, url, headers, locations }) {
   const res = await fetch('/api/research/normalize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ site, payload, locations }),
+    body: JSON.stringify({ site, payload, locations, dateFrom, dateTo }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

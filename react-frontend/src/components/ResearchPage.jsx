@@ -30,7 +30,8 @@ const LOCATIONS = [
   { key: '沖縄', label: '沖縄' },
 ];
 
-// 経営者・ビジネス系の定番キーワード（ワンタップで検索）
+// ワンタップで投げられる定番キーワード。
+// 上段＝人脈づくり（経営者交流会・飲み会系）、下段＝AIプログラミングスクールの同業/競合リサーチ用。
 const PRESET_KEYWORDS = [
   '経営者 交流会',
   '異業種交流会',
@@ -38,12 +39,57 @@ const PRESET_KEYWORDS = [
   '起業家 交流会',
   '経営者 朝活',
   '名刺交換会',
+  'AI プログラミングスクール',
+  'プログラミングスクール',
+  '生成AI 勉強会',
+  'AI 活用 セミナー',
+  'エンジニア 転職 相談会',
 ];
+
+// ===== 開催日ユーティリティ =====
+// 終了したイベントはサーバー側で常に落とされるので、ここで作る範囲は必ず今日以降になる。
+function formatDate(date) {
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function addDays(date, days) {
+  const moved = new Date(date);
+  moved.setDate(moved.getDate() + days);
+  return moved;
+}
+
+// ワンタップで開催日を絞るプリセット。交流会は「今週末」「来月」で探されることが多い。
+function buildDatePresets(today) {
+  const dayOfWeek = today.getDay(); // 0=日曜
+  // 今週末＝直近の土曜〜日曜。日曜日に見ているときは土曜が過ぎているので今日だけを指す。
+  const saturday = dayOfWeek === 0 ? today : addDays(today, 6 - dayOfWeek);
+  const sunday = dayOfWeek === 0 ? today : addDays(saturday, 1);
+  const endOfThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const startOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  const endOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+
+  return [
+    { label: '今日', from: formatDate(today), to: formatDate(today) },
+    { label: '今週末', from: formatDate(saturday), to: formatDate(sunday) },
+    { label: '今月', from: formatDate(today), to: formatDate(endOfThisMonth) },
+    { label: '来月', from: formatDate(startOfNextMonth), to: formatDate(endOfNextMonth) },
+    { label: '3ヶ月以内', from: formatDate(today), to: formatDate(addDays(today, 90)) },
+  ];
+}
+
+const DATE_INPUT_STYLE = {
+  padding: '3px 8px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '12px', color: '#1f2937',
+};
 
 export default function ResearchPage({ showToast }) {
   const [keyword, setKeyword] = useState('経営者 交流会');
   const [selectedSites, setSelectedSites] = useState(SITES.map((s) => s.key));
   const [selectedLocations, setSelectedLocations] = useState([]); // 空 = 全国
+  const [dateFrom, setDateFrom] = useState(''); // 'YYYY-MM-DD' / 空 = 今日以降すべて
+  const [dateTo, setDateTo] = useState('');
+  const [appliedRange, setAppliedRange] = useState(null); // 実際に検索に使われた範囲（サーバーの返答）
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState(null); // null=未検索
   const [siteErrors, setSiteErrors] = useState({});
@@ -62,8 +108,12 @@ export default function ResearchPage({ showToast }) {
     );
   }
 
-  async function handleSearch(searchKeyword = keyword) {
-    const trimmed = (searchKeyword || '').trim();
+  // プリセット（キーワード・開催日）は state 更新を待たずに検索したいので、
+  // 検索条件は overrides で受け取れるようにしている。
+  async function handleSearch(overrides = {}) {
+    const trimmed = (overrides.keyword ?? keyword).trim();
+    const from = overrides.dateFrom ?? dateFrom;
+    const to = overrides.dateTo ?? dateTo;
     if (!trimmed) {
       showToast('キーワードを入力してください', 'error');
       return;
@@ -72,14 +122,19 @@ export default function ResearchPage({ showToast }) {
       showToast('検索するサイトを1つ以上選択してください', 'error');
       return;
     }
+    if (from && to && to < from) {
+      showToast('開催日の終了日は開始日以降にしてください', 'error');
+      return;
+    }
     setSearching(true);
     setSiteFilter('all');
     try {
-      const data = await searchCrossSiteEvents({ keyword: trimmed, sites: selectedSites, locations: selectedLocations });
-      const { results: mergedResults, errors, counts } = await retryBlockedSitesFromBrowser(data);
+      const data = await searchCrossSiteEvents({ keyword: trimmed, sites: selectedSites, locations: selectedLocations, dateFrom: from, dateTo: to });
+      const { results: mergedResults, errors, counts } = await retryBlockedSitesFromBrowser(data, { dateFrom: from, dateTo: to });
       setResults(mergedResults);
       setSiteErrors(errors);
       setCountsBySite(counts);
+      setAppliedRange({ from: data.searchedDateFrom, to: data.searchedDateTo });
       const errorCount = Object.keys(errors).length;
       if (errorCount > 0) {
         showToast(`${errorCount}サイトで検索に失敗しました（他サイトの結果は表示中）`, 'error');
@@ -93,8 +148,11 @@ export default function ResearchPage({ showToast }) {
     }
   }
 
-  // Peatix のようにサーバー（Heroku）のIPを弾くサイトは、ブラウザ（＝自分の回線）から取り直して合流させる
-  async function retryBlockedSitesFromBrowser(data) {
+  // Peatix のようにサーバー（Heroku）のIPを弾くサイトを、ブラウザ（＝自分の回線）から取り直して合流させる。
+  // サーバーが「取り直せるサイト」と判断したものだけが data.browserFallbacks に入ってくるので、
+  // ここではサイト名を一切ハードコードしない。取り直しに成功したらそのサイトのエラー表示は消し、
+  // 失敗したら元のエラーに理由を足して残す（黙って消すとユーザーが取りこぼしに気付けない）。
+  async function retryBlockedSitesFromBrowser(data, { dateFrom: from, dateTo: to }) {
     const errors = { ...(data.errors || {}) };
     const counts = { ...(data.countsBySite || {}) };
     const fallbackEntries = Object.entries(data.browserFallbacks || {});
@@ -102,7 +160,7 @@ export default function ResearchPage({ showToast }) {
     const retried = await Promise.all(
       fallbackEntries.map(async ([site, fallback]) => {
         try {
-          const siteResults = await searchViaBrowserFallback({ site, fallback, locations: selectedLocations });
+          const siteResults = await searchViaBrowserFallback({ site, fallback, locations: selectedLocations, dateFrom: from, dateTo: to });
           counts[site] = siteResults.length;
           delete errors[site];
           return siteResults;
@@ -117,6 +175,21 @@ export default function ResearchPage({ showToast }) {
       (a.startsAt || '9999-12-31').localeCompare(b.startsAt || '9999-12-31')
     );
     return { results, errors, counts };
+  }
+
+  const todayText = formatDate(new Date());
+  const datePresets = buildDatePresets(new Date());
+  const dateRangeSummary = appliedRange
+    ? `📅 ${appliedRange.from} 〜 ${appliedRange.to || '指定なし'}（終了したイベントは非表示）`
+    : null;
+
+  function applyDatePreset(preset) {
+    const cleared = dateFrom === preset.from && dateTo === preset.to;
+    const from = cleared ? '' : preset.from;
+    const to = cleared ? '' : preset.to;
+    setDateFrom(from);
+    setDateTo(to);
+    if (results !== null) handleSearch({ dateFrom: from, dateTo: to });
   }
 
   const siteMeta = Object.fromEntries(SITES.map((s) => [s.key, s]));
@@ -159,7 +232,7 @@ export default function ResearchPage({ showToast }) {
               key={preset}
               type="button"
               disabled={searching}
-              onClick={() => { setKeyword(preset); handleSearch(preset); }}
+              onClick={() => { setKeyword(preset); handleSearch({ keyword: preset }); }}
               style={{ padding: '4px 10px', borderRadius: '999px', border: '1px solid #c4b5fd', background: keyword === preset ? '#ede9fe' : '#fff', color: '#6d28d9', fontSize: '12px', cursor: 'pointer' }}
             >
               {preset}
@@ -203,6 +276,56 @@ export default function ResearchPage({ showToast }) {
             <span style={{ fontSize: '11px', color: '#9ca3af' }}>（未選択 = 全国）</span>
           )}
         </div>
+
+        {/* 開催日（未指定 = 今日以降すべて。開催日が過ぎたイベントは常に非表示） */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '10px' }}>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>開催日:</span>
+          <input
+            type="date"
+            value={dateFrom}
+            min={todayText}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={DATE_INPUT_STYLE}
+          />
+          <span style={{ fontSize: '12px', color: '#9ca3af' }}>〜</span>
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || todayText}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={DATE_INPUT_STYLE}
+          />
+          {datePresets.map((preset) => {
+            const selected = dateFrom === preset.from && dateTo === preset.to;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                disabled={searching}
+                onClick={() => applyDatePreset(preset)}
+                style={{ padding: '3px 10px', borderRadius: '999px', border: '1px solid #93c5fd', background: selected ? '#2563eb' : '#fff', color: selected ? '#fff' : '#1d4ed8', fontSize: '12px', fontWeight: selected ? 600 : 400, cursor: 'pointer' }}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+          {(dateFrom || dateTo) ? (
+            <button
+              type="button"
+              onClick={() => { setDateFrom(''); setDateTo(''); if (results !== null) handleSearch({ dateFrom: '', dateTo: '' }); }}
+              style={{ padding: '3px 10px', borderRadius: '999px', border: '1px solid #d1d5db', background: '#fff', color: '#6b7280', fontSize: '12px', cursor: 'pointer' }}
+            >
+              指定なし
+            </button>
+          ) : (
+            <span style={{ fontSize: '11px', color: '#9ca3af' }}>（未指定 = 今日以降すべて／終了したイベントは表示しません）</span>
+          )}
+        </div>
+        {(dateFrom || dateTo) && (
+          <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
+            ※ サイト側で日付を絞れない検索先（Peatix・TechPlay など）は直近の検索結果から絞り込むため、先の日付ほど件数が少なくなります
+          </div>
+        )}
       </div>
 
       {/* サイト別エラー表示 */}
@@ -221,6 +344,9 @@ export default function ResearchPage({ showToast }) {
             <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
               検索結果 {results.length}件
             </span>
+            {dateRangeSummary && (
+              <span style={{ fontSize: '12px', color: '#6b7280' }}>{dateRangeSummary}</span>
+            )}
             <button
               type="button"
               onClick={() => setSiteFilter('all')}
