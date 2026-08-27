@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   searchCrossSiteEvents,
   searchViaBrowserFallback,
@@ -18,6 +18,7 @@ const SITES = [
   // 下2つはサイト側にフリーワード検索が無いため、キーワードに関係なく交流会カテゴリの開催予定を全件表示する
   { key: 'evenz', label: 'e-venz', color: '#d35400', note: 'キーワード非対応（異業種交流会カテゴリを全件表示）' },
   { key: 'doomo', label: 'Doomo', color: '#34495e', note: 'キーワード非対応（ビジネス交流会の開催予定を全件表示）' },
+  { key: 'wework', label: 'WeWork', color: '#0a1f44', note: 'サイト内検索が無いため、掲載中のイベントのタイトル・カテゴリ・会場で突き合わせます' },
 ];
 
 // バックエンド Research::BaseService::LOCATION_ALIASES のキーと対応
@@ -37,19 +38,41 @@ const LOCATIONS = [
 ];
 
 // ワンタップで投げられる定番キーワード。
-// 上段＝人脈づくり（経営者交流会・飲み会系）、下段＝AIプログラミングスクールの同業/競合リサーチ用。
-const PRESET_KEYWORDS = [
-  '経営者 交流会',
-  '異業種交流会',
-  'ビジネス交流会',
-  '起業家 交流会',
-  '経営者 朝活',
-  '名刺交換会',
-  'AI プログラミングスクール',
-  'プログラミングスクール',
-  '生成AI 勉強会',
-  'AI 活用 セミナー',
-  'エンジニア 転職 相談会',
+// 「自分が出向いて人脈をつくる」用と「自分の講座に人を呼ぶ・競合を見る」用で目的が違うので、行を分ける。
+//
+// 並んでいる語は 2026-08-27 に7サイト（こくちーずプロ/Peatix/connpass/TechPlay/Doorkeeper/
+// ジモティー/WeWork）へ実際に投げて、開催予定の件数と中身を見て選んだもの。落とした語と理由:
+//   - 「エンジニア 転職 相談会」46件 … connpass・TechPlay が0件で、こくちーずプロに偏る
+//   - 「AI プログラミングスクール」60件 … ジモティーの子ども向けプログラミング教室が過半でノイズ
+//   - 「ノーコード 勉強会」14件 … そもそも開催数が少ない
+//   - 「ビジネス交流会」「名刺交換会」 … 「異業種交流会」とヒットがほぼ重複する
+const PRESET_KEYWORD_GROUPS = [
+  {
+    label: '人脈づくり',
+    keywords: [
+      '経営者 交流会',
+      '異業種交流会',
+      '起業家 交流会',
+      'IT 交流会',
+      'エンジニア 交流会',
+      'フリーランス 交流会',
+      'スタートアップ 交流会',
+    ],
+  },
+  {
+    label: '集客・同業リサーチ',
+    keywords: [
+      'AI 活用 セミナー',
+      'プログラミング 初心者',
+      '未経験 エンジニア',
+      'AI 副業',
+      '生成AI 勉強会',
+      'AIエージェント',
+      'Claude Code',
+      'AI駆動開発',
+      'プログラミングスクール',
+    ],
+  },
 ];
 
 // ===== 開催日ユーティリティ =====
@@ -88,6 +111,120 @@ function buildDatePresets(today) {
 const DATE_INPUT_STYLE = {
   padding: '3px 8px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '12px', color: '#1f2937',
 };
+
+// 検索先サイトのセレクトボックス（複数選択）。
+// サイトが増えるとチェックボックスの横並びでは検索条件が縦に伸びて他の条件が埋もれるので、
+// 普段は「◯サイト」の1行に畳み、開いたときだけ一覧を出す。
+// <select multiple> を使わないのは、Ctrl+クリックを知らないと複数選択できず、
+// 選択中のサイトも色分けして見せられないため。
+function SiteSelectBox({ sites, selectedKeys, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+
+  // 開いたまま他所をクリック／Escape で閉じる（開きっぱなしだと下の結果一覧が隠れる）
+  useEffect(() => {
+    if (!open) return undefined;
+    function handlePointerDown(e) {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    }
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const selectedSites = sites.filter((site) => selectedKeys.includes(site.key));
+  const summary = selectedSites.length === 0
+    ? 'サイトを選択'
+    : selectedSites.length === sites.length
+      ? `すべてのサイト（${sites.length}）`
+      : selectedSites.length <= 3
+        ? selectedSites.map((site) => site.label).join('・')
+        : `${selectedSites.length}サイトを選択中`;
+
+  function toggle(key) {
+    onChange(selectedKeys.includes(key)
+      ? selectedKeys.filter((selectedKey) => selectedKey !== key)
+      : [...selectedKeys, key]);
+  }
+
+  return (
+    <div ref={boxRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((shown) => !shown)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '8px', minWidth: '220px',
+          padding: '5px 10px', borderRadius: '8px', border: '1px solid #d1d5db',
+          background: '#fff', color: selectedSites.length === 0 ? '#9ca3af' : '#1f2937',
+          fontSize: '13px', cursor: disabled ? 'not-allowed' : 'pointer',
+        }}
+      >
+        <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {summary}
+        </span>
+        <span style={{ color: '#9ca3af', fontSize: '10px' }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          style={{
+            position: 'absolute', zIndex: 20, top: 'calc(100% + 4px)', left: 0, minWidth: '280px',
+            borderRadius: '10px', border: '1px solid #e5e7eb', background: '#fff',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '8px', maxHeight: '320px', overflowY: 'auto',
+          }}
+        >
+          <div style={{ display: 'flex', gap: '6px', padding: '2px 4px 8px', borderBottom: '1px solid #f3f4f6', marginBottom: '6px' }}>
+            <button
+              type="button"
+              onClick={() => onChange(sites.map((site) => site.key))}
+              style={{ padding: '2px 10px', borderRadius: '999px', border: '1px solid #c4b5fd', background: '#fff', color: '#6d28d9', fontSize: '11px', cursor: 'pointer' }}
+            >
+              すべて選択
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              style={{ padding: '2px 10px', borderRadius: '999px', border: '1px solid #d1d5db', background: '#fff', color: '#6b7280', fontSize: '11px', cursor: 'pointer' }}
+            >
+              すべて解除
+            </button>
+          </div>
+          {sites.map((site) => {
+            const selected = selectedKeys.includes(site.key);
+            return (
+              <label
+                key={site.key}
+                role="option"
+                aria-selected={selected}
+                title={site.note || ''}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '5px 6px', borderRadius: '6px', cursor: 'pointer', background: selected ? '#f5f3ff' : 'transparent' }}
+              >
+                <input type="checkbox" checked={selected} onChange={() => toggle(site.key)} style={{ marginTop: '2px' }} />
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ color: site.color, fontWeight: 600, fontSize: '13px' }}>{site.label}</span>
+                  {site.note && (
+                    <span style={{ display: 'block', fontSize: '11px', color: '#9ca3af', lineHeight: 1.4 }}>{site.note}</span>
+                  )}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // 検索結果とお気に入り一覧で同じ見た目にしたいので、カードは1箇所で持つ。
 // 星ボタンはリンク（<a>）の中に入れず兄弟にしている（入れ子にすると星クリックでもサイトが開いてしまう）。
@@ -164,12 +301,6 @@ export default function ResearchPage({ showToast }) {
       .then(setFavorites)
       .catch((err) => showToast(err.message, 'error'));
   }, [showToast]);
-
-  function toggleSite(key) {
-    setSelectedSites((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
-  }
 
   function toggleLocation(key) {
     setSelectedLocations((prev) =>
@@ -324,35 +455,36 @@ export default function ResearchPage({ showToast }) {
           </button>
         </div>
 
-        {/* プリセットキーワード */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-          {PRESET_KEYWORDS.map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              disabled={searching}
-              onClick={() => { setKeyword(preset); handleSearch({ keyword: preset }); }}
-              style={{ padding: '4px 10px', borderRadius: '999px', border: '1px solid #c4b5fd', background: keyword === preset ? '#ede9fe' : '#fff', color: '#6d28d9', fontSize: '12px', cursor: 'pointer' }}
-            >
-              {preset}
-            </button>
-          ))}
-        </div>
+        {/* プリセットキーワード（目的別） */}
+        {PRESET_KEYWORD_GROUPS.map((group) => (
+          <div key={group.label} style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '12px', color: '#6b7280', minWidth: '104px' }}>{group.label}:</span>
+            {group.keywords.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                disabled={searching}
+                onClick={() => { setKeyword(preset); handleSearch({ keyword: preset }); }}
+                style={{ padding: '4px 10px', borderRadius: '999px', border: '1px solid #c4b5fd', background: keyword === preset ? '#ede9fe' : '#fff', color: '#6d28d9', fontSize: '12px', cursor: 'pointer' }}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+        ))}
 
-        {/* サイト選択 */}
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
+        {/* サイト選択（セレクトボックス・複数選択可） */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
           <span style={{ fontSize: '12px', color: '#6b7280' }}>検索先:</span>
-          {SITES.map((site) => (
-            <label key={site.key} title={site.note || ''} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={selectedSites.includes(site.key)}
-                onChange={() => toggleSite(site.key)}
-              />
-              <span style={{ color: site.color, fontWeight: 600 }}>{site.label}</span>
-              {site.note && <span style={{ fontSize: '11px', color: '#9ca3af' }}>*</span>}
-            </label>
-          ))}
+          <SiteSelectBox
+            sites={SITES}
+            selectedKeys={selectedSites}
+            onChange={setSelectedSites}
+            disabled={searching}
+          />
+          {selectedSites.length === 0 && (
+            <span style={{ fontSize: '11px', color: '#dc2626' }}>1つ以上選んでください</span>
+          )}
         </div>
 
         {/* 場所選択（複数可・未選択 = 全国） */}

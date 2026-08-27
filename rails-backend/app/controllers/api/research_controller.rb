@@ -20,7 +20,8 @@ module Api
       "doorkeeper" => Research::DoorkeeperService,
       "jimoty" => Research::JimotyService,
       "evenz" => Research::EvenzService,
-      "doomo" => Research::DoomoService
+      "doomo" => Research::DoomoService,
+      "wework" => Research::WeworkService
     }.freeze
 
     # 1サイトの取得を待つ上限。3ページ取得しても実測 1〜3 秒なので、
