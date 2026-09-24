@@ -3,6 +3,8 @@ import FolderList from './FolderList.jsx';
 import { createFolder } from '../api.js';
 
 export default function Sidebar({
+  isOpen,
+  onClose,
   activeType,
   onTypeChange,
   folders,
@@ -46,9 +48,12 @@ export default function Sidebar({
   }, [activeType, newFolderName, newFolderParent, onFolderChange, showToast]);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'sidebar--open' : ''}`}>
       <div className="sidebar-header">
-        <p className="sidebar-title" onClick={() => { onSelectFolder(null); onTypeChange('event'); onNavigate?.('main'); }} style={{ cursor: 'pointer' }}>イベント管理</p>
+        <div className="sidebar-header-row">
+          <p className="sidebar-title" onClick={() => { onSelectFolder(null); onTypeChange('event'); onNavigate?.('main'); }} style={{ cursor: 'pointer' }}>イベント管理</p>
+          <button type="button" className="sidebar-close" aria-label="メニューを閉じる" onClick={onClose}>×</button>
+        </div>
         <div className="type-tabs">
           <button
             className={`type-tab ${activeType === 'event' ? 'active' : ''}`}

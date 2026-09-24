@@ -12,6 +12,7 @@ import DetailModal from './components/DetailModal.jsx';
 import XPage from './components/x/XPage.jsx';
 import AnnouncementPanel from './components/AnnouncementPanel.jsx';
 import ResearchPage from './components/ResearchPage.jsx';
+import InstallBanner from './components/InstallBanner.jsx';
 import { fetchTexts, fetchFolders, deleteText, createText, deleteRemoteEvents, cancelRemoteEvents, fetchPostingHistory, scanGithubReviews } from './api.js';
 import './index.css';
 
@@ -58,6 +59,7 @@ export default function App() {
   const [showCalendar, setShowCalendar] = useState(true);
   const [showStudents, setShowStudents] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // モバイル用ドロワーの開閉状態
   const [detailItem, setDetailItem] = useState(null); // viewer用詳細モーダル
   const [currentUser, setCurrentUser] = useState(undefined); // undefined=loading, null=guest, object=logged in
   const [menuOpen, setMenuOpen] = useState(false);
@@ -171,6 +173,9 @@ export default function App() {
     setShowStudents(false);
     setShowCalendar(false);
   }
+
+  // ===== モバイルドロワー =====
+  const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
 
   // ===== Delete =====
   const [deleteRemoteRunning, setDeleteRemoteRunning] = useState(false);
@@ -296,12 +301,14 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={closeSidebar}
         activeType={activeType}
-        onTypeChange={setActiveType}
+        onTypeChange={(type) => { setActiveType(type); closeSidebar(); }}
         folders={folders}
         items={items}
         selectedFolder={selectedFolder}
-        onSelectFolder={handleSelectFolder}
+        onSelectFolder={(folder) => { handleSelectFolder(folder); closeSidebar(); }}
         onFolderChange={loadAll}
         showToast={showToast}
         onNavigate={(target) => {
@@ -313,13 +320,25 @@ export default function App() {
           } else {
             setActivePage(target);
           }
+          closeSidebar();
         }}
       />
+      {isSidebarOpen && <div className="sidebar-backdrop" onClick={closeSidebar} />}
 
       <div className="main-area">
         {/* Header */}
         <div className="main-header">
           <div className="main-header-left">
+            <button
+              type="button"
+              className="sidebar-toggle"
+              aria-label="メニューを開く"
+              onClick={() => setIsSidebarOpen(true)}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
             <h1 className="main-header-title">{typeLabel}</h1>
             <div className="folder-breadcrumb">
               <span className="folder-breadcrumb-sep">/</span>
@@ -678,6 +697,8 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      <InstallBanner />
     </div>
   );
 }

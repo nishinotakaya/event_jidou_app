@@ -48,12 +48,58 @@ body {
   border-bottom: 1px solid #f0ecf8;
 }
 
+.sidebar-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .sidebar-title {
   font-size: 15px;
   font-weight: 700;
   color: #6d28d9;
   margin: 0 0 10px;
   letter-spacing: -0.2px;
+}
+
+/* PC ではハンバーガー/閉じるボタン/背景オーバーレイを表示しない */
+.sidebar-toggle {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sidebar-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+  background: #6d28d9;
+}
+
+.sidebar-close {
+  display: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  color: #6d28d9;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sidebar-backdrop {
+  display: none;
 }
 
 .type-tabs {
@@ -1404,9 +1450,39 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
-  /* サイドバー非表示 */
+  /* サイドバーはオフキャンバスのドロワーとして表示する */
   .sidebar {
-    display: none;
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(300px, 85vw);
+    max-width: none;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: none;
+    padding-top: env(safe-area-inset-top);
+  }
+  .sidebar.sidebar--open {
+    transform: translateX(0);
+    box-shadow: 0 0 40px rgba(30, 27, 46, 0.35);
+  }
+  .sidebar-toggle {
+    display: flex;
+  }
+  .sidebar-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 27, 46, 0.45);
+    z-index: 999;
   }
   .app-shell {
     grid-template-columns: 1fr;
@@ -1418,6 +1494,12 @@ body {
     align-items: flex-start;
     gap: 8px;
     padding: 12px 12px 8px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+  }
+  .main-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
   .main-header-actions {
     flex-wrap: wrap;
@@ -2379,6 +2461,49 @@ summary.event-fields-title {
 }
 .status-filter button.active.upcoming { color: #16a34a; }
 .status-filter button.active.ended    { color: #dc2626; }
+
+/* ===== PWA install banner ===== */
+.install-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1e1b2e;
+  color: #fff;
+  font-size: 13px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+}
+
+.install-banner-message {
+  flex: 1;
+}
+
+.install-banner-button {
+  background: #6d28d9;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.install-banner-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+  flex-shrink: 0;
+}
 
 /* カレンダーセル内の終了イベントは赤系＆取り消し線風 */
 .calendar-dot.app.ended {

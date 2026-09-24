@@ -262,7 +262,7 @@ export default function CalendarView({
     <div className="calendar-view">
       {/* アプリ説明 */}
       <div className="calendar-app-desc">
-        <h2 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#1e3a5f' }}>📢 イベント自動告知アプリ</h2>
+        <h2 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#1e3a5f', display: 'flex', alignItems: 'center', gap: '8px' }}><img src="/logo.svg" alt="" width={22} height={22} style={{ borderRadius: '6px' }} />イベント自動告知アプリ</h2>
         <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
           イベントを作成し、connpass・Peatix・TechPlay・こくチーズ・Doorkeeper・つなゲートへ一括投稿。AI文章生成・Googleカレンダー連携・Zoom作成にも対応。
         </p>
