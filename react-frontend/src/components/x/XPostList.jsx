@@ -68,7 +68,7 @@ export default function XPostList({ posts, loading, onEdit, onChanged, onNeedCon
 
   return (
     <div style={{ overflow: 'auto', border: '1.5px solid #e2d9f3', borderRadius: '12px', background: '#fff' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+      <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
         <thead>
           <tr style={{ background: '#faf8ff', color: '#6b4fa0' }}>
             <th style={th()}>投稿時刻</th>

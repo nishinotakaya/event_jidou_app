@@ -350,13 +350,18 @@ export default function App() {
               <div ref={menuRef} style={{ position: 'relative' }}>
                 <button
                   type="button"
+                  className="user-menu-button"
                   onClick={() => setMenuOpen((v) => !v)}
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0', cursor: 'pointer' }}
                 >
-                  {currentUser.avatarUrl && (
+                  {currentUser.avatarUrl ? (
                     <img src={currentUser.avatarUrl} alt="" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                  ) : (
+                    <span className="user-menu-initial" aria-hidden="true">
+                      {(currentUser.name || currentUser.email || '?').trim().charAt(0).toUpperCase()}
+                    </span>
                   )}
-                  <div style={{ lineHeight: 1.2, textAlign: 'left' }}>
+                  <div className="user-menu-identity" style={{ lineHeight: 1.2, textAlign: 'left' }}>
                     <div style={{ fontSize: '12px', fontWeight: 600, color: '#166534' }}>{currentUser.name}</div>
                     <div style={{ fontSize: '10px', color: '#6b7280' }}>{currentUser.email}</div>
                   </div>

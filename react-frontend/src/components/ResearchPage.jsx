@@ -424,7 +424,7 @@ export default function ResearchPage({ showToast }) {
     <div style={{ padding: '0 24px 24px' }}>
       {/* 検索条件 */}
       <div style={{ borderRadius: '12px', border: '1.5px solid #e2d9f3', background: '#faf8ff', padding: '16px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+        <div className="research-page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
           <div style={{ fontSize: '13px', fontWeight: 600, color: '#5b21b6' }}>
             🔎 交流会リサーチ — 複数サイトを一斉検索
           </div>
@@ -438,7 +438,7 @@ export default function ResearchPage({ showToast }) {
         </div>
 
         {/* キーワード入力 + 検索ボタン */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+        <div className="research-search-row" style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
           <input
             type="text"
             value={keyword}

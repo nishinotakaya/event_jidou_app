@@ -443,6 +443,41 @@ body {
   gap: 8px;
 }
 
+/* アバター未設定ユーザーのフォールバック表示（頭文字） */
+.user-menu-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #6d28d9;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* 交流会リサーチ: キーワード検索行が狭い画面で崩れないようにする */
+.research-search-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.research-search-row input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.research-search-row .btn {
+  flex-shrink: 0;
+}
+
+/* 交流会リサーチ: タイトルとお気に入りボタンの見出し行も折り返す */
+.research-page-header {
+  flex-wrap: wrap;
+}
+
 .btn {
   padding: 8px 16px;
   border-radius: 8px;
@@ -580,6 +615,7 @@ body {
   color: #2d1b52;
   outline: none;
   transition: all 0.2s;
+  min-width: 0;
 }
 
 .search-input:focus {
@@ -612,7 +648,7 @@ body {
 
 .item-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 12px;
 }
 
@@ -627,6 +663,7 @@ body {
   gap: 8px;
   transition: all 0.15s;
   position: relative;
+  min-width: 0;
 }
 
 .item-card:hover {
@@ -653,6 +690,7 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .item-card-actions {
@@ -709,6 +747,7 @@ body {
   border-radius: 5px;
   border: 1px solid #f0ecf8;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .item-card-meta {
@@ -1488,28 +1527,53 @@ body {
     grid-template-columns: 1fr;
   }
 
-  /* メインヘッダー */
+  /* メインヘッダー（1行に収めてスクロール量を減らす） */
   .main-header {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: nowrap;
     gap: 8px;
-    padding: 12px 12px 8px;
-    padding-top: calc(12px + env(safe-area-inset-top));
+    padding: 10px 12px;
+    padding-top: calc(10px + env(safe-area-inset-top));
   }
   .main-header-left {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+  .main-header-title {
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .folder-breadcrumb {
+    display: none;
   }
   .main-header-actions {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 6px;
-    width: 100%;
+    width: auto;
+    flex-shrink: 0;
   }
   .main-header-actions .btn {
-    font-size: 11px;
-    padding: 6px 10px;
+    font-size: 13px;
+    padding: 8px 12px;
+    min-height: 40px;
   }
+  .user-menu-identity {
+    display: none;
+  }
+  .user-menu-button {
+    min-height: 40px;
+  }
+
+  /* データ表はスマホでは横スクロールさせる（セルの1文字折り返しを防ぐ） */
+  .data-table { min-width: 640px; }
+  .data-table th, .data-table td { white-space: nowrap; }
 
   /* カレンダー */
   .calendar-view {
@@ -1533,18 +1597,18 @@ body {
     min-width: auto;
   }
   .calendar-cell {
-    min-height: 70px;
+    min-height: 60px;
     padding: 3px 2px 2px;
   }
   .calendar-day {
-    font-size: 12px;
+    font-size: 13px;
   }
   .calendar-weekday {
     font-size: 12px;
     padding: 6px 2px;
   }
   .calendar-dot {
-    font-size: 9px;
+    font-size: 10px;
     padding: 1px 2px;
     line-height: 1.2;
   }
@@ -1576,19 +1640,95 @@ body {
 
   /* アイテムリスト */
   .item-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .item-card {
+    padding: 14px;
+    gap: 10px;
+  }
+  .item-card-name {
+    font-size: 15px;
+    line-height: 1.4;
+  }
+  .item-card-content {
+    font-size: 13px;
+    -webkit-line-clamp: 3;
+    padding: 8px 10px;
+  }
+  .item-card-event-date {
+    font-size: 13px;
+  }
+  .item-card .btn-sm {
+    font-size: 13px;
+    padding: 8px 12px;
+    min-height: 36px;
   }
   .form-row,
   .form-row-3 {
     grid-template-columns: 1fr;
   }
   .search-bar {
+    flex-wrap: wrap;
     padding: 8px 12px;
+    row-gap: 8px;
+  }
+  .search-input {
+    flex: 1 1 100%;
+    font-size: 16px;
+  }
+  .search-icon {
+    left: 24px;
+    top: 20px;
+  }
+  .status-filter {
+    margin-left: 0;
+  }
+  .status-filter button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  .sort-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 16px;
+    min-height: 40px;
+  }
+
+  /* フォーム入力（iOSの自動ズーム防止・タップ領域拡大） */
+  .form-input,
+  .form-select {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .form-textarea {
+    font-size: 16px;
+  }
+  .add-folder-select,
+  .add-folder-input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  /* サイドバードロワーのタップ領域 */
+  .type-tab {
+    min-height: 40px;
+    font-size: 14px;
   }
 
   /* 接続管理 */
   .site-cards {
     grid-template-columns: 1fr !important;
+  }
+}
+
+/* さらに幅が狭い端末（320px幅など）でもヘッダーが収まるようにする */
+@media (max-width: 400px) {
+  .main-header-actions .btn {
+    padding: 8px 10px;
+  }
+  .status-filter button {
+    padding: 8px 10px;
+    font-size: 12px;
   }
 }
 
@@ -2452,6 +2592,7 @@ summary.event-fields-title {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
 }
 .status-filter button:hover { color: #111827; }
 .status-filter button.active {
