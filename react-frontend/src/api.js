@@ -872,16 +872,16 @@ export async function searchCrossSiteEvents({ keyword, sites, locations, dateFro
 // ===== コミュニティ検索（経営者・サークル・オンラインサロン等を複数サイトから探す） =====
 // 開催日の概念が無いので dateFrom / dateTo は無い。keyword が空だとサーバーが 422 を返す。
 export async function searchCommunities({ keyword, sites, locations }) {
-  const res = await fetch('/api/research/communities', {
+  const response = await fetch('/api/research/communities', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ keyword, sites, locations }),
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
     throw new Error(data.error || 'コミュニティ検索に失敗しました');
   }
-  return res.json();
+  return response.json();
 }
 
 // Peatix のようにサーバー（Heroku）のIPを弾くサイト向けのフォールバック。

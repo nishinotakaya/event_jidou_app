@@ -28,10 +28,6 @@ module Api
       "omicale" => Research::OmicaleService
     }.freeze
 
-    # 1サイトの取得を待つ上限。3ページ取得しても実測 1〜3 秒なので、
-    # これを超えるのは相手サイトの不調とみなして切り、他サイトの結果だけ返す。
-    SITE_TIMEOUT_SECONDS = 25
-
     # ブラウザからサイトのAPIを直接叩くときに付けるヘッダ（Peatix は X-Requested-With が無いと HTML を返す）
     BROWSER_FALLBACK_HEADERS = { "X-Requested-With" => "XMLHttpRequest", "Accept" => "application/json" }.freeze
 
@@ -47,7 +43,7 @@ module Api
       date_range = requested_date_range
 
       searcher = Research::ParallelSiteSearch.new(
-        services: SERVICES, timeout_seconds: SITE_TIMEOUT_SECONDS, log_prefix: "[Research]"
+        services: SERVICES, log_prefix: "[Research]"
       )
       outcome = searcher.run(site_keys) do |service_class|
         date_range.filter(service_class.new(date_range).search(keyword, locations))

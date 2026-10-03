@@ -15,8 +15,13 @@ module Research
     class BaseService < Research::BaseService
       private
 
+      # url が http/https 以外（javascript: 等・パース不能を含む）なら nil を返す。呼び出し側は filter_map / compact で除外する。
+      # image_url が http/https 以外なら、結果は残して画像だけ nil にする。
       def build_community_result(name:, url:, description: nil, area: nil, fee: nil, member_count: nil,
                                  image_url: nil, organizer: nil)
+        return nil unless http_url?(url)
+
+        safe_image_url = http_url?(image_url) ? image_url.to_s.strip : nil
         {
           site: site_key,
           siteLabel: site_label,
@@ -26,9 +31,16 @@ module Research
           area: area.to_s.strip.presence,
           fee: fee.to_s.strip.presence,
           memberCount: member_count,
-          imageUrl: image_url.to_s.strip.presence,
+          imageUrl: safe_image_url,
           organizer: organizer.to_s.strip.presence
         }
+      end
+
+      # 日本語を含む URL（Meetup のグループ名 URL など）は実在するので、非 ASCII を % エンコードしてから判定する
+      def http_url?(value)
+        URI.parse(URI::DEFAULT_PARSER.escape(value.to_s.strip)).is_a?(URI::HTTP)
+      rescue URI::InvalidURIError
+        false
       end
 
       # サイト側に地域絞り込みがないサービス向けの後段フィルタ。

@@ -4,6 +4,16 @@ function hasText(value) {
   return typeof value === 'string' ? value.trim() !== '' : Boolean(value);
 }
 
+const HTTP_URL_PATTERN = /^https?:\/\//i;
+
+function isHttpUrl(value) {
+  return typeof value === 'string' && HTTP_URL_PATTERN.test(value.trim());
+}
+
+function hasMemberCount(memberCount) {
+  return Number.isFinite(memberCount) || hasText(memberCount);
+}
+
 function formatMemberCount(memberCount) {
   if (typeof memberCount === 'number') return `${memberCount.toLocaleString('ja-JP')}人`;
   const text = String(memberCount).trim();
@@ -27,13 +37,16 @@ export default function CommunityCard({ community, badgeColor }) {
   const [thumbnailBroken, setThumbnailBroken] = useState(false);
   const { url, imageUrl, siteLabel, area, fee, memberCount, organizer, description } = community;
   const name = hasText(community.name) ? community.name : hostnameOf(url);
-  const showThumbnail = hasText(imageUrl) && !thumbnailBroken;
+  const linkUrl = isHttpUrl(url) ? url.trim() : null;
+  const CardElement = linkUrl ? 'a' : 'div';
+  const cardLinkProps = linkUrl ? { href: linkUrl, target: '_blank', rel: 'noopener noreferrer' } : {};
+  const showThumbnail = isHttpUrl(imageUrl) && !thumbnailBroken;
   const hasFee = hasText(fee);
-  const hasMemberCount = hasText(memberCount);
+  const showMemberCount = hasMemberCount(memberCount);
   const hasOrganizer = hasText(organizer);
 
   return (
-    <a className="community-card" href={url} target="_blank" rel="noopener noreferrer">
+    <CardElement className="community-card" {...cardLinkProps}>
       {showThumbnail && (
         <div className="community-card-thumb">
           <img src={imageUrl} alt="" loading="lazy" onError={() => setThumbnailBroken(true)} />
@@ -45,18 +58,18 @@ export default function CommunityCard({ community, badgeColor }) {
           {hasText(area) && <span className="community-area">📍 {area}</span>}
         </div>
         <h3 className="community-card-name">{name}</h3>
-        {(hasFee || hasMemberCount || hasOrganizer) && (
+        {(hasFee || showMemberCount || hasOrganizer) && (
           <div className="community-card-facts">
             {hasFee && <span>💴 {formatFee(fee)}</span>}
-            {hasMemberCount && <span>👥 {formatMemberCount(memberCount)}</span>}
+            {showMemberCount && <span>👥 {formatMemberCount(memberCount)}</span>}
             {hasOrganizer && (
               <span className="community-card-organizer" title={organizer}>👤 主宰: {organizer}</span>
             )}
           </div>
         )}
         {hasText(description) && <p className="community-card-desc">{description}</p>}
-        <span className="community-card-link">サイトで見る ↗</span>
+        {linkUrl && <span className="community-card-link">サイトで見る ↗</span>}
       </div>
-    </a>
+    </CardElement>
   );
 }

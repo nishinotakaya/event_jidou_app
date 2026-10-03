@@ -12,10 +12,10 @@ module Research
     SEARCH_URL = "https://party-calendar.net/search".freeze
 
     def search(keyword, locations = [])
-      results = fetch_pages do |page_number|
+      fetched_events = fetch_pages do |page_number|
         parse_search_page(http_get("#{SEARCH_URL}?keyword=#{CGI.escape(keyword)}&page=#{page_number}"))
       end
-      filter_by_location(results, locations)
+      filter_by_location(fetched_events, locations)
     end
 
     private
@@ -40,7 +40,7 @@ module Research
         address: place.dig("address", "addressRegion"),
         image_url: event["image"],
         capacity: capacity,
-        participants: participants_count(capacity, event["remainingAttendeeCapacity"]),
+        participants: participants_count(capacity, event["remainingAttendeeCapacity"])
       )
     end
 

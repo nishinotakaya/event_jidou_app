@@ -6,12 +6,16 @@ module Research
   class ParallelSiteSearch
     Outcome = Struct.new(:results_by_site, :errors_by_site, keyword_init: true)
 
+    # 1サイトの取得を待つ上限。3ページ取得しても実測 1〜3 秒なので、
+    # これを超えるのは相手サイトの不調とみなして切り、他サイトの結果だけ返す。
+    DEFAULT_TIMEOUT_SECONDS = 25
+
     TIMEOUT_MESSAGE = "タイムアウトしました".freeze
 
     # services: { サイト識別子 => サービスクラス }
-    # timeout_seconds: 1サイトの取得を待つ上限
+    # timeout_seconds: 1サイトの取得を待つ上限（省略時は DEFAULT_TIMEOUT_SECONDS）
     # log_prefix: 失敗ログの先頭に付ける文字列（例: "[Research]"）
-    def initialize(services:, timeout_seconds:, log_prefix: "[ParallelSiteSearch]")
+    def initialize(services:, timeout_seconds: DEFAULT_TIMEOUT_SECONDS, log_prefix: "[ParallelSiteSearch]")
       @services = services
       @timeout_seconds = timeout_seconds
       @log_prefix = log_prefix
@@ -34,6 +38,8 @@ module Research
       threads.each { |thread| thread.join(@timeout_seconds) }
 
       # join がタイムアウトしたスレッドは kill せず放置している（HTTP 待ちで安全に殺せないため）。
+      # 放置したスレッドの最長寿命は、1リクエスト最大 OPEN_TIMEOUT 10 秒 + READ_TIMEOUT 20 秒 = 30 秒を
+      # MAX_SEARCH_PAGES 3 ページ分で、概算 90 秒（HTTP が終われば自然に終了する）。
       # 生きたまま results_by_site に書き込む可能性があるので、読み出しは必ず mutex 内で行う。
       mutex.synchronize do
         site_keys.each do |site_key|

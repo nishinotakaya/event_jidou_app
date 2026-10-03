@@ -13,7 +13,7 @@ if Rails.env.test?
     private
 
     def valid_column_definition_options
-      super + [:size]
+      super + [ :size ]
     end
   end
 

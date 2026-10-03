@@ -13,7 +13,10 @@ module Research
 
       def search(keyword, locations = [])
         fetches = location_slugs(locations).map { |location_slug| fetch_in_background(keyword, location_slug) }
-        fetches.flat_map(&:value).uniq { |community_result| community_result[:url] }
+        community_results, failures = collect_fetches(fetches)
+        raise failures.first if community_results.nil? && failures.any?
+
+        (community_results || []).uniq { |community_result| community_result[:url] }
       end
 
       private
@@ -22,6 +25,20 @@ module Research
       def fetch_in_background(keyword, location_slug)
         Thread.new { parse_search_page(http_get(search_url(keyword, location_slug))) }
           .tap { |thread| thread.report_on_exception = false }
+      end
+
+      # 地域ごとに成否を分け、成功した地域の結果だけを集める。失敗は warn に残す。
+      # 全地域が失敗したときは結果が nil になり、呼び出し側が最初の例外を投げ直す。
+      def collect_fetches(fetches)
+        failures = []
+        succeeded_results = fetches.filter_map do |fetch|
+          fetch.value
+        rescue StandardError => error
+          Rails.logger.warn("[MeetupGroup] 地域の取得に失敗: #{error.class} #{error.message}")
+          failures << error
+          nil
+        end
+        [ succeeded_results.empty? && failures.any? ? nil : succeeded_results.flatten(1), failures ]
       end
 
       def location_slugs(locations)
@@ -37,11 +54,11 @@ module Research
       def parse_search_page(html)
         apollo_state = extract_apollo_state(html)
 
-        apollo_state.each_with_object([]) do |(cache_key, entry), community_results|
+        apollo_state.filter_map do |cache_key, entry|
           next unless cache_key.start_with?("Group:") && entry.is_a?(Hash)
           next if entry["name"].blank? || entry["link"].blank?
 
-          community_results << build_community_result(
+          build_community_result(
             name: entry["name"],
             url: entry["link"],
             description: entry["description"],

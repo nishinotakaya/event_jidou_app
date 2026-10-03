@@ -14,9 +14,6 @@ module Api
       "yeg" => Research::Communities::YegService
     }.freeze
 
-    # 1サイトの取得を待つ上限。これを超えるのは相手サイトの不調とみなして切り、他サイトの結果だけ返す。
-    SITE_TIMEOUT_SECONDS = 25
-
     def search
       keyword = params[:keyword].to_s.strip
       if keyword.empty?
@@ -42,7 +39,7 @@ module Api
 
     def parallel_search
       Research::ParallelSiteSearch.new(
-        services: SERVICES, timeout_seconds: SITE_TIMEOUT_SECONDS, log_prefix: "[CommunityResearch]"
+        services: SERVICES, log_prefix: "[CommunityResearch]"
       )
     end
   end
