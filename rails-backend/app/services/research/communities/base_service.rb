@@ -42,6 +42,23 @@ module Research
           match_terms.any? { |term| searchable_text.include?(term) }
         end
       end
+
+      # 一覧 1 ページを丸ごと取る団体名簿（倫理法人会・商工会議所青年部）向けの絞り込み。
+      # 名簿はサイト側に検索が無いので、こちらで次の規則を適用する。
+      #   - 地域を選んだ場合: その地域の団体は、キーワードに一致しなくても残す
+      #     （「経営者」「交流会」のような一般語で 0 件になるのを避けるため）
+      #   - キーワードが団体名に一致する団体は、地域が違っても残す
+      #   - 地域を選んでいない場合: キーワードに一致しない団体は落とす
+      # 地域は area（住所・都道府県名）に LOCATION_ALIASES の語が含まれるかで判定する。
+      def filter_roster_by_keyword_or_location(community_results, keyword, locations)
+        keyword_terms = keyword.to_s.split(/[[:space:]]+/).reject(&:empty?)
+        location_terms = locations.to_a.flat_map { |location| LOCATION_ALIASES[location] || [ location ] }
+
+        community_results.select do |community_result|
+          keyword_terms.any? { |term| community_result[:name].include?(term) } ||
+            location_terms.any? { |term| community_result[:area].to_s.include?(term) }
+        end
+      end
     end
   end
 end
