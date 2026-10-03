@@ -18,6 +18,7 @@ module Research
 
       def parse_search_page(html)
         document = parse_html(html)
+        return [] if redirected_to_general_listing?(document)
 
         document.css(".fc-card").filter_map do |card_node|
           card_anchor = card_node.at_css("a.fc-card-anchor[href]")
@@ -33,6 +34,15 @@ module Research
             organizer: card_node.at_css(".fc-card__inner__body__profile--name")&.text&.squish
           )
         end
+      end
+
+      # 最終ページを超えると、サイトが全コミュニティの一般一覧（/projects）へ 302 リダイレクトする（2026-10-03 実測）。
+      # キーワードと無関係な結果が混ざるため、og:url が一般一覧を指すページは空として扱い、ページ送りを打ち切る。
+      def redirected_to_general_listing?(document)
+        open_graph_url = document.at_css("meta[property='og:url']")&.attr("content")
+        return false if open_graph_url.blank?
+
+        open_graph_url.delete_suffix("/").end_with?("/projects")
       end
     end
   end

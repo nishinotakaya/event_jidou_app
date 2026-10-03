@@ -78,6 +78,19 @@ class DmmSalonServiceTest < ActiveSupport::TestCase
     assert_equal 3, community_results.size
   end
 
+  test "2 ページ目が 404 でも 1 ページ目の結果を返す" do
+    community_results, requested_urls = search_with_pages([ research_fixture("dmm_salon"), RuntimeError.new("HTTP 404（lounge.dmm.com）") ])
+
+    assert_equal 2, requested_urls.size
+    assert_equal 3, community_results.size
+  end
+
+  test "404 以外のエラーは握りつぶさず投げる" do
+    assert_raises(RuntimeError) do
+      search_with_pages([ RuntimeError.new("HTTP 500（lounge.dmm.com）") ])
+    end
+  end
+
   test "ページ数の上限は MAX_SEARCH_PAGES" do
     page_one = research_fixture("dmm_salon")
     distinct_pages = (1..5).map { |page_number| page_one.gsub("/detail/", "/detail/#{page_number}") }

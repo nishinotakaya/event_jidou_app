@@ -80,6 +80,23 @@ class CampfireServiceTest < ActiveSupport::TestCase
     assert_equal 3, community_results.size
   end
 
+  test "最終ページを超えて一般一覧（og:url が /projects）へリダイレクトされたら、そのページは採用せず打ち切る" do
+    search_result_page = research_fixture("campfire")
+    unrelated_community_name = "キーワードと無関係な一般一覧のコミュニティ"
+    general_listing_page = search_result_page
+      .sub("<head>", '<head><meta property="og:url" content="https://community.camp-fire.jp/projects">')
+      .gsub("/projects/view/", "/projects/view/7")
+      .gsub(%r{(<div class="fc-card__inner__body__title">)[^<]*(</div>)}, "\\1#{unrelated_community_name}\\2")
+    page_bodies = [ search_result_page, general_listing_page, search_result_page ]
+
+    community_results, requested_urls = search_with_pages(page_bodies)
+
+    assert_equal 3, community_results.size
+    assert_not_includes community_results.map { |result| result[:name] }, unrelated_community_name
+    assert(community_results.none? { |result| result[:url].include?("/projects/view/7") })
+    assert_equal 2, requested_urls.size
+  end
+
   test "空ページなら 0 件" do
     community_results, = search_with_pages([ "" ])
 

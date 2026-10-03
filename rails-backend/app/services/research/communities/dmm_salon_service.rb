@@ -3,6 +3,7 @@ module Research
     # DMMオンラインサロン（lounge.dmm.com）の検索。
     # ページ送りは `&page=n` ではなくパス形式（/search/page/<n>/）でないとサイト側で効かない。
     # `keyword=` はサイト側で無視されて全件の新着一覧が返る。検索フォームの input 名は searchstr（2026-10-03 実測）。
+    # 結果が1ページだけのキーワードでは2ページ目が 404 になるため、404 は「もう無い」として扱う。
     # サロンはすべてオンラインなので地域指定は無視する。
     class DmmSalonService < BaseService
       SITE_KEY = "dmm_salon".freeze
@@ -13,7 +14,7 @@ module Research
 
       def search(keyword, _locations = [])
         fetch_pages do |page_number|
-          parse_search_page(http_get(search_url(keyword, page_number)))
+          parse_search_page(http_get_allowing_not_found(search_url(keyword, page_number)))
         end
       end
 
