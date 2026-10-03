@@ -24,7 +24,8 @@ module Api
       "wework" => Research::WeworkService,
       "tunagate" => Research::TunagateService,
       "meetup" => Research::MeetupService,
-      "machicon" => Research::MachiconService
+      "machicon" => Research::MachiconService,
+      "omicale" => Research::OmicaleService
     }.freeze
 
     # 1サイトの取得を待つ上限。3ページ取得しても実測 1〜3 秒なので、
