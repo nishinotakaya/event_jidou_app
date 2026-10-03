@@ -45,32 +45,14 @@ module Api
       locations = Array(params[:locations]).map(&:to_s) & Research::BaseService::LOCATION_ALIASES.keys
       date_range = requested_date_range
 
-      results_by_site = {}
-      errors_by_site = {}
-      mutex = Mutex.new
-
-      threads = site_keys.map do |site_key|
-        Thread.new do
-          site_results = SERVICES[site_key].new(date_range).search(keyword, locations)
-          mutex.synchronize { results_by_site[site_key] = date_range.filter(site_results) }
-        rescue StandardError => e
-          Rails.logger.warn("[Research] #{site_key} の検索に失敗: #{e.class} #{e.message}")
-          mutex.synchronize { errors_by_site[site_key] = e.message }
-        end
+      searcher = Research::ParallelSiteSearch.new(
+        services: SERVICES, timeout_seconds: SITE_TIMEOUT_SECONDS, log_prefix: "[Research]"
+      )
+      outcome = searcher.run(site_keys) do |service_class|
+        date_range.filter(service_class.new(date_range).search(keyword, locations))
       end
-      threads.each { |thread| thread.join(SITE_TIMEOUT_SECONDS) }
-
-      # join がタイムアウトしたスレッドは kill せず放置している（HTTP 待ちで安全に殺せないため）。
-      # 生きたまま results_by_site に書き込む可能性があるので、読み出しは必ず mutex 内で行う。
-      mutex.synchronize do
-        site_keys.each do |site_key|
-          next if results_by_site.key?(site_key) || errors_by_site.key?(site_key)
-
-          errors_by_site[site_key] = "タイムアウトしました"
-        end
-      end
-
-      results_snapshot = mutex.synchronize { results_by_site.dup }
+      results_snapshot = outcome.results_by_site
+      errors_by_site = outcome.errors_by_site
       merged_results = results_snapshot.values.flatten
                                        .sort_by { |result| result[:startsAt] || "9999-12-31" }
 
