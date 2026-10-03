@@ -97,6 +97,13 @@ export default function Sidebar({
           >
             🔎 リサーチ
           </button>
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('community')}
+            title="コミュニティ検索ページへ"
+          >
+            🏢 コミュニティ
+          </button>
         </div>
       </div>
 

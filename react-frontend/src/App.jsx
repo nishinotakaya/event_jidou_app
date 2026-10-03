@@ -12,6 +12,7 @@ import DetailModal from './components/DetailModal.jsx';
 import XPage from './components/x/XPage.jsx';
 import AnnouncementPanel from './components/AnnouncementPanel.jsx';
 import ResearchPage from './components/ResearchPage.jsx';
+import CommunityResearchPage from './components/CommunityResearchPage.jsx';
 import InstallBanner from './components/InstallBanner.jsx';
 import { fetchTexts, fetchFolders, deleteText, createText, deleteRemoteEvents, cancelRemoteEvents, fetchPostingHistory, scanGithubReviews } from './api.js';
 import './index.css';
@@ -38,7 +39,7 @@ function useToasts() {
 }
 
 export default function App() {
-  // 'main' | 'x' | 'announcements' | 'meetingNotifications' | 'research'
+  // 'main' | 'x' | 'announcements' | 'meetingNotifications' | 'research' | 'community'
   // URL は使っていない（react-router 未導入）が、ヘッダーのリンクラベルとして /x, /announcements を使う。
   const [activePage, setActivePage] = useState('main');
   const [activeType, setActiveType] = useState('event');
@@ -395,6 +396,7 @@ export default function App() {
                           {item({ key: 'x',   label: '𝕏 自動', active: activePage === 'x', onClick: () => setActivePage('x') })}
                           {item({ key: 'meetingNotifications', label: '📅 定例ミーティング通知', active: activePage === 'meetingNotifications', onClick: () => setActivePage('meetingNotifications') })}
                           {item({ key: 'research', label: '🔎 交流会リサーチ', active: activePage === 'research', onClick: () => setActivePage('research') })}
+                          {item({ key: 'community', label: '🏢 コミュニティ検索', active: activePage === 'community', onClick: () => setActivePage('community') })}
 
                           {sectionLabel('表示')}
                           {item({ key: 'cal', label: showCalendar ? '📋 一覧で見る' : '📅 カレンダーで見る', active: activePage === 'main' && showCalendar, onClick: () => { setActivePage('main'); setShowCalendar(!showCalendar); setShowConnections(false); setShowStudents(false); setShowUsers(false); } })}
@@ -449,6 +451,11 @@ export default function App() {
         {/* ===== 交流会リサーチページ ===== */}
         {activePage === 'research' && (
           <ResearchPage showToast={showToast} />
+        )}
+
+        {/* ===== コミュニティ検索ページ ===== */}
+        {activePage === 'community' && (
+          <CommunityResearchPage showToast={showToast} />
         )}
 
         {/* Service Connections (toggle) */}

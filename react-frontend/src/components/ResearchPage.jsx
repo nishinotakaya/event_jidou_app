@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   searchCrossSiteEvents,
   searchViaBrowserFallback,
@@ -6,6 +6,8 @@ import {
   addResearchFavorite,
   removeResearchFavorite,
 } from '../api.js';
+import SiteSelectBox from './research/SiteSelectBox.jsx';
+import { LOCATIONS } from './research/locations.js';
 
 // バックエンド Api::ResearchController::SERVICES と対応
 const SITES = [
@@ -23,26 +25,11 @@ const SITES = [
   { key: 'meetup', label: 'Meetup', color: '#f64060', note: 'サイト側で地域指定が必須のため、地域未選択のときは東京周辺を検索します' },
   // 街コン・婚活は客層が人脈づくり／講座の集客とズレるので、普段の検索を汚さないよう既定では外す。
   { key: 'machicon', label: '街コンジャパン', color: '#8d6e63', defaultOff: true, note: '恋活・婚活が中心。既定ではOFF' },
+  { key: 'omicale', label: 'オミカレ', color: '#e91e63', defaultOff: true, note: '恋活・婚活が中心。既定ではOFF' },
 ];
 
 // 初期状態で検索するサイト（defaultOff は明示的に選んだときだけ検索する）
 const DEFAULT_SITE_KEYS = SITES.filter((site) => !site.defaultOff).map((site) => site.key);
-
-// バックエンド Research::BaseService::LOCATION_ALIASES のキーと対応
-const LOCATIONS = [
-  { key: 'online', label: 'オンライン' },
-  { key: '東京', label: '東京' },
-  { key: '神奈川', label: '神奈川' },
-  { key: '千葉', label: '千葉' },
-  { key: '埼玉', label: '埼玉' },
-  { key: '大阪', label: '大阪' },
-  { key: '京都', label: '京都' },
-  { key: '兵庫', label: '兵庫' },
-  { key: '愛知', label: '愛知' },
-  { key: '福岡', label: '福岡' },
-  { key: '北海道', label: '北海道' },
-  { key: '沖縄', label: '沖縄' },
-];
 
 // ワンタップで投げられる定番キーワード。
 // 「自分が出向いて人脈をつくる」用と「自分の講座に人を呼ぶ・競合を見る」用で目的が違うので、行を分ける。
@@ -82,6 +69,10 @@ const PRESET_KEYWORD_GROUPS = [
       'プログラミングスクール',
     ],
   },
+  {
+    label: '出会い・街コン',
+    keywords: ['街コン', '恋活', '婚活パーティー', '友達作り'],
+  },
 ];
 
 // ===== 開催日ユーティリティ =====
@@ -120,120 +111,6 @@ function buildDatePresets(today) {
 const DATE_INPUT_STYLE = {
   padding: '3px 8px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '12px', color: '#1f2937',
 };
-
-// 検索先サイトのセレクトボックス（複数選択）。
-// サイトが増えるとチェックボックスの横並びでは検索条件が縦に伸びて他の条件が埋もれるので、
-// 普段は「◯サイト」の1行に畳み、開いたときだけ一覧を出す。
-// <select multiple> を使わないのは、Ctrl+クリックを知らないと複数選択できず、
-// 選択中のサイトも色分けして見せられないため。
-function SiteSelectBox({ sites, selectedKeys, onChange, disabled }) {
-  const [open, setOpen] = useState(false);
-  const boxRef = useRef(null);
-
-  // 開いたまま他所をクリック／Escape で閉じる（開きっぱなしだと下の結果一覧が隠れる）
-  useEffect(() => {
-    if (!open) return undefined;
-    function handlePointerDown(e) {
-      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
-    }
-    function handleKeyDown(e) {
-      if (e.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
-
-  const selectedSites = sites.filter((site) => selectedKeys.includes(site.key));
-  const summary = selectedSites.length === 0
-    ? 'サイトを選択'
-    : selectedSites.length === sites.length
-      ? `すべてのサイト（${sites.length}）`
-      : selectedSites.length <= 3
-        ? selectedSites.map((site) => site.label).join('・')
-        : `${selectedSites.length}サイトを選択中`;
-
-  function toggle(key) {
-    onChange(selectedKeys.includes(key)
-      ? selectedKeys.filter((selectedKey) => selectedKey !== key)
-      : [...selectedKeys, key]);
-  }
-
-  return (
-    <div ref={boxRef} style={{ position: 'relative' }}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((shown) => !shown)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '8px', minWidth: '220px',
-          padding: '5px 10px', borderRadius: '8px', border: '1px solid #d1d5db',
-          background: '#fff', color: selectedSites.length === 0 ? '#9ca3af' : '#1f2937',
-          fontSize: '13px', cursor: disabled ? 'not-allowed' : 'pointer',
-        }}
-      >
-        <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {summary}
-        </span>
-        <span style={{ color: '#9ca3af', fontSize: '10px' }}>{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <div
-          role="listbox"
-          aria-multiselectable="true"
-          style={{
-            position: 'absolute', zIndex: 20, top: 'calc(100% + 4px)', left: 0, minWidth: '280px',
-            borderRadius: '10px', border: '1px solid #e5e7eb', background: '#fff',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '8px', maxHeight: '320px', overflowY: 'auto',
-          }}
-        >
-          <div style={{ display: 'flex', gap: '6px', padding: '2px 4px 8px', borderBottom: '1px solid #f3f4f6', marginBottom: '6px' }}>
-            <button
-              type="button"
-              onClick={() => onChange(sites.map((site) => site.key))}
-              style={{ padding: '2px 10px', borderRadius: '999px', border: '1px solid #c4b5fd', background: '#fff', color: '#6d28d9', fontSize: '11px', cursor: 'pointer' }}
-            >
-              すべて選択
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              style={{ padding: '2px 10px', borderRadius: '999px', border: '1px solid #d1d5db', background: '#fff', color: '#6b7280', fontSize: '11px', cursor: 'pointer' }}
-            >
-              すべて解除
-            </button>
-          </div>
-          {sites.map((site) => {
-            const selected = selectedKeys.includes(site.key);
-            return (
-              <label
-                key={site.key}
-                role="option"
-                aria-selected={selected}
-                title={site.note || ''}
-                style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '5px 6px', borderRadius: '6px', cursor: 'pointer', background: selected ? '#f5f3ff' : 'transparent' }}
-              >
-                <input type="checkbox" checked={selected} onChange={() => toggle(site.key)} style={{ marginTop: '2px' }} />
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ color: site.color, fontWeight: 600, fontSize: '13px' }}>{site.label}</span>
-                  {site.note && (
-                    <span style={{ display: 'block', fontSize: '11px', color: '#9ca3af', lineHeight: 1.4 }}>{site.note}</span>
-                  )}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // 検索結果とお気に入り一覧で同じ見た目にしたいので、カードは1箇所で持つ。
 // 星ボタンはリンク（<a>）の中に入れず兄弟にしている（入れ子にすると星クリックでもサイトが開いてしまう）。
