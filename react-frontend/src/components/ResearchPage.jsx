@@ -19,7 +19,14 @@ const SITES = [
   { key: 'evenz', label: 'e-venz', color: '#d35400', note: 'キーワード非対応（異業種交流会カテゴリを全件表示）' },
   { key: 'doomo', label: 'Doomo', color: '#34495e', note: 'キーワード非対応（ビジネス交流会の開催予定を全件表示）' },
   { key: 'wework', label: 'WeWork', color: '#0a1f44', note: 'サイト内検索が無いため、掲載中のイベントのタイトル・カテゴリ・会場で突き合わせます' },
+  { key: 'tunagate', label: 'つなげーと', color: '#5b8c00', note: '社会人サークル・趣味友。複数語だと、いずれかの語に当たるイベントが返ります' },
+  { key: 'meetup', label: 'Meetup', color: '#f64060', note: 'サイト側で地域指定が必須のため、地域未選択のときは東京周辺を検索します' },
+  // 街コン・婚活は客層が人脈づくり／講座の集客とズレるので、普段の検索を汚さないよう既定では外す。
+  { key: 'machicon', label: '街コンジャパン', color: '#8d6e63', defaultOff: true, note: '恋活・婚活が中心。既定ではOFF' },
 ];
+
+// 初期状態で検索するサイト（defaultOff は明示的に選んだときだけ検索する）
+const DEFAULT_SITE_KEYS = SITES.filter((site) => !site.defaultOff).map((site) => site.key);
 
 // バックエンド Research::BaseService::LOCATION_ALIASES のキーと対応
 const LOCATIONS = [
@@ -284,7 +291,7 @@ function EventCard({ event, siteMeta, favorited, onToggleFavorite }) {
 
 export default function ResearchPage({ showToast }) {
   const [keyword, setKeyword] = useState('経営者 交流会');
-  const [selectedSites, setSelectedSites] = useState(SITES.map((s) => s.key));
+  const [selectedSites, setSelectedSites] = useState(DEFAULT_SITE_KEYS);
   const [selectedLocations, setSelectedLocations] = useState([]); // 空 = 全国
   const [dateFrom, setDateFrom] = useState(''); // 'YYYY-MM-DD' / 空 = 今日以降すべて
   const [dateTo, setDateTo] = useState('');
