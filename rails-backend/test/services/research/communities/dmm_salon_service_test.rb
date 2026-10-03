@@ -55,7 +55,8 @@ class DmmSalonServiceTest < ActiveSupport::TestCase
     _, requested_urls = search_with_pages([ research_fixture("dmm_salon") ])
 
     assert requested_urls.first.start_with?("https://lounge.dmm.com/search/")
-    assert_includes requested_urls.first, "keyword=#{CGI.escape(KEYWORD)}"
+    assert_includes requested_urls.first, "searchstr=#{CGI.escape(KEYWORD)}"
+    assert_not_includes requested_urls.first, "keyword="
   end
 
   test "2 ページ目は新規 URL があれば取りに行き、ページ番号が URL に入る" do
@@ -64,7 +65,8 @@ class DmmSalonServiceTest < ActiveSupport::TestCase
     community_results, requested_urls = search_with_pages([ page_one, page_two ])
 
     assert_operator requested_urls.size, :>=, 2
-    assert_match %r{page[=/]2\b}, requested_urls[1]
+    assert_match %r{/search/page/2/\?searchstr=}, requested_urls[1]
+    assert_not_includes requested_urls[1], "keyword="
     assert_equal 6, community_results.size
   end
 

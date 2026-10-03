@@ -2,6 +2,7 @@ module Research
   module Communities
     # DMMオンラインサロン（lounge.dmm.com）の検索。
     # ページ送りは `&page=n` ではなくパス形式（/search/page/<n>/）でないとサイト側で効かない。
+    # `keyword=` はサイト側で無視されて全件の新着一覧が返る。検索フォームの input 名は searchstr（2026-10-03 実測）。
     # サロンはすべてオンラインなので地域指定は無視する。
     class DmmSalonService < BaseService
       SITE_KEY = "dmm_salon".freeze
@@ -20,9 +21,9 @@ module Research
 
       def search_url(keyword, page_number)
         encoded_keyword = CGI.escape(keyword)
-        return "#{BASE_URL}/search/?keyword=#{encoded_keyword}" if page_number == 1
+        return "#{BASE_URL}/search/?searchstr=#{encoded_keyword}" if page_number == 1
 
-        "#{BASE_URL}/search/page/#{page_number}/?keyword=#{encoded_keyword}"
+        "#{BASE_URL}/search/page/#{page_number}/?searchstr=#{encoded_keyword}"
       end
 
       def parse_search_page(html)
