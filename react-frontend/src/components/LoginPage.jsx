@@ -51,7 +51,7 @@ export default function LoginPage({ onLogin }) {
       }}>
         {/* Logo / Title */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ fontSize: '36px', marginBottom: '8px' }}>📢</div>
+          <img src="/logo.svg" alt="" width={64} height={64} style={{ borderRadius: '16px', marginBottom: '10px', display: 'block', marginLeft: 'auto', marginRight: 'auto' }} />
           <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#1e293b', margin: 0 }}>
             イベント自動告知
           </h1>
@@ -63,7 +63,7 @@ export default function LoginPage({ onLogin }) {
         {/* Google Login */}
         <a
           href="#"
-          onClick={() => { window.location.href = '/auth/google_oauth2'; }}
+          onClick={() => { window.location.href = 'https://announcement-d656a48fc066.herokuapp.com/auth/google_oauth2'; }}
           style={{
             display: 'flex',
             alignItems: 'center',

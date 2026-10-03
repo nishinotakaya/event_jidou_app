@@ -1,7 +1,7 @@
 Rails.application.routes.draw do
-  devise_for :users, path: '', controllers: {
-    omniauth_callbacks: 'users/omniauth_callbacks',
-    sessions: 'users/sessions',
+  devise_for :users, path: "", controllers: {
+    omniauth_callbacks: "users/omniauth_callbacks",
+    sessions: "users/sessions"
   }
   get "up" => "rails/health#show", as: :rails_health_check
 
@@ -66,6 +66,8 @@ Rails.application.routes.draw do
 
     # Zoomミーティング自動作成
     post "zoom/create_meeting", to: "zoom_settings#create_meeting"
+    post "zoom/update_meeting", to: "zoom_settings#update_meeting"
+    post "zoom/delete_meeting", to: "zoom_settings#delete_meeting"
 
     # 投稿履歴
     get   "posting_histories",                      to: "posting_histories#index"
@@ -85,7 +87,7 @@ Rails.application.routes.draw do
     get    "comments",     to: "comments#index"
     post   "comments",     to: "comments#create"
     delete "comments/:id", to: "comments#destroy"
-    post  "posting_histories/bulk_mark_success",    to: "posting_histories#bulk_mark_success"
+    post "posting_histories/bulk_mark_success",    to: "posting_histories#bulk_mark_success"
 
     # X (Twitter) 自動投稿
     get    "x/posts",                to: "x#posts"
@@ -112,6 +114,16 @@ Rails.application.routes.draw do
     post   "onclass/sync", to: "onclass#sync"
     post   "onclass/sync_sidekiq", to: "onclass#sync_sidekiq"
     post   "onclass/upload_image", to: "onclass#upload_image"
+    get    "onclass/channels", to: "onclass#channels"
+
+    # 定例ミーティング通知設定
+    get    "meeting_notifications",              to: "meeting_notifications#index"
+    post   "meeting_notifications/generate_zoom", to: "meeting_notifications#generate_zoom"
+    post   "meeting_notifications",              to: "meeting_notifications#create"
+    put    "meeting_notifications/:id",          to: "meeting_notifications#update"
+    delete "meeting_notifications/:id",          to: "meeting_notifications#destroy"
+    post   "meeting_notifications/:id/send_now", to: "meeting_notifications#send_now"
+    get    "meeting_notifications/:id/preview",  to: "meeting_notifications#preview"
 
     # GitHubレビュー
     get    "github_reviews",                     to: "github_reviews#index"
@@ -125,6 +137,14 @@ Rails.application.routes.draw do
 
     # 日時重複チェック
     post "check_duplicate_event", to: "texts#check_duplicate"
+
+    # 交流会リサーチ（複数サイト横断検索）
+    post "research/search", to: "research#search"
+    post "research/normalize", to: "research#normalize"
+    post "research/communities", to: "community_research#search"
+    get    "research/favorites", to: "research_favorites#index"
+    post   "research/favorites", to: "research_favorites#create"
+    delete "research/favorites", to: "research_favorites#destroy"
 
     # 画像アップロード（汎用）
     post "upload_image", to: "images#upload"
@@ -155,5 +175,6 @@ Rails.application.routes.draw do
     post "ai/align-datetime", to: "ai#align_datetime"
     post "ai/agent",          to: "ai#agent"
     post "ai/profile",        to: "ai#profile"
+    post "ai/youtube-announce", to: "ai#youtube_announce"
   end
 end

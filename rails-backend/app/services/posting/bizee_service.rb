@@ -30,6 +30,8 @@ module Posting
       login!
       result_url = create_event(content, ef)
       log("[BIZee] ✅ 処理完了 → #{result_url}")
+      # BIZee は作成と同時に WordPress に公開される（下書きフラグなし）
+      @published = true
       result_url
     end
 

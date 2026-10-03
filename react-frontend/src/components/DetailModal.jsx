@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchPostingHistory } from '../api.js';
+import { fetchPostingHistory, fetchComments, createComment, deleteComment, fetchParticipants, syncParticipants } from '../api.js';
 
 // content から Zoom URL / ミーティングID / パスコードを抽出
 function extractZoomInfo(content) {
@@ -247,12 +247,122 @@ export default function DetailModal({ item, onClose }) {
             </div>
           </div>
 
+          {/* 参加者確認 */}
+          <ParticipantSection itemId={item.id} />
+
+          {/* コメント */}
+          <CommentSection itemId={item.id} />
+
           {/* メタ情報 */}
           <div style={{ fontSize: '11px', color: '#9ca3af' }}>
             {item.createdAt && <span>作成: {item.createdAt}</span>}
             {item.updatedAt && <span style={{ marginLeft: '12px' }}>更新: {item.updatedAt}</span>}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ParticipantSection({ itemId }) {
+  const [data, setData] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const load = async () => {
+    const res = await fetchParticipants(itemId);
+    setData(res.participants || {});
+    setOpen(true);
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await syncParticipants(itemId);
+      setData(res.participants || {});
+      setOpen(true);
+    } catch {} finally { setSyncing(false); }
+  };
+
+  const total = data ? Object.values(data).flat().length : 0;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={load}
+          style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', background: '#fef3c7', color: '#d97706', border: '1px solid #fcd34d', borderRadius: 6, cursor: 'pointer' }}
+        >
+          👥 参加者確認{total > 0 ? `（${total}名）` : ''}
+        </button>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', background: '#d1fae5', color: '#059669', border: '1px solid #6ee7b7', borderRadius: 6, cursor: syncing ? 'wait' : 'pointer' }}
+        >
+          {syncing ? '⏳ 同期中...' : '🔄 参加者同期'}
+        </button>
+      </div>
+      {open && data && (
+        <div style={{ marginTop: 8, padding: 10, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+          {Object.keys(data).length === 0 ? (
+            <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>参加者データなし</p>
+          ) : (
+            Object.entries(data).map(([site, list]) => (
+              <div key={site} style={{ marginBottom: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>
+                  {SITE_ICONS[site] || '📌'} {SITE_LABELS[site] || site}（{list.length}名）
+                </span>
+                {list.map((p, i) => (
+                  <div key={i} style={{ fontSize: 12, color: '#4b5563', paddingLeft: 16 }}>{p.name || '—'}</div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommentSection({ itemId }) {
+  const [comments, setComments] = useState([]);
+  const [text, setText] = useState('');
+
+  useEffect(() => {
+    fetchComments(itemId).then(setComments).catch(() => {});
+  }, [itemId]);
+
+  const handleSubmit = async () => {
+    if (!text.trim()) return;
+    try {
+      const c = await createComment(itemId, text.trim());
+      setComments([...comments, c]);
+      setText('');
+    } catch {}
+  };
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <h4 style={{ fontSize: 13, fontWeight: 700, color: '#374151', margin: '0 0 8px' }}>💬 コメント（{comments.length}）</h4>
+      {comments.length === 0 && <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 8px' }}>コメントはまだありません</p>}
+      {comments.map((c) => (
+        <div key={c.id} style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
+          <span style={{ fontWeight: 600, color: '#4b5563' }}>{c.userName}</span>
+          <span style={{ color: '#9ca3af', marginLeft: 6 }}>{new Date(c.createdAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+          <p style={{ margin: '2px 0 0', color: '#374151' }}>{c.body}</p>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+        <input
+          type="text" value={text} onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+          placeholder="コメントを入力..."
+          style={{ flex: 1, padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12 }}
+        />
+        <button onClick={handleSubmit}
+          style={{ padding: '6px 14px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'pointer' }}
+        >送信</button>
       </div>
     </div>
   );

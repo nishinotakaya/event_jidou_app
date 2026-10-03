@@ -3,6 +3,7 @@ class ServiceConnection < ApplicationRecord
     kokuchpro connpass peatix techplay zoom tunagate doorkeeper
     street_academy eventregist passmarket luma seminar_biz bizee jimoty gmail
     twitter instagram facebook threads onclass github
+    x
   ].freeze
   # コメントアウト: lme, seminars, everevo
 
@@ -39,8 +40,17 @@ class ServiceConnection < ApplicationRecord
   belongs_to :user, optional: true
 
   attr_encrypted :password_field,
-                 key: ->(_) { ENV.fetch('ENCRYPTION_KEY', '0' * 64)[0, 32] },
+                 key: ->(_) { ServiceConnection.encryption_key },
                  algorithm: 'aes-256-gcm'
+
+  # 認証情報の暗号化鍵。未設定のゼロ鍵（＝実質平文）を許さず fail-fast する。
+  def self.encryption_key
+    key = ENV['ENCRYPTION_KEY'].presence
+    if key.blank? || key.length < 32
+      raise 'ENCRYPTION_KEY が未設定です。接続情報を暗号化するため 32文字以上（推奨64桁hex）の鍵を環境変数に設定してください。'
+    end
+    key[0, 32]
+  end
 
   validates :service_name, presence: true, inclusion: { in: SERVICES }
   validates :service_name, uniqueness: { scope: :user_id }

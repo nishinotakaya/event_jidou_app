@@ -39,6 +39,7 @@ class PostingHistory < ApplicationRecord
       siteLabel: SITE_LABELS[site_name] || site_name,
       status: status,
       eventUrl: event_url,
+      apiRequestUrl: api_request_url,
       published: published,
       errorMessage: error_message,
       postedAt: posted_at&.iso8601,

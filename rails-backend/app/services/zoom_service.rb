@@ -1,13 +1,13 @@
-require 'net/http'
-require 'json'
-require 'base64'
+require "net/http"
+require "json"
+require "base64"
 
 class ZoomService
-  TOKEN_URL   = 'https://zoom.us/oauth/token'
-  MEETING_URL = 'https://api.zoom.us/v2/users/me/meetings'
+  TOKEN_URL   = "https://zoom.us/oauth/token"
+  MEETING_URL = "https://api.zoom.us/v2/users/me/meetings"
 
   def initialize(&log_callback)
-    @log = log_callback || ->(_msg) {}
+    @log = log_callback || ->(_msg) { }
   end
 
   # Returns { zoom_url:, meeting_id:, passcode: }
@@ -25,19 +25,19 @@ class ZoomService
       type: 2, # Scheduled meeting
       start_time: start_datetime,
       duration: duration_minutes,
-      timezone: 'Asia/Tokyo',
+      timezone: "Asia/Tokyo",
       settings: {
         waiting_room: true,
         join_before_host: false,
         mute_upon_entry: true,
-        auto_recording: 'none',
-      },
+        auto_recording: "none"
+      }
     }
 
     uri = URI(MEETING_URL)
     req = Net::HTTP::Post.new(uri)
-    req['Authorization'] = "Bearer #{token}"
-    req['Content-Type'] = 'application/json'
+    req["Authorization"] = "Bearer #{token}"
+    req["Content-Type"] = "application/json"
     req.body = body.to_json
 
     http = Net::HTTP.new(uri.host, uri.port)
@@ -50,9 +50,9 @@ class ZoomService
     end
 
     data = JSON.parse(res.body)
-    zoom_url   = data['join_url'].to_s
-    meeting_id = data['id'].to_s
-    passcode   = data['password'].to_s
+    zoom_url   = data["join_url"].to_s
+    meeting_id = data["id"].to_s
+    passcode   = data["password"].to_s
 
     # meeting_id をフォーマット（xxx xxxx xxxx）
     formatted_id = meeting_id.gsub(/(\d{3})(\d{4})(\d{4})/, '\1 \2 \3')
@@ -70,27 +70,130 @@ class ZoomService
     create_meeting(title: title, start_date: start_date, start_time: start_time, duration_minutes: duration_minutes)
   end
 
+  # 固定時刻なしの繰り返しミーティング（type 3）を作成する。
+  # 毎週の定例など「常に同じURLで、いつ入っても有効」にしたいとき用。曜日/時刻に依存しない。
+  # Returns { zoom_url:, meeting_id:, passcode: }
+  def create_recurring_meeting(title:)
+    log("[Zoom API] 繰り返しミーティング作成開始: #{title}")
+    token = fetch_access_token
+
+    body = {
+      topic: title,
+      type: 3, # Recurring meeting with no fixed time
+      timezone: "Asia/Tokyo",
+      settings: {
+        waiting_room: true,
+        join_before_host: false,
+        mute_upon_entry: true,
+        auto_recording: "none"
+      }
+    }
+
+    uri = URI(MEETING_URL)
+    req = Net::HTTP::Post.new(uri)
+    req["Authorization"] = "Bearer #{token}"
+    req["Content-Type"] = "application/json"
+    req.body = body.to_json
+
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = true
+    res = http.request(req)
+
+    unless res.code.to_i == 201
+      error_body = JSON.parse(res.body) rescue {}
+      raise "Zoomミーティング作成失敗 (#{res.code}): #{error_body['message'] || res.body}"
+    end
+
+    data = JSON.parse(res.body)
+    meeting_id = data["id"].to_s
+    formatted_id = meeting_id.gsub(/(\d{3})(\d{4})(\d{4})/, '\1 \2 \3')
+
+    log("[Zoom API] ✅ 繰り返しミーティング作成完了: #{data['join_url']}")
+    { zoom_url: data["join_url"].to_s, meeting_id: formatted_id, passcode: data["password"].to_s }
+  end
+
+  # ミーティングのタイトル（topic）を変更する。PATCH /v2/meetings/{id}
+  def update_meeting(meeting_id:, title:)
+    id = normalize_meeting_id(meeting_id)
+    raise "ミーティングIDが不正です" if id.blank?
+
+    log("[Zoom API] タイトル変更: #{id} → #{title}")
+    token = fetch_access_token
+    uri = URI("https://api.zoom.us/v2/meetings/#{id}")
+    req = Net::HTTP::Patch.new(uri)
+    req["Authorization"] = "Bearer #{token}"
+    req["Content-Type"]  = "application/json"
+    req.body = { topic: title }.to_json
+    http = Net::HTTP.new(uri.host, uri.port); http.use_ssl = true
+    res = http.request(req)
+
+    unless res.code.to_i == 204
+      error_body = JSON.parse(res.body) rescue {}
+      raise "Zoomタイトル変更失敗 (#{res.code}): #{error_body['message'] || res.body}"
+    end
+
+    log("[Zoom API] ✅ タイトル変更完了")
+    { meeting_id: id, title: title }
+  end
+
+  # ミーティングを削除する。DELETE /v2/meetings/{id}
+  def delete_meeting(meeting_id:)
+    id = normalize_meeting_id(meeting_id)
+    raise "ミーティングIDが不正です" if id.blank?
+
+    log("[Zoom API] ミーティング削除: #{id}")
+    token = fetch_access_token
+    uri = URI("https://api.zoom.us/v2/meetings/#{id}")
+    req = Net::HTTP::Delete.new(uri)
+    req["Authorization"] = "Bearer #{token}"
+    http = Net::HTTP.new(uri.host, uri.port); http.use_ssl = true
+    res = http.request(req)
+
+    # 204=削除成功, 404=既に存在しない（冪等に成功扱い）
+    unless [ 204, 404 ].include?(res.code.to_i)
+      error_body = JSON.parse(res.body) rescue {}
+      raise "Zoom削除失敗 (#{res.code}): #{error_body['message'] || res.body}"
+    end
+
+    log("[Zoom API] ✅ 削除完了")
+    { meeting_id: id, deleted: true }
+  end
+
+  # Zoom URL（.../j/<id>?...）またはスペース入りID・生IDから、数字のみのミーティングIDを取り出す
+  def self.extract_meeting_id(zoom_url_or_id)
+    str = zoom_url_or_id.to_s
+    if (m = str.match(%r{/j/(\d+)}))
+      m[1]
+    else
+      str.gsub(/\D/, "").presence
+    end
+  end
+
   private
+
+  def normalize_meeting_id(value)
+    self.class.extract_meeting_id(value)
+  end
 
   def log(msg)
     @log.call(msg.to_s)
   end
 
   def fetch_access_token
-    account_id    = ENV['ZOOM_ACCOUNT_ID'].to_s
-    client_id     = ENV['ZOOM_CLIENT_ID'].to_s
-    client_secret = ENV['ZOOM_CLIENT_SECRET'].to_s
+    account_id    = ENV["ZOOM_ACCOUNT_ID"].to_s
+    client_id     = ENV["ZOOM_CLIENT_ID"].to_s
+    client_secret = ENV["ZOOM_CLIENT_SECRET"].to_s
 
-    raise 'ZOOM_ACCOUNT_ID が未設定です。Zoom Marketplace で Server-to-Server OAuth アプリを作成してください。' if account_id.blank?
-    raise 'ZOOM_CLIENT_ID が未設定です' if client_id.blank?
-    raise 'ZOOM_CLIENT_SECRET が未設定です' if client_secret.blank?
+    raise "ZOOM_ACCOUNT_ID が未設定です。Zoom Marketplace で Server-to-Server OAuth アプリを作成してください。" if account_id.blank?
+    raise "ZOOM_CLIENT_ID が未設定です" if client_id.blank?
+    raise "ZOOM_CLIENT_SECRET が未設定です" if client_secret.blank?
 
     uri = URI(TOKEN_URL)
-    uri.query = URI.encode_www_form(grant_type: 'account_credentials', account_id: account_id)
+    uri.query = URI.encode_www_form(grant_type: "account_credentials", account_id: account_id)
 
     req = Net::HTTP::Post.new(uri)
-    req['Authorization'] = "Basic #{Base64.strict_encode64("#{client_id}:#{client_secret}")}"
-    req['Content-Type'] = 'application/x-www-form-urlencoded'
+    req["Authorization"] = "Basic #{Base64.strict_encode64("#{client_id}:#{client_secret}")}"
+    req["Content-Type"] = "application/x-www-form-urlencoded"
 
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
@@ -102,6 +205,6 @@ class ZoomService
     end
 
     data = JSON.parse(res.body)
-    data['access_token']
+    data["access_token"]
   end
 end

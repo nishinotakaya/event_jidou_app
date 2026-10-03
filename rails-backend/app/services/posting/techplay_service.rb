@@ -11,6 +11,13 @@ module Posting
     CREATE_URL    = 'https://owner.techplay.jp/event/create'
     BASE_URL      = 'https://owner.techplay.jp'
 
+    # 公開状態 → publish_state 値（解析済み: 公開中=published / 非公開=draft）
+    PUBLISH_STATE_PUBLISHED = 'published'
+    PUBLISH_STATE_DRAFT     = 'draft'
+
+    # 直近に呼んだ API リクエストURL。PostJob から取り出して posting_histories.api_request_url に保存する
+    attr_reader :last_api_request_url
+
     private
 
     def execute(page, content, ef)
@@ -21,8 +28,10 @@ module Posting
     # ===== ログイン =====
     def ensure_login(page)
       log('[TechPlay] ログインページへ移動...')
-      page.goto(AUTH_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_timeout(2000)
+      # waitUntil: 'commit' はナビゲーションが始まった時点で抜ける（DOMContentLoaded を待たない）。
+      # SPA や CDN 経由で domcontentloaded 確定が遅れるケースで goto が timeout するのを回避。
+      page.goto(AUTH_URL, waitUntil: 'commit', timeout: 90_000)
+      page.wait_for_timeout(3000)
 
       if page.url.include?('dashboard') || page.url.include?('select_menu')
         log('[TechPlay] ✅ ログイン済み')
@@ -184,6 +193,7 @@ module Posting
       # クリックが visible にならず本文未保存になるバグがあった。
       # → セクションごとの実 API (POST /event/:id/edit, JSON _method=put) を直接呼ぶ方式に変更。
       body_text = build_body_text(content, title_text)
+      body_text = append_zoom_block(body_text, ef)
       fill_description_via_api(page, body_text)
 
       # ----- 公開 -----
@@ -198,42 +208,26 @@ module Posting
       log("[TechPlay] ✅ 処理完了 → #{page.url}")
     end
 
-    # 本文用のテキストを組み立てる（タイトルが本文1行目と重複する場合は1行目を除く）
-    def build_body_text(content, title_text)
-      lines = content.to_s.split("\n")
-      first_line = lines.first.to_s.gsub(/\A[#\s「『【]+/, '').gsub(/[】』」\s]+\z/, '').strip
-      (first_line.present? && title_text.include?(first_line)) ? lines.drop(1).join("\n").lstrip : content.to_s
-    end
-
-    # 編集ページから cookie + CSRF を取り出し、Net::HTTP で詳細欄を直接更新する。
-    # API: POST /event/:id/edit (Content-Type: application/json)
-    # Body: {"markdown_description": "<本文>", "_method": "put"}
-    # 応答 200 + JSON body に markdown_description が返ればOK。空なら未保存と判定。
-    def fill_description_via_api(page, body_text)
-      log('[TechPlay] 本文（詳細）を API で直接更新...')
+    # 編集ページから cookie + CSRF を取り出し、API を 1 回 PUT する共通処理。
+    # body は { 'markdown_description' => ... } などのハッシュ。
+    # _method=put は内部で付与する。
+    # 戻り値: [Net::HTTPResponse, parsed_json_or_nil]
+    def put_event_field(page, body_hash)
       page.wait_for_selector('meta[name="csrf-token"]', state: 'attached', timeout: 15_000) rescue nil
-      page.wait_for_timeout(1500)
 
       event_id = page.url[%r{/event/(\d+)}, 1]
-      unless event_id
-        log("[TechPlay] ⚠️ event_id を URL から取れず: #{page.url}")
-        return
-      end
+      raise '[TechPlay] event_id を URL から取得できません' unless event_id
 
-      csrf_token = page.evaluate('() => { const m = document.querySelector(\'meta[name="csrf-token"]\'); return m ? m.content : (window.Laravel && window.Laravel.csrfToken) || null; }')
-      unless csrf_token
-        log('[TechPlay] ⚠️ CSRF token 取得失敗 — 詳細欄を更新できません')
-        return
-      end
+      csrf_token = page.evaluate('() => { const m = document.querySelector(\'meta[name="csrf-token"]\'); return m ? m.content : null; }')
+      raise '[TechPlay] CSRF token 取得失敗' unless csrf_token
 
       cookies = page.context.cookies.select { |c| c['domain'].to_s.include?('techplay.jp') }
       xsrf = cookies.find { |c| c['name'] == 'XSRF-TOKEN' }
-      unless xsrf
-        log('[TechPlay] ⚠️ XSRF-TOKEN cookie 取得失敗')
-        return
-      end
+      raise '[TechPlay] XSRF-TOKEN cookie 取得失敗' unless xsrf
 
       uri = URI("#{BASE_URL}/event/#{event_id}/edit")
+      @last_api_request_url = uri.to_s
+
       req = Net::HTTP::Post.new(uri)
       req['Content-Type']     = 'application/json'
       req['Accept']           = 'application/json, text/plain, */*'
@@ -244,22 +238,59 @@ module Posting
       req['Origin']           = BASE_URL
       req['Referer']          = "#{BASE_URL}/event/#{event_id}/edit"
       req['User-Agent']       = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36'
-      req.body = JSON.generate('markdown_description' => body_text, '_method' => 'put')
+      req.body = JSON.generate(body_hash.merge('_method' => 'put'))
 
       res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 30) { |http| http.request(req) }
-      log("[TechPlay] 本文API応答: #{res.code} (#{res.body.to_s.bytesize}B)")
+      parsed = (JSON.parse(res.body) rescue nil)
+      [res, parsed]
+    end
+
+    # 本文用のテキストを組み立てる（タイトルが本文1行目と重複する場合は1行目を除く）
+    def build_body_text(content, title_text)
+      lines = content.to_s.split("\n")
+      first_line = lines.first.to_s.gsub(/\A[#\s「『【]+/, '').gsub(/[】』」\s]+\z/, '').strip
+      (first_line.present? && title_text.include?(first_line)) ? lines.drop(1).join("\n").lstrip : content.to_s
+    end
+
+    # 本文末尾に Zoom 情報ブロックを追加する。
+    # zoomUrl が無い、または本文に既に同じ URL が含まれる場合は何もしない（冪等）。
+    def append_zoom_block(body_text, ef)
+      zoom_url = ef['zoomUrl'].to_s.strip
+      return body_text if zoom_url.blank?
+      return body_text if body_text.to_s.include?(zoom_url) # 二重追加防止
+
+      lines = []
+      lines << '【オンライン参加について】'
+      lines << '本イベントは Zoom にて開催します。お時間になりましたら下記 URL よりご入室ください。'
+      lines << ''
+      lines << "Zoom URL: #{zoom_url}"
+      lines << "ミーティングID: #{ef['zoomId']}"      if ef['zoomId'].to_s.strip.present?
+      lines << "パスコード: #{ef['zoomPasscode']}"   if ef['zoomPasscode'].to_s.strip.present?
+
+      "#{body_text.to_s.rstrip}\n\n#{lines.join("\n")}\n"
+    end
+
+    # 詳細欄（markdown_description）を API で更新。put_event_field 共通メソッドを利用。
+    def fill_description_via_api(page, body_text)
+      log('[TechPlay] 本文（詳細）を API で直接更新...')
+      page.wait_for_timeout(1500)
+
+      res, parsed = put_event_field(page, 'markdown_description' => body_text)
+      log("[TechPlay] 本文API応答: #{res.code} (#{res.body.to_s.bytesize}B) url=#{@last_api_request_url}")
 
       unless res.is_a?(Net::HTTPSuccess)
         log("[TechPlay] ❌ 本文保存失敗: #{res.body.to_s[0,300]}")
         return
       end
 
-      saved = (JSON.parse(res.body) rescue {})['markdown_description'].to_s
+      saved = parsed.is_a?(Hash) ? parsed['markdown_description'].to_s : ''
       if saved.empty?
         log('[TechPlay] ⚠️ 応答に markdown_description が無い — 未保存の疑い')
       else
         log("[TechPlay] ✅ 本文保存完了（先頭=#{saved[0,40].inspect}）")
       end
+    rescue => e
+      log("[TechPlay] ⚠️ 本文API失敗: #{e.message}")
     end
 
     # ===== 日時入力 (Vue datetimepicker) =====
@@ -309,68 +340,35 @@ module Posting
       log("[TechPlay] #{label}日時入力: #{value}")
     end
 
-    # ===== 公開 =====
+    # ===== 公開（API 化）=====
+    # 旧実装: 画面内の「公開する」ボタンを Playwright でクリック
+    #   → このボタンは画像未設定時に「画像選択」モーダルを開く UI 専用ボタンで、
+    #     クリックしても publish API は呼ばれず、モーダルが残ったまま終了して
+    #     非公開のまま放置されるバグがあった（4/28 確認）。
+    # 新実装: edit ページの publish_state を 'published' に PUT する。
+    #   解析結果: 公開中=publish_state="published" / 非公開=publish_state="draft"
     def publish_event(page)
-      # 保存直後にモーダルが残っていることがあるので、まずはモーダル内の公開/確認ボタンを優先
-      if click_modal_publish_button(page)
-        page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
-        log("[TechPlay] ✅ 公開完了（保存直後モーダル）→ #{page.url}")
-        return
+      log('[TechPlay] publish_state を published に更新...')
+      res, parsed = put_event_field(page, 'publish_state' => PUBLISH_STATE_PUBLISHED)
+      log("[TechPlay] 公開API応答: #{res.code} (#{res.body.to_s.bytesize}B) url=#{@last_api_request_url}")
+
+      unless res.is_a?(Net::HTTPSuccess)
+        raise "[TechPlay] 公開API失敗(HTTP #{res.code}): #{res.body.to_s[0,400]}"
       end
 
-      # 通常フロー: 画面内の公開ボタンを探す（モーダルが閉じていることを前提）
-      publish_btn = nil
-      ['公開する', '公開'].each do |text|
-        # モーダル配下のボタンは除外し、可視＆クリック可能なボタンを取得
-        btn = page.locator("button:has-text('#{text}'):not(.modal button), a:has-text('#{text}'):not(.modal a)").first
-        if (btn.visible?(timeout: 2000) rescue false)
-          publish_btn = btn
-          break
-        end
+      saved_state = parsed.is_a?(Hash) ? parsed['publish_state'].to_s : ''
+      if saved_state == PUBLISH_STATE_PUBLISHED
+        log('[TechPlay] ✅ 公開完了（API）')
+        @published = true
+      else
+        log("[TechPlay] ⚠️ 応答 publish_state=#{saved_state.inspect} — 想定外（必須項目欠落の可能性）")
+        @published = false
+        raise "[TechPlay] 公開反映されず: #{parsed.inspect[0,400]}"
       end
-
-      unless publish_btn
-        log('[TechPlay] ⚠️ 公開ボタンが見つかりません')
-        return
-      end
-
-      # クリック前にモーダルが邪魔していれば Escape で閉じる
-      dismiss_blocking_modal(page)
-
-      publish_btn.click(timeout: 10_000, force: true) rescue publish_btn.click(timeout: 10_000)
-      page.wait_for_timeout(2000)
-
-      # 確認モーダル内のボタンを押す
-      click_modal_publish_button(page)
-
-      page.wait_for_load_state('networkidle', timeout: 30_000) rescue nil
-      log("[TechPlay] ✅ 公開完了 → #{page.url}")
-    end
-
-    # モーダルが開いていれば、その内部の公開/確認ボタンをクリックする
-    def click_modal_publish_button(page)
-      modal = page.locator('.dialog.modal.is-active, .modal.is-active').first
-      return false unless (modal.visible?(timeout: 1000) rescue false)
-
-      %w[公開する 公開 はい OK 確認].each do |text|
-        btn = modal.locator("button:has-text('#{text}'), a:has-text('#{text}')").first
-        if (btn.visible?(timeout: 1000) rescue false)
-          btn.click(timeout: 10_000)
-          page.wait_for_timeout(2000)
-          log("[TechPlay] モーダル内『#{text}』をクリック")
-          return true
-        end
-      end
-      false
-    end
-
-    # クリックを妨げる情報モーダル（キャンセル系）があれば Escape で閉じる
-    def dismiss_blocking_modal(page)
-      modal = page.locator('.dialog.modal.is-active, .modal.is-active').first
-      return unless (modal.visible?(timeout: 500) rescue false)
-
-      page.keyboard.press('Escape') rescue nil
-      page.wait_for_timeout(500)
+    rescue => e
+      log("[TechPlay] ❌ 公開失敗: #{e.message}")
+      @published = false
+      raise
     end
 
     # --- 削除・中止 ---

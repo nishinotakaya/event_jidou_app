@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.vercel.event_kokuthi_app_front.twa",
+    "sha256_cert_fingerprints": ["3F:5F:31:22:71:C5:30:52:D8:60:06:14:88:DC:FA:72:8B:82:07:A7:3E:B2:B7:AB:E6:03:78:8E:07:47:C6:54"]
+  }
+}]

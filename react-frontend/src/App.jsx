@@ -1,14 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from './components/Sidebar.jsx';
 import ItemList from './components/ItemList.jsx';
-import EditModal from './components/EditModal.jsx';
 import PostModal from './components/PostModal.jsx';
 import ConnectionsPage from './components/ConnectionsPage.jsx';
 import CalendarView from './components/CalendarView.jsx';
 import LoginPage from './components/LoginPage.jsx';
 import StudentsPage from './components/StudentsPage.jsx';
 import UsersPage from './components/UsersPage.jsx';
+import MeetingNotificationsPage from './components/MeetingNotificationsPage.jsx';
 import DetailModal from './components/DetailModal.jsx';
+import XPage from './components/x/XPage.jsx';
+import AnnouncementPanel from './components/AnnouncementPanel.jsx';
+import ResearchPage from './components/ResearchPage.jsx';
+import CommunityResearchPage from './components/CommunityResearchPage.jsx';
+import InstallBanner from './components/InstallBanner.jsx';
 import { fetchTexts, fetchFolders, deleteText, createText, deleteRemoteEvents, cancelRemoteEvents, fetchPostingHistory, scanGithubReviews } from './api.js';
 import './index.css';
 
@@ -34,7 +39,9 @@ function useToasts() {
 }
 
 export default function App() {
-  const [activePage, setActivePage] = useState('main'); // 'main' | 'connections'
+  // 'main' | 'x' | 'announcements' | 'meetingNotifications' | 'research' | 'community'
+  // URL は使っていない（react-router 未導入）が、ヘッダーのリンクラベルとして /x, /announcements を使う。
+  const [activePage, setActivePage] = useState('main');
   const [activeType, setActiveType] = useState('event');
   const [items, setItems] = useState([]);
   const [folders, setFolders] = useState([]);
@@ -53,8 +60,21 @@ export default function App() {
   const [showCalendar, setShowCalendar] = useState(true);
   const [showStudents, setShowStudents] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // モバイル用ドロワーの開閉状態
   const [detailItem, setDetailItem] = useState(null); // viewer用詳細モーダル
   const [currentUser, setCurrentUser] = useState(undefined); // undefined=loading, null=guest, object=logged in
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // クリック外しでメニュー閉じる
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
 
   const { toasts, showToast, removeToast } = useToasts();
 
@@ -93,10 +113,20 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const restoreSession = async () => {
-      // URLにlogin=successがあればクエリパラメータを消す
+      // OAuth callback から戻ってきた場合は ?token=xxx を session に交換してから current_user を取る
       const params = new URLSearchParams(window.location.search);
-      if (params.get('login') === 'success') {
+      const oauthToken = params.get('login') === 'success' ? params.get('token') : null;
+      if (params.get('login')) {
         window.history.replaceState({}, '', window.location.pathname);
+      }
+      if (oauthToken) {
+        try {
+          await fetch('/api/sessions/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: oauthToken }),
+          });
+        } catch {}
       }
       try {
         const res = await fetch('/api/current_user');
@@ -144,6 +174,9 @@ export default function App() {
     setShowStudents(false);
     setShowCalendar(false);
   }
+
+  // ===== モバイルドロワー =====
+  const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
 
   // ===== Delete =====
   const [deleteRemoteRunning, setDeleteRemoteRunning] = useState(false);
@@ -269,21 +302,44 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={closeSidebar}
         activeType={activeType}
-        onTypeChange={setActiveType}
+        onTypeChange={(type) => { setActiveType(type); closeSidebar(); }}
         folders={folders}
         items={items}
         selectedFolder={selectedFolder}
-        onSelectFolder={handleSelectFolder}
+        onSelectFolder={(folder) => { handleSelectFolder(folder); closeSidebar(); }}
         onFolderChange={loadAll}
         showToast={showToast}
-        onNavigate={setActivePage}
+        onNavigate={(target) => {
+          if (target === 'students') {
+            setActivePage('main');
+            setShowStudents(true);
+            setShowCalendar(false);
+            setShowConnections(false);
+          } else {
+            setActivePage(target);
+          }
+          closeSidebar();
+        }}
       />
+      {isSidebarOpen && <div className="sidebar-backdrop" onClick={closeSidebar} />}
 
       <div className="main-area">
         {/* Header */}
         <div className="main-header">
           <div className="main-header-left">
+            <button
+              type="button"
+              className="sidebar-toggle"
+              aria-label="メニューを開く"
+              onClick={() => setIsSidebarOpen(true)}
+            >
+              <span />
+              <span />
+              <span />
+            </button>
             <h1 className="main-header-title">{typeLabel}</h1>
             <div className="folder-breadcrumb">
               <span className="folder-breadcrumb-sep">/</span>
@@ -292,85 +348,81 @@ export default function App() {
           </div>
           <div className="main-header-actions">
             {currentUser && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '8px', padding: '4px 12px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-                {currentUser.avatarUrl && (
-                  <img src={currentUser.avatarUrl} alt="" style={{ width: 24, height: 24, borderRadius: '50%' }} />
-                )}
-                <div style={{ lineHeight: 1.2 }}>
-                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#166534' }}>{currentUser.name}</div>
-                  <div style={{ fontSize: '10px', color: '#6b7280' }}>{currentUser.email}</div>
-                </div>
+              <div ref={menuRef} style={{ position: 'relative' }}>
                 <button
-                  onClick={async () => {
-                    await fetch('/api/logout', { method: 'DELETE' });
-                    setCurrentUser(null);
-                  }}
-                  style={{ marginLeft: '4px', padding: '2px 8px', background: 'none', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '10px', color: '#6b7280', cursor: 'pointer' }}
+                  type="button"
+                  className="user-menu-button"
+                  onClick={() => setMenuOpen((v) => !v)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0', cursor: 'pointer' }}
                 >
-                  ログアウト
+                  {currentUser.avatarUrl ? (
+                    <img src={currentUser.avatarUrl} alt="" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                  ) : (
+                    <span className="user-menu-initial" aria-hidden="true">
+                      {(currentUser.name || currentUser.email || '?').trim().charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <div className="user-menu-identity" style={{ lineHeight: 1.2, textAlign: 'left' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#166534' }}>{currentUser.name}</div>
+                    <div style={{ fontSize: '10px', color: '#6b7280' }}>{currentUser.email}</div>
+                  </div>
+                  <span style={{ fontSize: '10px', color: '#166534', marginLeft: '2px' }}>{menuOpen ? '▲' : '▼'}</span>
                 </button>
+
+                {menuOpen && (
+                  <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: '220px', background: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '6px 0', zIndex: 50 }}>
+                    {(() => {
+                      const sectionLabel = (text) => (
+                        <div style={{ padding: '6px 14px 2px', fontSize: '10px', color: '#9ca3af', fontWeight: 600, letterSpacing: '0.04em' }}>{text}</div>
+                      );
+                      const item = ({ key, label, active, onClick, disabled, danger }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => { onClick(); setMenuOpen(false); }}
+                          style={{
+                            width: '100%', textAlign: 'left', padding: '8px 14px', background: active ? '#f3f4f6' : 'transparent',
+                            border: 'none', fontSize: '13px', color: danger ? '#dc2626' : (active ? '#111827' : '#374151'),
+                            cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, fontWeight: active ? 600 : 400,
+                          }}
+                        >{label}</button>
+                      );
+                      return (
+                        <>
+                          {sectionLabel('ページ')}
+                          {item({ key: 'main', label: 'イベント一覧', active: activePage === 'main' && !showStudents && !showConnections && !showUsers, onClick: () => { setActivePage('main'); setShowStudents(false); setShowConnections(false); setShowUsers(false); } })}
+                          {item({ key: 'ann', label: '告知', active: activePage === 'announcements', onClick: () => setActivePage('announcements') })}
+                          {item({ key: 'x',   label: '𝕏 自動', active: activePage === 'x', onClick: () => setActivePage('x') })}
+                          {item({ key: 'meetingNotifications', label: '📅 定例ミーティング通知', active: activePage === 'meetingNotifications', onClick: () => setActivePage('meetingNotifications') })}
+                          {item({ key: 'research', label: '🔎 交流会リサーチ', active: activePage === 'research', onClick: () => setActivePage('research') })}
+                          {item({ key: 'community', label: '🏢 コミュニティ検索', active: activePage === 'community', onClick: () => setActivePage('community') })}
+
+                          {sectionLabel('表示')}
+                          {item({ key: 'cal', label: showCalendar ? '📋 一覧で見る' : '📅 カレンダーで見る', active: activePage === 'main' && showCalendar, onClick: () => { setActivePage('main'); setShowCalendar(!showCalendar); setShowConnections(false); setShowStudents(false); setShowUsers(false); } })}
+                          {item({ key: 'stu', label: '🎓 受講生一覧',  active: activePage === 'main' && showStudents, onClick: () => { setActivePage('main'); setShowStudents(!showStudents); setShowCalendar(false); setShowConnections(false); setShowUsers(false); } })}
+
+                          {currentUser?.role !== 'viewer' && (
+                            <>
+                              {sectionLabel('管理')}
+                              {item({ key: 'conn', label: '🔗 サービス接続管理', active: activePage === 'main' && showConnections, onClick: () => { setActivePage('main'); setShowConnections(!showConnections); setShowCalendar(false); setShowStudents(false); setShowUsers(false); } })}
+                              {currentUser?.role === 'admin' && item({ key: 'usr', label: '👥 ユーザー管理', active: activePage === 'main' && showUsers, onClick: () => { setActivePage('main'); setShowUsers(!showUsers); setShowCalendar(false); setShowConnections(false); setShowStudents(false); } })}
+                            </>
+                          )}
+
+                          <div style={{ borderTop: '1px solid #e5e7eb', margin: '6px 0' }} />
+                          {item({ key: 'logout', label: 'ログアウト', danger: true, onClick: async () => {
+                            await fetch('/api/logout', { method: 'DELETE' });
+                            setCurrentUser(null);
+                          } })}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             )}
-            <button
-              className="btn"
-              onClick={() => { setShowStudents(!showStudents); if (!showStudents) { setShowCalendar(false); setShowConnections(false); } }}
-              style={{
-                background: showStudents ? '#7c3aed' : '#faf5ff',
-                color: showStudents ? '#fff' : '#7c3aed',
-                border: showStudents ? '1.5px solid #7c3aed' : '1.5px solid #e9d5ff',
-                fontWeight: 600,
-                transition: 'all 0.2s',
-                boxShadow: showStudents ? '0 2px 8px rgba(124,58,237,0.3)' : 'none',
-              }}
-            >
-              🎓 受講生一覧
-            </button>
-            <button
-              className="btn"
-              onClick={() => { setShowCalendar(!showCalendar); if (!showCalendar) { setShowConnections(false); setShowStudents(false); } }}
-              title={showCalendar ? 'カレンダーを隠す' : 'カレンダーを表示'}
-              style={{
-                background: showCalendar ? '#16a34a' : '#f0fdf4',
-                color: showCalendar ? '#fff' : '#16a34a',
-                border: showCalendar ? '1.5px solid #16a34a' : '1.5px solid #bbf7d0',
-                fontWeight: 600,
-                transition: 'all 0.2s',
-                boxShadow: showCalendar ? '0 2px 8px rgba(22,163,74,0.3)' : 'none',
-              }}
-            >
-              {showCalendar ? '📋 一覧表示' : '📅 カレンダー'}
-            </button>
-            {currentUser?.role !== 'viewer' && <button
-              className="btn"
-              onClick={() => { setShowConnections(!showConnections); if (!showConnections) setShowCalendar(false); }}
-              title={showConnections ? 'サービス接続管理を隠す' : 'サービス接続管理を表示'}
-              style={{
-                background: showConnections ? '#4f46e5' : '#eef2ff',
-                color: showConnections ? '#fff' : '#4f46e5',
-                border: showConnections ? '1.5px solid #4f46e5' : '1.5px solid #c7d2fe',
-                fontWeight: 600,
-                transition: 'all 0.2s',
-                boxShadow: showConnections ? '0 2px 8px rgba(79,70,229,0.3)' : 'none',
-              }}
-            >
-              {showConnections ? '📋 イベント一覧 ▲' : '🔗 接続管理 ▼'}
-            </button>}
-            {currentUser?.role === 'admin' && (
-              <button
-                className="btn"
-                onClick={() => { setShowUsers(!showUsers); if (!showUsers) { setShowCalendar(false); setShowConnections(false); setShowStudents(false); } }}
-                style={{
-                  background: showUsers ? '#dc2626' : '#fef2f2',
-                  color: showUsers ? '#fff' : '#dc2626',
-                  border: showUsers ? '1.5px solid #dc2626' : '1.5px solid #fca5a5',
-                  fontWeight: 600,
-                  transition: 'all 0.2s',
-                }}
-              >
-                👥 ユーザー管理
-              </button>
-            )}
-            {currentUser?.role !== 'viewer' && (
+            {activePage === 'main' && currentUser?.role !== 'viewer' && (
               <button
                 className="btn btn-primary"
                 onClick={() => setEditItem({})}
@@ -381,8 +433,33 @@ export default function App() {
           </div>
         </div>
 
+        {/* ===== /x ページ ===== */}
+        {activePage === 'x' && (
+          <XPage showToast={showToast} />
+        )}
+
+        {/* ===== /announcements ページ ===== */}
+        {activePage === 'announcements' && (
+          <AnnouncementPanel showToast={showToast} />
+        )}
+
+        {/* ===== 定例ミーティング通知ページ ===== */}
+        {activePage === 'meetingNotifications' && (
+          <MeetingNotificationsPage showToast={showToast} />
+        )}
+
+        {/* ===== 交流会リサーチページ ===== */}
+        {activePage === 'research' && (
+          <ResearchPage showToast={showToast} />
+        )}
+
+        {/* ===== コミュニティ検索ページ ===== */}
+        {activePage === 'community' && (
+          <CommunityResearchPage showToast={showToast} />
+        )}
+
         {/* Service Connections (toggle) */}
-        {showConnections && (
+        {activePage === 'main' && showConnections && (
           <div style={{ padding: '0 24px', marginBottom: '16px' }}>
             <div style={{ borderRadius: '12px', border: '1.5px solid #e2d9f3', background: '#faf8ff', padding: '16px' }}>
               <ConnectionsPage
@@ -396,17 +473,17 @@ export default function App() {
         )}
 
         {/* Users Page (admin only) */}
-        {showUsers && currentUser?.role === 'admin' && (
+        {activePage === 'main' && showUsers && currentUser?.role === 'admin' && (
           <UsersPage showToast={showToast} />
         )}
 
         {/* Students Page */}
-        {showStudents && (
+        {activePage === 'main' && showStudents && (
           <StudentsPage showToast={showToast} />
         )}
 
         {/* Calendar View */}
-        {showCalendar && (
+        {activePage === 'main' && showCalendar && (
           <CalendarView
             items={items}
             selectedFolder={selectedFolder}
@@ -435,7 +512,7 @@ export default function App() {
         )}
 
         {/* Search + Sort + Item List (接続管理・カレンダー表示中は非表示) */}
-        {!showConnections && !showCalendar && !showStudents && !showUsers && (<>
+        {activePage === 'main' && !showConnections && !showCalendar && !showStudents && !showUsers && (<>
         <div className="search-bar">
           <span className="search-icon">🔍</span>
           <input
@@ -632,6 +709,8 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      <InstallBanner />
     </div>
   );
 }

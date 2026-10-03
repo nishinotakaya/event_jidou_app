@@ -1,0 +1,549 @@
+import { useState, useEffect } from 'react';
+import {
+  searchCrossSiteEvents,
+  searchViaBrowserFallback,
+  fetchResearchFavorites,
+  addResearchFavorite,
+  removeResearchFavorite,
+} from '../api.js';
+import SiteSelectBox from './research/SiteSelectBox.jsx';
+import { LOCATIONS } from './research/locations.js';
+
+// バックエンド Api::ResearchController::SERVICES と対応
+const SITES = [
+  { key: 'kokuchpro', label: 'こくちーずプロ', color: '#e67e22' },
+  { key: 'peatix', label: 'Peatix', color: '#27ae60' },
+  { key: 'connpass', label: 'connpass', color: '#c0392b' },
+  { key: 'techplay', label: 'TechPlay', color: '#2980b9' },
+  { key: 'doorkeeper', label: 'Doorkeeper', color: '#8e44ad' },
+  { key: 'jimoty', label: 'ジモティー', color: '#16a085' },
+  // 下2つはサイト側にフリーワード検索が無いため、キーワードに関係なく交流会カテゴリの開催予定を全件表示する
+  { key: 'evenz', label: 'e-venz', color: '#d35400', note: 'キーワード非対応（異業種交流会カテゴリを全件表示）' },
+  { key: 'doomo', label: 'Doomo', color: '#34495e', note: 'キーワード非対応（ビジネス交流会の開催予定を全件表示）' },
+  { key: 'wework', label: 'WeWork', color: '#0a1f44', note: 'サイト内検索が無いため、掲載中のイベントのタイトル・カテゴリ・会場で突き合わせます' },
+  { key: 'tunagate', label: 'つなげーと', color: '#5b8c00', note: '社会人サークル・趣味友。複数語だと、いずれかの語に当たるイベントが返ります' },
+  { key: 'meetup', label: 'Meetup', color: '#f64060', note: 'サイト側で地域指定が必須のため、地域未選択のときは東京周辺を検索します' },
+  // 街コン・婚活は客層が人脈づくり／講座の集客とズレるので、普段の検索を汚さないよう既定では外す。
+  { key: 'machicon', label: '街コンジャパン', color: '#8d6e63', defaultOff: true, note: '恋活・婚活が中心。既定ではOFF' },
+  { key: 'omicale', label: 'オミカレ', color: '#e91e63', defaultOff: true, note: '恋活・婚活が中心。既定ではOFF' },
+];
+
+// 初期状態で検索するサイト（defaultOff は明示的に選んだときだけ検索する）
+const DEFAULT_SITE_KEYS = SITES.filter((site) => !site.defaultOff).map((site) => site.key);
+
+// ワンタップで投げられる定番キーワード。
+// 「自分が出向いて人脈をつくる」用と「自分の講座に人を呼ぶ・競合を見る」用で目的が違うので、行を分ける。
+//
+// 並んでいる語は 2026-08-27 に7サイト（こくちーずプロ/Peatix/connpass/TechPlay/Doorkeeper/
+// ジモティー/WeWork）へ実際に投げて、開催予定の件数と中身を見て選んだもの。落とした語と理由:
+//   - 「エンジニア 転職 相談会」46件 … connpass・TechPlay が0件で、こくちーずプロに偏る
+//   - 「AI プログラミングスクール」60件 … ジモティーの子ども向けプログラミング教室が過半でノイズ
+//   - 「ノーコード 勉強会」14件 … そもそも開催数が少ない
+//   - 「ビジネス交流会」「名刺交換会」 … 「異業種交流会」とヒットがほぼ重複する
+// 「SES」は 2026-09-04 に追加（脱SES・SES企業の勉強会/交流会を拾う。SESエンジニアは講座の見込み客）。
+const PRESET_KEYWORD_GROUPS = [
+  {
+    label: '人脈づくり',
+    keywords: [
+      '経営者 交流会',
+      '異業種交流会',
+      '起業家 交流会',
+      'IT 交流会',
+      'エンジニア 交流会',
+      'フリーランス 交流会',
+      'スタートアップ 交流会',
+    ],
+  },
+  {
+    label: '集客・同業リサーチ',
+    keywords: [
+      'AI 活用 セミナー',
+      'プログラミング 初心者',
+      '未経験 エンジニア',
+      'AI 副業',
+      'SES',
+      '生成AI 勉強会',
+      'AIエージェント',
+      'Claude Code',
+      'AI駆動開発',
+      'プログラミングスクール',
+    ],
+  },
+  {
+    label: '出会い・街コン',
+    keywords: ['街コン', '恋活', '婚活パーティー', '友達作り'],
+  },
+];
+
+// ===== 開催日ユーティリティ =====
+// 終了したイベントはサーバー側で常に落とされるので、ここで作る範囲は必ず今日以降になる。
+function formatDate(date) {
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function addDays(date, days) {
+  const moved = new Date(date);
+  moved.setDate(moved.getDate() + days);
+  return moved;
+}
+
+// ワンタップで開催日を絞るプリセット。交流会は「今週末」「来月」で探されることが多い。
+function buildDatePresets(today) {
+  const dayOfWeek = today.getDay(); // 0=日曜
+  // 今週末＝直近の土曜〜日曜。日曜日に見ているときは土曜が過ぎているので今日だけを指す。
+  const saturday = dayOfWeek === 0 ? today : addDays(today, 6 - dayOfWeek);
+  const sunday = dayOfWeek === 0 ? today : addDays(saturday, 1);
+  const endOfThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const startOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  const endOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+
+  return [
+    { label: '今日', from: formatDate(today), to: formatDate(today) },
+    { label: '今週末', from: formatDate(saturday), to: formatDate(sunday) },
+    { label: '今月', from: formatDate(today), to: formatDate(endOfThisMonth) },
+    { label: '来月', from: formatDate(startOfNextMonth), to: formatDate(endOfNextMonth) },
+    { label: '3ヶ月以内', from: formatDate(today), to: formatDate(addDays(today, 90)) },
+  ];
+}
+
+const DATE_INPUT_STYLE = {
+  padding: '3px 8px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '12px', color: '#1f2937',
+};
+
+// 検索結果とお気に入り一覧で同じ見た目にしたいので、カードは1箇所で持つ。
+// 星ボタンはリンク（<a>）の中に入れず兄弟にしている（入れ子にすると星クリックでもサイトが開いてしまう）。
+function EventCard({ event, siteMeta, favorited, onToggleFavorite }) {
+  return (
+    <div style={{ display: 'flex', gap: '8px', padding: '12px 14px', borderRadius: '10px', border: '1px solid #e5e7eb', background: '#fff', alignItems: 'flex-start' }}>
+      <a
+        href={event.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ display: 'flex', gap: '12px', flex: 1, minWidth: 0, textDecoration: 'none', color: 'inherit', alignItems: 'flex-start' }}
+      >
+        {event.imageUrl && (
+          <img
+            src={event.imageUrl}
+            alt=""
+            style={{ width: '96px', height: '64px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        )}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '4px' }}>
+            <span style={{ padding: '1px 8px', borderRadius: '999px', background: siteMeta[event.site]?.color || '#6b7280', color: '#fff', fontSize: '11px', fontWeight: 600 }}>
+              {event.siteLabel}
+            </span>
+            {event.datetimeText && (
+              <span style={{ fontSize: '12px', color: '#374151', fontWeight: 600 }}>📅 {event.datetimeText}</span>
+            )}
+          </div>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {event.title}
+          </div>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px', color: '#6b7280' }}>
+            {event.venue && <span>📍 {event.venue}</span>}
+            {event.organizer && <span>👤 {event.organizer}</span>}
+            {event.participants != null && (
+              <span>👥 {event.participants}{event.capacity ? `/${event.capacity}` : ''}人</span>
+            )}
+          </div>
+        </div>
+      </a>
+      <button
+        type="button"
+        onClick={() => onToggleFavorite(event)}
+        title={favorited ? 'お気に入りから外す' : 'お気に入りに追加'}
+        aria-label={favorited ? 'お気に入りから外す' : 'お気に入りに追加'}
+        aria-pressed={favorited}
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '20px', lineHeight: 1, padding: '2px 4px', color: favorited ? '#f59e0b' : '#d1d5db', flexShrink: 0 }}
+      >
+        {favorited ? '★' : '☆'}
+      </button>
+    </div>
+  );
+}
+
+export default function ResearchPage({ showToast }) {
+  const [keyword, setKeyword] = useState('経営者 交流会');
+  const [selectedSites, setSelectedSites] = useState(DEFAULT_SITE_KEYS);
+  const [selectedLocations, setSelectedLocations] = useState([]); // 空 = 全国
+  const [dateFrom, setDateFrom] = useState(''); // 'YYYY-MM-DD' / 空 = 今日以降すべて
+  const [dateTo, setDateTo] = useState('');
+  const [appliedRange, setAppliedRange] = useState(null); // 実際に検索に使われた範囲（サーバーの返答）
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState(null); // null=未検索
+  const [siteErrors, setSiteErrors] = useState({});
+  const [countsBySite, setCountsBySite] = useState({});
+  const [siteFilter, setSiteFilter] = useState('all'); // 結果一覧の絞り込み
+  const [favorites, setFavorites] = useState([]); // 星を付けたイベント（サーバー保存）
+  const [showFavorites, setShowFavorites] = useState(false); // true = お気に入りだけを表示
+
+  // 星の付き外しは検索前から見えていてほしいので、ページを開いた時点で読む。
+  useEffect(() => {
+    fetchResearchFavorites()
+      .then(setFavorites)
+      .catch((err) => showToast(err.message, 'error'));
+  }, [showToast]);
+
+  function toggleLocation(key) {
+    setSelectedLocations((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  }
+
+  // プリセット（キーワード・開催日）は state 更新を待たずに検索したいので、
+  // 検索条件は overrides で受け取れるようにしている。
+  async function handleSearch(overrides = {}) {
+    const trimmed = (overrides.keyword ?? keyword).trim();
+    const from = overrides.dateFrom ?? dateFrom;
+    const to = overrides.dateTo ?? dateTo;
+    if (!trimmed) {
+      showToast('キーワードを入力してください', 'error');
+      return;
+    }
+    if (selectedSites.length === 0) {
+      showToast('検索するサイトを1つ以上選択してください', 'error');
+      return;
+    }
+    if (from && to && to < from) {
+      showToast('開催日の終了日は開始日以降にしてください', 'error');
+      return;
+    }
+    setSearching(true);
+    setSiteFilter('all');
+    try {
+      const data = await searchCrossSiteEvents({ keyword: trimmed, sites: selectedSites, locations: selectedLocations, dateFrom: from, dateTo: to });
+      const { results: mergedResults, errors, counts } = await retryBlockedSitesFromBrowser(data, { dateFrom: from, dateTo: to });
+      setResults(mergedResults);
+      setSiteErrors(errors);
+      setCountsBySite(counts);
+      setAppliedRange({ from: data.searchedDateFrom, to: data.searchedDateTo });
+      const errorCount = Object.keys(errors).length;
+      if (errorCount > 0) {
+        showToast(`${errorCount}サイトで検索に失敗しました（他サイトの結果は表示中）`, 'error');
+      } else {
+        showToast(`${mergedResults.length}件見つかりました`, 'success');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  // Peatix のようにサーバー（Heroku）のIPを弾くサイトを、ブラウザ（＝自分の回線）から取り直して合流させる。
+  // サーバーが「取り直せるサイト」と判断したものだけが data.browserFallbacks に入ってくるので、
+  // ここではサイト名を一切ハードコードしない。取り直しに成功したらそのサイトのエラー表示は消し、
+  // 失敗したら元のエラーに理由を足して残す（黙って消すとユーザーが取りこぼしに気付けない）。
+  async function retryBlockedSitesFromBrowser(data, { dateFrom: from, dateTo: to }) {
+    const errors = { ...(data.errors || {}) };
+    const counts = { ...(data.countsBySite || {}) };
+    const fallbackEntries = Object.entries(data.browserFallbacks || {});
+
+    const retried = await Promise.all(
+      fallbackEntries.map(async ([site, fallback]) => {
+        try {
+          const siteResults = await searchViaBrowserFallback({ site, fallback, locations: selectedLocations, dateFrom: from, dateTo: to });
+          counts[site] = siteResults.length;
+          delete errors[site];
+          return siteResults;
+        } catch (err) {
+          errors[site] = `${errors[site]}（ブラウザからの再取得も失敗: ${err.message}）`;
+          return [];
+        }
+      })
+    );
+
+    const results = [...(data.results || []), ...retried.flat()].sort((a, b) =>
+      (a.startsAt || '9999-12-31').localeCompare(b.startsAt || '9999-12-31')
+    );
+    return { results, errors, counts };
+  }
+
+  const favoriteUrls = new Set(favorites.map((favorite) => favorite.url));
+
+  // 星は連打されるので、先に画面を更新してから通信する（失敗したら元に戻して知らせる）。
+  async function toggleFavorite(event) {
+    const wasFavorited = favoriteUrls.has(event.url);
+    const previousFavorites = favorites;
+    setFavorites(wasFavorited
+      ? favorites.filter((favorite) => favorite.url !== event.url)
+      : [ ...favorites, event ]);
+    try {
+      if (wasFavorited) {
+        await removeResearchFavorite(event.url);
+      } else {
+        await addResearchFavorite(event);
+      }
+    } catch (err) {
+      setFavorites(previousFavorites);
+      showToast(err.message, 'error');
+    }
+  }
+
+  const todayText = formatDate(new Date());
+  const datePresets = buildDatePresets(new Date());
+  const dateRangeSummary = appliedRange
+    ? `📅 ${appliedRange.from} 〜 ${appliedRange.to || '指定なし'}（終了したイベントは非表示）`
+    : null;
+
+  function applyDatePreset(preset) {
+    const cleared = dateFrom === preset.from && dateTo === preset.to;
+    const from = cleared ? '' : preset.from;
+    const to = cleared ? '' : preset.to;
+    setDateFrom(from);
+    setDateTo(to);
+    if (results !== null) handleSearch({ dateFrom: from, dateTo: to });
+  }
+
+  const siteMeta = Object.fromEntries(SITES.map((s) => [s.key, s]));
+  const visibleResults = (results || []).filter(
+    (r) => siteFilter === 'all' || r.site === siteFilter
+  );
+
+  return (
+    <div style={{ padding: '0 24px 24px' }}>
+      {/* 検索条件 */}
+      <div style={{ borderRadius: '12px', border: '1.5px solid #e2d9f3', background: '#faf8ff', padding: '16px', marginBottom: '16px' }}>
+        <div className="research-page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: '#5b21b6' }}>
+            🔎 交流会リサーチ — 複数サイトを一斉検索
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowFavorites((shown) => !shown)}
+            style={{ padding: '3px 12px', borderRadius: '999px', border: '1px solid #fcd34d', background: showFavorites ? '#f59e0b' : '#fff', color: showFavorites ? '#fff' : '#b45309', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            {showFavorites ? '★ お気に入り表示中' : `☆ お気に入り ${favorites.length}`}
+          </button>
+        </div>
+
+        {/* キーワード入力 + 検索ボタン */}
+        <div className="research-search-row" style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+          <input
+            type="text"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !searching) handleSearch(); }}
+            placeholder="例: 経営者 交流会"
+            style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px' }}
+          />
+          <button
+            className="btn btn-primary"
+            onClick={() => handleSearch()}
+            disabled={searching}
+            style={{ minWidth: '110px' }}
+          >
+            {searching ? '検索中...' : '一斉検索'}
+          </button>
+        </div>
+
+        {/* プリセットキーワード（目的別） */}
+        {PRESET_KEYWORD_GROUPS.map((group) => (
+          <div key={group.label} style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '12px', color: '#6b7280', minWidth: '104px' }}>{group.label}:</span>
+            {group.keywords.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                disabled={searching}
+                onClick={() => { setKeyword(preset); handleSearch({ keyword: preset }); }}
+                style={{ padding: '4px 10px', borderRadius: '999px', border: '1px solid #c4b5fd', background: keyword === preset ? '#ede9fe' : '#fff', color: '#6d28d9', fontSize: '12px', cursor: 'pointer' }}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+        ))}
+
+        {/* サイト選択（セレクトボックス・複数選択可） */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '10px' }}>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>検索先:</span>
+          <SiteSelectBox
+            sites={SITES}
+            selectedKeys={selectedSites}
+            onChange={setSelectedSites}
+            disabled={searching}
+          />
+          {selectedSites.length === 0 && (
+            <span style={{ fontSize: '11px', color: '#dc2626' }}>1つ以上選んでください</span>
+          )}
+        </div>
+
+        {/* 場所選択（複数可・未選択 = 全国） */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>場所:</span>
+          {LOCATIONS.map((location) => {
+            const selected = selectedLocations.includes(location.key);
+            return (
+              <button
+                key={location.key}
+                type="button"
+                onClick={() => toggleLocation(location.key)}
+                style={{ padding: '3px 10px', borderRadius: '999px', border: '1px solid #86efac', background: selected ? '#16a34a' : '#fff', color: selected ? '#fff' : '#15803d', fontSize: '12px', fontWeight: selected ? 600 : 400, cursor: 'pointer' }}
+              >
+                {location.key === 'online' ? '💻 ' : '📍 '}{location.label}
+              </button>
+            );
+          })}
+          {selectedLocations.length === 0 && (
+            <span style={{ fontSize: '11px', color: '#9ca3af' }}>（未選択 = 全国）</span>
+          )}
+        </div>
+
+        {/* 開催日（未指定 = 今日以降すべて。開催日が過ぎたイベントは常に非表示） */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '10px' }}>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>開催日:</span>
+          <input
+            type="date"
+            value={dateFrom}
+            min={todayText}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={DATE_INPUT_STYLE}
+          />
+          <span style={{ fontSize: '12px', color: '#9ca3af' }}>〜</span>
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || todayText}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={DATE_INPUT_STYLE}
+          />
+          {datePresets.map((preset) => {
+            const selected = dateFrom === preset.from && dateTo === preset.to;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                disabled={searching}
+                onClick={() => applyDatePreset(preset)}
+                style={{ padding: '3px 10px', borderRadius: '999px', border: '1px solid #93c5fd', background: selected ? '#2563eb' : '#fff', color: selected ? '#fff' : '#1d4ed8', fontSize: '12px', fontWeight: selected ? 600 : 400, cursor: 'pointer' }}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+          {(dateFrom || dateTo) ? (
+            <button
+              type="button"
+              onClick={() => { setDateFrom(''); setDateTo(''); if (results !== null) handleSearch({ dateFrom: '', dateTo: '' }); }}
+              style={{ padding: '3px 10px', borderRadius: '999px', border: '1px solid #d1d5db', background: '#fff', color: '#6b7280', fontSize: '12px', cursor: 'pointer' }}
+            >
+              指定なし
+            </button>
+          ) : (
+            <span style={{ fontSize: '11px', color: '#9ca3af' }}>（未指定 = 今日以降すべて／終了したイベントは表示しません）</span>
+          )}
+        </div>
+        {(dateFrom || dateTo) && (
+          <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
+            ※ サイト側で日付を絞れない検索先（Peatix・TechPlay など）は直近の検索結果から絞り込むため、先の日付ほど件数が少なくなります
+          </div>
+        )}
+      </div>
+
+      {/* サイト別エラー表示 */}
+      {Object.keys(siteErrors).length > 0 && (
+        <div style={{ borderRadius: '8px', border: '1px solid #fecaca', background: '#fef2f2', padding: '10px 14px', marginBottom: '12px', fontSize: '12px', color: '#b91c1c' }}>
+          {Object.entries(siteErrors).map(([siteKey, message]) => (
+            <div key={siteKey}>⚠️ {siteMeta[siteKey]?.label || siteKey}: {message}</div>
+          ))}
+        </div>
+      )}
+
+      {/* お気に入り一覧（検索していなくても見られる） */}
+      {showFavorites && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
+              ★ お気に入り {favorites.length}件
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowFavorites(false)}
+              style={{ padding: '3px 10px', borderRadius: '999px', border: '1px solid #d1d5db', background: '#fff', color: '#6b7280', fontSize: '12px', cursor: 'pointer' }}
+            >
+              検索結果に戻る
+            </button>
+          </div>
+
+          {favorites.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0', fontSize: '14px' }}>
+              検索結果の ☆ を押すと、ここに貯まります
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {favorites.map((event) => (
+                <EventCard
+                  key={`favorite-${event.url}`}
+                  event={event}
+                  siteMeta={siteMeta}
+                  favorited
+                  onToggleFavorite={toggleFavorite}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 結果一覧 */}
+      {!showFavorites && results !== null && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
+              検索結果 {results.length}件
+            </span>
+            {dateRangeSummary && (
+              <span style={{ fontSize: '12px', color: '#6b7280' }}>{dateRangeSummary}</span>
+            )}
+            <button
+              type="button"
+              onClick={() => setSiteFilter('all')}
+              style={{ padding: '3px 10px', borderRadius: '999px', border: '1px solid #d1d5db', background: siteFilter === 'all' ? '#374151' : '#fff', color: siteFilter === 'all' ? '#fff' : '#374151', fontSize: '12px', cursor: 'pointer' }}
+            >
+              すべて
+            </button>
+            {SITES.filter((s) => countsBySite[s.key] !== undefined).map((site) => (
+              <button
+                key={site.key}
+                type="button"
+                onClick={() => setSiteFilter(site.key)}
+                style={{ padding: '3px 10px', borderRadius: '999px', border: `1px solid ${site.color}`, background: siteFilter === site.key ? site.color : '#fff', color: siteFilter === site.key ? '#fff' : site.color, fontSize: '12px', cursor: 'pointer' }}
+              >
+                {site.label} {countsBySite[site.key]}
+              </button>
+            ))}
+          </div>
+
+          {visibleResults.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#9ca3af', padding: '40px 0', fontSize: '14px' }}>
+              該当するイベントが見つかりませんでした
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {visibleResults.map((event, index) => (
+                <EventCard
+                  key={`${event.site}-${event.url}-${index}`}
+                  event={event}
+                  siteMeta={siteMeta}
+                  favorited={favoriteUrls.has(event.url)}
+                  onToggleFavorite={toggleFavorite}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {!showFavorites && results === null && !searching && (
+        <div style={{ textAlign: 'center', color: '#9ca3af', padding: '60px 0', fontSize: '14px' }}>
+          キーワードを入力して「一斉検索」を押すと、選択したサイトを横断してイベントを探します
+        </div>
+      )}
+    </div>
+  );
+}

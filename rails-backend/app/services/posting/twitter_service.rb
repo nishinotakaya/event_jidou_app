@@ -1,120 +1,50 @@
 module Posting
+  # X (Twitter) 投稿サービス。
+  # 旧: Playwright で x.com/i/flow/login → 投稿欄をクリック
+  # 新: ServiceConnection.session_data の auth_token + ct0 で X::Client 直接 API
+  #
+  # post_job.rb から ef['publishSites']['X'] が true のときに呼ばれる。
+  # SNS なので「公開希望なし」のパターンはなく、選ばれたら即投稿。
   class TwitterService < BaseService
-    LOGIN_URL = 'https://x.com/i/flow/login'
-
     private
 
-    def execute(page, content, ef)
-      ensure_login(page)
+    def execute(_page, content, ef)
+      conn = ServiceConnection.find_by(service_name: 'x')
+      raise '[X] 接続未登録です。設定 → X 接続から auth_token / ct0 を登録してください。' if conn.nil? || conn.session_data.blank?
 
-      title = extract_title(ef, content, 60)
-
-      # イベントURLを取得（こくチーズ等の申し込みURL）
+      title     = extract_title(ef, content, 60)
       event_url = find_event_url(ef)
-
-      # ツイート本文を組み立て（140文字制限を意識して短く）
-      tweet = build_tweet(title, content, event_url, ef)
+      text      = build_tweet(title, content, event_url, ef)
 
       log("[X] ツイート投稿中...")
-      log("[X] 内容: #{tweet[0, 100]}...")
+      log("[X] 本文: #{text[0, 100]}...")
 
-      # ホーム画面に遷移
-      page.goto('https://x.com/home', waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_timeout(3000)
+      client = X::Client.new(conn.session_data)
 
-      # 投稿欄をクリック
-      compose = page.locator('[data-testid="tweetTextarea_0"], [role="textbox"][data-testid="tweetTextarea_0"]').first
-      unless (compose.visible?(timeout: 5000) rescue false)
-        # フォールバック: 「いまどうしてる？」テキストエリア
-        compose = page.locator('[role="textbox"]').first
-      end
-      raise '[X] 投稿欄が見つかりません' unless (compose.visible?(timeout: 5000) rescue false)
-
-      compose.click
-      page.wait_for_timeout(500)
-
-      # テキスト入力（Playwright keyboard.type でIME問題を回避）
-      page.keyboard.type(tweet, delay: 10)
-      page.wait_for_timeout(1000)
-
-      # 画像添付（DALL-E画像があれば）
-      if ef['imagePath'].present? && File.exist?(ef['imagePath'].to_s)
-        file_input = page.locator('input[type="file"][accept*="image"]').first
-        if (file_input rescue false)
-          file_input.set_input_files(ef['imagePath'])
-          page.wait_for_timeout(3000)
-          log('[X] 画像添付完了')
-        end
+      media_ids = []
+      if ef['imagePath'].present?
+        io, mime = open_local_image(ef['imagePath'])
+        media_ids << client.upload_image(io, mime_type: mime) if io
       end
 
-      # 投稿ボタンをクリック
-      post_btn = page.locator('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]').first
-      raise '[X] 投稿ボタンが見つかりません' unless (post_btn.visible?(timeout: 5000) rescue false)
-
-      post_btn.click
-      page.wait_for_timeout(5000)
-
-      log('[X] ✅ ツイート投稿完了')
-    end
-
-    def ensure_login(page)
-      page.goto('https://x.com/home', waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_timeout(3000)
-
-      # ログイン済みチェック
-      if page.url.include?('/home') && !page.url.include?('login')
-        compose = page.locator('[data-testid="tweetTextarea_0"], [role="textbox"]').first
-        if (compose.visible?(timeout: 5000) rescue false)
-          log('[X] ✅ ログイン済み')
-          return
-        end
-      end
-
-      # 自動ログイン
-      creds = ServiceConnection.credentials_for('twitter')
-      phone_or_email = creds[:email].presence
-      password = creds[:password].presence
-      raise '[X] ログイン情報が未登録です。接続管理画面から電話番号とパスワードを登録してください。' unless phone_or_email && password
-
-      log('[X] ログイン中...')
-      page.goto(LOGIN_URL, waitUntil: 'domcontentloaded', timeout: 30_000)
-      page.wait_for_timeout(3000)
-
-      # Step 1: 電話番号/メールアドレス入力
-      username_input = page.locator('input[autocomplete="username"], input[name="text"]').first
-      raise '[X] ユーザー名入力欄が見つかりません' unless (username_input.visible?(timeout: 5000) rescue false)
-      username_input.fill(phone_or_email)
-      page.locator('[role="button"]:has-text("次へ"), [role="button"]:has-text("Next")').first.click
-      page.wait_for_timeout(3000)
-
-      # Step 2: パスワード入力
-      pw_input = page.locator('input[name="password"], input[type="password"]').first
-      raise '[X] パスワード入力欄が見つかりません' unless (pw_input.visible?(timeout: 5000) rescue false)
-      pw_input.fill(password)
-      page.locator('[data-testid="LoginForm_Login_Button"], [role="button"]:has-text("ログイン"), [role="button"]:has-text("Log in")').first.click
-      page.wait_for_timeout(5000)
-
-      # ログイン成功確認
-      current = page.url
-      if current.include?('/home') || (current.include?('x.com') && !current.include?('login') && !current.include?('flow'))
-        log('[X] ✅ ログイン完了')
-      else
-        raise "[X] ログイン失敗（現在URL: #{current}）"
-      end
+      result = client.create_tweet(text, media_ids: media_ids)
+      log("[X] ✅ ツイート完了 → #{result[:tweet_url]}")
+      @published = true
+      result[:tweet_url]
     end
 
     def build_tweet(title, content, event_url, ef)
       date_str = ef['startDate'].present? ? "#{ef['startDate']} #{ef['startTime']}" : ''
       lines = []
       lines << title
-      lines << ""
+      lines << ''
       lines << "📅 #{date_str}" if date_str.present?
-      lines << "💻 オンライン開催" if ef['place']&.include?('オンライン')
-      lines << ""
-      lines << "#イベント #生成AI #プログラミング #エンジニア転職"
+      lines << '💻 オンライン開催' if ef['place']&.include?('オンライン')
+      lines << ''
+      lines << '#プログラミング #エンジニア'
       if event_url.present?
-        lines << ""
-        lines << "📌 お申し込みはこちら"
+        lines << ''
+        lines << '📌 お申し込みはこちら'
         lines << event_url
       end
 
@@ -123,25 +53,31 @@ module Posting
     end
 
     def find_event_url(ef)
-      # publishSitesからイベントURLを探す（こくチーズ優先）
       return ef['eventUrl'] if ef['eventUrl'].present?
-
-      # PostingHistoryから最新の公開イベントURLを取得
       item_id = ef['itemId'].presence
-      if item_id
-        history = PostingHistory.where(item_id: item_id, status: 'success')
-          .where.not(event_url: [nil, '', 'about:blank'])
-          .order(posted_at: :desc).first
-        return history.event_url if history
-      end
-      nil
+      return nil unless item_id
+      history = PostingHistory.where(item_id: item_id, status: 'success')
+        .where.not(event_url: [nil, '', 'about:blank'])
+        .order(posted_at: :desc).first
+      history&.event_url
+    end
+
+    def open_local_image(path)
+      full = path.start_with?('/') ? path : Rails.root.join(path).to_s
+      return [nil, nil] unless File.exist?(full)
+      mime = case File.extname(full).downcase
+             when '.png'  then 'image/png'
+             when '.gif'  then 'image/gif'
+             when '.webp' then 'image/webp'
+             else 'image/jpeg'
+             end
+      [File.open(full, 'rb'), mime]
     end
 
     # --- 削除・中止 ---
 
-    def perform_delete(page, event_url)
-      log('[X] ツイート削除はX管理画面から手動で行ってください')
-      # ツイートURLが保存されていれば削除可能だが、通常はURLが取得できない
+    def perform_delete(_page, _event_url)
+      log('[X] ツイート削除は X 管理画面から手動で行ってください')
     end
 
     def perform_cancel(page, event_url)

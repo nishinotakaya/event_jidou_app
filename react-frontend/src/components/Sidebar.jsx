@@ -3,6 +3,8 @@ import FolderList from './FolderList.jsx';
 import { createFolder } from '../api.js';
 
 export default function Sidebar({
+  isOpen,
+  onClose,
   activeType,
   onTypeChange,
   folders,
@@ -46,21 +48,61 @@ export default function Sidebar({
   }, [activeType, newFolderName, newFolderParent, onFolderChange, showToast]);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'sidebar--open' : ''}`}>
       <div className="sidebar-header">
-        <p className="sidebar-title" onClick={() => { onSelectFolder(null); onTypeChange('event'); }} style={{ cursor: 'pointer' }}>イベント管理</p>
+        <div className="sidebar-header-row">
+          <p className="sidebar-title" onClick={() => { onSelectFolder(null); onTypeChange('event'); onNavigate?.('main'); }} style={{ cursor: 'pointer' }}>イベント管理</p>
+          <button type="button" className="sidebar-close" aria-label="メニューを閉じる" onClick={onClose}>×</button>
+        </div>
         <div className="type-tabs">
           <button
             className={`type-tab ${activeType === 'event' ? 'active' : ''}`}
-            onClick={() => onTypeChange('event')}
+            onClick={() => { onTypeChange('event'); onNavigate?.('main'); }}
           >
             イベント
           </button>
           <button
             className={`type-tab ${activeType === 'student' ? 'active' : ''}`}
-            onClick={() => onTypeChange('student')}
+            onClick={() => { onTypeChange('student'); onNavigate?.('main'); }}
           >
             受講生サポート
+          </button>
+        </div>
+        <div className="page-nav">
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('students')}
+            title="受講生一覧ページへ"
+          >
+            🎓 受講生管理
+          </button>
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('x')}
+            title="X 自動投稿ページへ"
+          >
+            𝕏 X 管理
+          </button>
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('meetingNotifications')}
+            title="定例ミーティング通知ページへ"
+          >
+            📅 定例通知
+          </button>
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('research')}
+            title="交流会リサーチページへ"
+          >
+            🔎 リサーチ
+          </button>
+          <button
+            className="type-tab"
+            onClick={() => onNavigate?.('community')}
+            title="コミュニティ検索ページへ"
+          >
+            🏢 コミュニティ
           </button>
         </div>
       </div>

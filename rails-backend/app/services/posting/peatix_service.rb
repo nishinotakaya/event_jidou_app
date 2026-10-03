@@ -164,11 +164,14 @@ module Posting
           end
           page.wait_for_load_state('networkidle', timeout: 15_000) rescue nil
           log("[Peatix] 🌐 ✅ 公開完了")
+          @published = true
         else
           log("[Peatix] ⚠️ 「公開」ボタンが見つかりません")
+          @published = false
         end
       rescue => e
         log("[Peatix] ⚠️ 公開処理失敗: #{e.message}")
+        @published = false
       end
     end
 
@@ -539,6 +542,24 @@ module Posting
       end
     end
 
+    # Web セッション（Cookie 認証）が本当に生きているかを判定する。
+    # create ページに留まれている＝ログイン済み。/signin への遷移・ログイン要求バナー・
+    # ログインフォームの存在が確認できたら失効とみなす。
+    def web_session_alive?(page)
+      page.evaluate(<<~'JS')
+        (() => {
+          const url = location.href;
+          if (/\/(signin|login)/i.test(url)) return false;
+          const text = document.body ? document.body.innerText : '';
+          if (text.includes('ログインしてください') || text.includes('まずログイン')) return false;
+          if (document.querySelector('input[name="username"]')) return false;
+          return true;
+        })()
+      JS
+    rescue
+      false
+    end
+
     def login_and_get_bearer(page)
       log("[Peatix] ログイン中...")
 
@@ -549,10 +570,18 @@ module Posting
       page.wait_for_timeout(3000)
 
       # Bearer取得を試行（セッションが有効なら取れる）
+      # ⚠️ localStorage のトークンは「注入した storageState」由来で、Cookie セッションが
+      #    サーバ側で失効していても残存する。トークンの存在だけで「ログイン済み」と判定すると、
+      #    編集ウィザード（Cookie 認証の Web ページ）でログイン画面に弾かれて全ステップ失敗する。
+      #    → localStorage トークンに加えて、実際の Web セッション生存を必ず検証する。
       token = page.evaluate("localStorage.getItem('peatix_frontend_access_token')") rescue nil
-      if token.present?
+      if token.present? && web_session_alive?(page)
         log("[Peatix] ✅ セッション有効 - Bearer取得: #{token[0, 8]}...")
         return token
+      end
+
+      if token.present?
+        log("[Peatix] ⚠️ localStorage トークンは残存するが Web セッションが失効 → 再ログインします")
       end
 
       # セッション無効 → ログインが必要
@@ -637,13 +666,22 @@ module Posting
           page.expect_navigation(timeout: 20_000, waitUntil: 'domcontentloaded') do
             page.evaluate(<<~JS, arg: email)
               async (email) => {
-                // jQuery のフォーム状態も更新
+                // username を確定
                 const inp = document.querySelector('input[name="username"]');
                 if (inp) {
                   inp.value = email;
+                  inp.dispatchEvent(new Event('input', { bubbles: true }));
+                  inp.dispatchEvent(new Event('change', { bubbles: true }));
                   if (window.jQuery) jQuery(inp).val(email).trigger('change').trigger('input');
                 }
-                // AJAX validation を呼ぶ
+                // 現行UIの主経路: 「次に進む」ボタンをクリック
+                const btns = [...document.querySelectorAll('button, a, input[type="submit"]')]
+                  .filter(el => el.offsetParent !== null);
+                for (const b of btns) {
+                  const t = (b.textContent || b.value || '').trim();
+                  if (t === '次に進む' || t === 'Next' || t.includes('次に進む')) { b.click(); return; }
+                }
+                // フォールバック: AJAX validation + form.submit
                 try {
                   const token = document.querySelector('input[name="form_token"]')?.value || '';
                   await fetch('/user/validate_signin_username', {
@@ -653,7 +691,6 @@ module Posting
                     credentials: 'same-origin',
                   });
                 } catch {}
-                // フォームを直接submit
                 const form = document.getElementById('signin-form');
                 if (form) form.submit();
               }

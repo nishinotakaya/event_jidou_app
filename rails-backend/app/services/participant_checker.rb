@@ -26,8 +26,11 @@ class ParticipantChecker
     },
     'techplay' => {
       participants_url: ->(url) {
-        base = url.sub(/\/edit\/?$/, '')
-        "#{base}/attendee"
+        # event_url は (a) https://owner.techplay.jp/event/<id>(/edit) と
+        # (b) https://techplay.jp/event/<id> の 2 種類が混在する。
+        # 参加者ページは Owner ドメインにしか無いので、必ず正規化してから /attendee を付ける。
+        event_id = url[/event\/(\d+)/, 1]
+        event_id ? "https://owner.techplay.jp/event/#{event_id}/attendee" : nil
       },
     },
     'luma' => {
@@ -255,9 +258,44 @@ class ParticipantChecker
       participants = extract_connpass_participants(page) if participants.empty?
     when 'peatix'
       participants = extract_peatix_participants(page) if participants.empty?
+    when 'techplay'
+      # TechPlay attendee 一覧は SPA で 2 つ table を出すが、データは
+      # 2 つ目（class に "table-align-middle" を含む）にしか入らない。
+      # 「申込番号 / 種別 / 名前 / 申込状況 / 出席状況 / ...」 構造で
+      # 「キャンセル」行は除外する。
+      page.wait_for_selector('table.table-align-middle tbody tr', state: 'attached', timeout: 20_000) rescue nil
+      participants = extract_techplay_participants(page)
     end
 
     participants || []
+  end
+
+  # TechPlay の attendee 一覧から「実際に参加した（キャンセルしていない）」人だけ抽出
+  def self.extract_techplay_participants(page)
+    page.evaluate(<<~'JS')
+      (() => {
+        // データは class="table table-align-middle" のテーブル
+        const rows = document.querySelectorAll('table.table-align-middle tbody tr');
+        const out = [];
+        rows.forEach(tr => {
+          const cells = [...tr.querySelectorAll('td')].map(c => c.innerText.trim());
+          if (cells.length < 6) return;
+          // 列レイアウト（実機確認・空セル含む）:
+          //   0: 申込番号 (A-1)
+          //   1: 種別 (オンライン/会場)
+          //   2: 空セル（chip 等）
+          //   3: 名前
+          //   4: 申込状況 (参加 / キャンセル)
+          //   5: 出席状況 (出席 / 欠席 / キャンセル)
+          const status = cells[4] || '';
+          if (status.includes('キャンセル')) return;
+          const name = cells[3] || '';
+          if (!name) return;
+          out.push({ name, email: '' });
+        });
+        return out;
+      })()
+    JS
   end
 
   # connpass固有: editmanageの参加者リスト

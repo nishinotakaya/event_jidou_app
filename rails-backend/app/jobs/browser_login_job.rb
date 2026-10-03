@@ -21,9 +21,9 @@ class BrowserLoginJob < ApplicationJob
       success_check: ->(url) { url.include?('passmarket.yahoo.co.jp') && (url.include?('/mypage') || url.include?('/event')) },
     },
     'jimoty' => {
-      url: 'https://jmty.jp/login',
+      url: 'https://jmty.jp/users/sign_in',
       session_path: -> { Rails.root.join('tmp', 'jimoty_session.json').to_s },
-      success_check: ->(url) { url.include?('jmty.jp') && !url.include?('/login') && !url.include?('/sign_up') },
+      success_check: ->(url) { url.include?('jmty.jp') && !url.include?('/sign_in') && !url.include?('/sign_up') },
     },
     'twitter' => {
       url: 'https://x.com/i/flow/login',

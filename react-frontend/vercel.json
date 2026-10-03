@@ -3,21 +3,98 @@
     {
       "source": "/index.html",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     },
     {
       "source": "/assets/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Service-Worker-Allowed",
+          "value": "/"
+        }
+      ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        },
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json"
+        }
+      ]
+    },
+    {
+      "source": "/downloads/(.*).apk",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/vnd.android.package-archive"
+        },
+        {
+          "key": "Content-Disposition",
+          "value": "attachment; filename=\"event-kokuchi.apk\""
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
       ]
     }
   ],
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://announcement-d656a48fc066.herokuapp.com/api/:path*" },
-    { "source": "/users/:path*", "destination": "https://announcement-d656a48fc066.herokuapp.com/users/:path*" },
-    { "source": "/auth/:path*", "destination": "https://announcement-d656a48fc066.herokuapp.com/auth/:path*" },
-    { "source": "/cable", "destination": "https://announcement-d656a48fc066.herokuapp.com/cable" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "https://announcement-d656a48fc066.herokuapp.com/api/:path*"
+    },
+    {
+      "source": "/users/:path*",
+      "destination": "https://announcement-d656a48fc066.herokuapp.com/users/:path*"
+    },
+    {
+      "source": "/auth/:path*",
+      "destination": "https://announcement-d656a48fc066.herokuapp.com/auth/:path*"
+    },
+    {
+      "source": "/cable",
+      "destination": "https://announcement-d656a48fc066.herokuapp.com/cable"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }

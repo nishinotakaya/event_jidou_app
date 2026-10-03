@@ -23,7 +23,7 @@ const SERVICE_LABELS = {
   passmarket:      { name: 'PassMarket', icon: '🅿️', url: 'https://passmarket.yahoo.co.jp/', browserLogin: true, loginUrl: 'https://passmarket.yahoo.co.jp/', eventsUrl: 'https://passmarket.yahoo.co.jp/manage/events/' },
   luma:            { name: 'Luma', icon: '✨', url: 'https://lu.ma/', browserLogin: true, loginUrl: 'https://lu.ma/signin', eventsUrl: 'https://lu.ma/home' },
   seminar_biz:     { name: 'セミナーBiZ', icon: '💼', url: 'https://seminar-biz.com/', eventsUrl: 'https://seminar-biz.com/company/dashboard', planNote: '⚠️ フリープラン: 公開中セミナー1件まで。2件目以降は有料プラン(月5,500円〜)が必要' },
-  jimoty:          { name: 'ジモティー', icon: '📍', url: 'https://jmty.jp/', browserLogin: true, loginUrl: 'https://jmty.jp/login', eventsUrl: 'https://jmty.jp/my/posts' },
+  jimoty:          { name: 'ジモティー', icon: '📍', url: 'https://jmty.jp/', browserLogin: true, loginUrl: 'https://jmty.jp/users/sign_in', eventsUrl: 'https://jmty.jp/my/posts' },
   gmail:           { name: 'Gmail', icon: '📧', url: 'https://mail.google.com/', note: 'Googleログインで自動連携' },
   twitter:         { name: 'X (Twitter)', icon: '𝕏', url: 'https://x.com/', browserLogin: true, loginUrl: 'https://x.com/i/flow/login', eventsUrl: 'https://x.com/home' },
   instagram:       { name: 'Instagram', icon: '📸', url: 'https://www.instagram.com/', browserLogin: true, loginUrl: 'https://www.instagram.com/accounts/login/', eventsUrl: 'https://www.instagram.com/' },
@@ -245,7 +245,7 @@ export default function ConnectionsPage({ showToast, onBack, onGoToList, inline 
             <button
               className="btn btn-primary"
               style={{ fontSize: '13px' }}
-              onClick={() => { window.location.href = '/auth/google_oauth2'; }}
+              onClick={() => { window.location.href = 'https://announcement-d656a48fc066.herokuapp.com/auth/google_oauth2'; }}
             >
               Googleでログイン
             </button>

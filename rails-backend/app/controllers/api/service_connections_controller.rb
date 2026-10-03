@@ -11,7 +11,7 @@ module Api
         else
           # ENVにデータがあれば表示
           keys = ServiceConnection::ENV_KEYS[name] || {}
-          env_email = ENV[keys[:email]].to_s.presence
+          env_email = keys[:email] ? ENV[keys[:email]].to_s.presence : nil
           {
             id: nil,
             serviceName: name,

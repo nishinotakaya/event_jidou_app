@@ -43,3 +43,10 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+
+// PWA: 本番環境のみ Service Worker を登録
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((error) => console.error('[PWA] Service Worker 登録失敗:', error));
+  });
+}

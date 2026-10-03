@@ -173,8 +173,10 @@ module Posting
 
       if publish_res.is_a?(Net::HTTPRedirection) || publish_res.is_a?(Net::HTTPSuccess)
         log('[Doorkeeper] ✅ 公開完了')
+        @published = true
       else
         log("[Doorkeeper] ⚠️ 公開に失敗した可能性があります (HTTP #{publish_res.code})")
+        @published = false
       end
     end
 

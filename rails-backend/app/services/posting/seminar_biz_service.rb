@@ -194,11 +194,12 @@ module Posting
       end
 
       # ===== 連絡先 =====
-      tel = ef['tel'].presence || ''
-      page.fill('#contact_info', tel) if tel.present?
+      tel = ef['tel'].presence || '090-6311-5200'
+      page.fill('#contact_info', tel)
 
       # ===== 公開ステータス =====
-      if ef.dig('publishSites', 'セミナーBiZ')
+      requested_publish = ef.dig('publishSites', 'セミナーBiZ')
+      if requested_publish
         page.locator('#is_public_yes').click
         log('[セミナーBiZ] 公開ステータス: 公開')
       else
@@ -250,6 +251,8 @@ module Posting
       else
         log("[セミナーBiZ] ✅ セミナー作成完了 → #{page.url}")
       end
+      # 保存が成功した(バリデーションエラーで raise されなかった) = ラジオの公開ステータスも反映されている
+      @published = true if requested_publish
     end
 
     # --- 削除・中止 ---

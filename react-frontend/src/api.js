@@ -1,5 +1,18 @@
 import { createConsumer } from '@rails/actioncable';
 
+// 本番（Vercel）では /api・/auth・/users を Heroku 直叩き + credentials: 'include' に書き換える。
+// Vercel proxy 経由だと cookie ドメインが vercel.app と heroku.com で食い違って session が共有できないため。
+// 既存の fetch('/api/...') を1箇所も書き換えずに対応するため、グローバル fetch をパッチする。
+if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.__apiFetchPatched) {
+  const API_ORIGIN = 'https://announcement-d656a48fc066.herokuapp.com';
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) =>
+    (typeof input === 'string' && /^\/(api|auth|users|cable)(\/|$|\?)/.test(input))
+      ? originalFetch(API_ORIGIN + input, { ...init, credentials: init.credentials || 'include' })
+      : originalFetch(input, init);
+  window.__apiFetchPatched = true;
+}
+
 // WebSocket URL（Vercel経由はWebSocket非対応のため、本番はHerokuに直接接続）
 const CABLE_URL = window.location.hostname === 'localhost'
   ? '/cable'
@@ -144,6 +157,30 @@ export async function createZoomMeeting({ title, startDate, startTime, duration 
   onEvent({ type: 'log', message: '✅ ミーティング作成完了' });
   onEvent({ type: 'result', data: data.data });
   onEvent({ type: 'done' });
+}
+
+// Zoom URL のミーティングのタイトル(topic)を変更する
+export async function updateZoomMeeting({ zoomUrl, title }) {
+  const res = await fetch('/api/zoom/update_meeting', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ zoomUrl, title }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'Zoomタイトル変更に失敗しました');
+  return data;
+}
+
+// Zoom URL のミーティングを削除する
+export async function deleteZoomMeeting({ zoomUrl }) {
+  const res = await fetch('/api/zoom/delete_meeting', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ zoomUrl }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'Zoom削除に失敗しました');
+  return data;
 }
 
 // ===== App Settings (DB-backed KVS) =====
@@ -704,6 +741,78 @@ export async function syncOnclassStudents(onEvent) {
   });
 }
 
+// ===== Meeting Notifications (定例ミーティング通知) =====
+export async function listMeetingNotifications() {
+  const res = await fetch('/api/meeting_notifications');
+  if (!res.ok) throw new Error('定例ミーティング通知の取得に失敗しました');
+  return res.json();
+}
+
+export async function createMeetingNotification({ name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled, messageTemplate }) {
+  const res = await fetch('/api/meeting_notifications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ meetingNotification: { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled, messageTemplate } }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || '定例ミーティング通知の作成に失敗しました');
+  }
+  return res.json();
+}
+
+export async function updateMeetingNotification(id, { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled, messageTemplate }) {
+  const res = await fetch(`/api/meeting_notifications/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ meetingNotification: { name, onclassChannel, zoomUrl, meetingId, passcode, weekday, startTime, endTime, notifyTime, enabled, messageTemplate } }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || '定例ミーティング通知の更新に失敗しました');
+  }
+  return res.json();
+}
+
+export async function deleteMeetingNotification(id) {
+  const res = await fetch(`/api/meeting_notifications/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('定例ミーティング通知の削除に失敗しました');
+  return res.json();
+}
+
+// オンクラスへ実投稿する。破壊的操作のため呼び出し側で確認ダイアログを出すこと。
+export async function sendMeetingNotificationNow(id) {
+  const res = await fetch(`/api/meeting_notifications/${id}/send_now`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '送信に失敗しました');
+  return data;
+}
+
+export async function previewMeetingNotification(id) {
+  const res = await fetch(`/api/meeting_notifications/${id}/preview`);
+  if (!res.ok) throw new Error('プレビューの取得に失敗しました');
+  return res.json();
+}
+
+export async function fetchOnclassChannels() {
+  const res = await fetch('/api/onclass/channels');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || 'チャンネル一覧の取得に失敗しました');
+  return data;
+}
+
+// 常に有効な繰り返しZoomミーティングを新規生成し { zoomUrl, meetingId, passcode } を返す
+export async function generateMeetingZoom({ name } = {}) {
+  const res = await fetch('/api/meeting_notifications/generate_zoom', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || 'Zoom自動生成に失敗しました');
+  return data;
+}
+
 // ===== Post (ActionCable) =====
 // Returns { jobId, subscription } — caller must call subscription.unsubscribe() when done
 export async function postToSites({ content, sites, eventFields, generateImage, imageStyle, openaiApiKey, dalleApiKey, itemId, postType }, onEvent) {
@@ -743,4 +852,98 @@ export async function postToSites({ content, sites, eventFields, generateImage, 
       }
     );
   });
+}
+
+// ===== 交流会リサーチ（複数サイト横断検索） =====
+// dateFrom / dateTo は 'YYYY-MM-DD'（省略可）。省略しても終了したイベントはサーバー側で落とされる。
+export async function searchCrossSiteEvents({ keyword, sites, locations, dateFrom, dateTo }) {
+  const res = await fetch('/api/research/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword, sites, locations, dateFrom, dateTo }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || '横断検索に失敗しました');
+  }
+  return res.json();
+}
+
+// ===== コミュニティ検索（経営者・サークル・オンラインサロン等を複数サイトから探す） =====
+// 開催日の概念が無いので dateFrom / dateTo は無い。keyword が空だとサーバーが 422 を返す。
+export async function searchCommunities({ keyword, sites, locations }) {
+  const response = await fetch('/api/research/communities', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword, sites, locations }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'コミュニティ検索に失敗しました');
+  }
+  return response.json();
+}
+
+// Peatix のようにサーバー（Heroku）のIPを弾くサイト向けのフォールバック。
+// 取得はブラウザ（＝ユーザーの回線なので弾かれない）、整形と開催日フィルタはサーバー
+// （Api::ResearchController#normalize）に任せることで、整形ロジックを JS に写経せずに済ませている。
+//
+// fallback は検索レスポンスの browserFallbacks[site] がそのまま渡ってくる:
+//   { urls: [1ページ目, 2ページ目, 3ページ目], headers: { 'X-Requested-With': ... } }
+// URL とヘッダをサーバーに決めさせているのは、サイト固有の作法（Peatix は X-Requested-With 必須）を
+// フロントに散らかさないため。ページ間で同じイベントが返ることがあるので URL で重複を除く。
+export async function searchViaBrowserFallback({ site, fallback, locations, dateFrom, dateTo }) {
+  const pages = await Promise.all(
+    (fallback.urls || []).map((url) => fetchAndNormalizePage({ site, url, headers: fallback.headers, locations, dateFrom, dateTo }))
+  );
+  const results = pages.flat();
+  const seenUrls = new Set();
+  return results.filter((result) => !seenUrls.has(result.url) && seenUrls.add(result.url));
+}
+
+// ===== 交流会リサーチのお気に入り（星） =====
+// 検索結果はサイトから毎回取り直すので、星を付けた時点の表示内容ごとサーバーに保存する。
+export async function fetchResearchFavorites() {
+  const res = await fetch('/api/research/favorites');
+  if (!res.ok) throw new Error('お気に入りの取得に失敗しました');
+  const data = await res.json();
+  return data.results || [];
+}
+
+export async function addResearchFavorite(event) {
+  const res = await fetch('/api/research/favorites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'お気に入りに追加できませんでした');
+  }
+  return res.json();
+}
+
+export async function removeResearchFavorite(url) {
+  const res = await fetch(`/api/research/favorites?url=${encodeURIComponent(url)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('お気に入りから外せませんでした');
+  return res.json();
+}
+
+async function fetchAndNormalizePage({ site, url, headers, locations, dateFrom, dateTo }) {
+  const siteRes = await fetch(url, { headers: headers || {} });
+  if (!siteRes.ok) throw new Error(`${site} への直接アクセスに失敗しました（HTTP ${siteRes.status}）`);
+  const payload = await siteRes.text();
+  if (!payload.trim()) throw new Error(`${site} が空のレスポンスを返しました`);
+
+  const res = await fetch('/api/research/normalize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ site, payload, locations, dateFrom, dateTo }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `${site} の取得結果を整形できませんでした`);
+  }
+  const data = await res.json();
+  return data.results || [];
 }

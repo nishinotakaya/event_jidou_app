@@ -1,6 +1,3 @@
-require 'playwright'
-require 'shellwords'
-
 module Api
   class OnclassController < ApplicationController
     # POST /api/onclass/sync
@@ -11,6 +8,16 @@ module Api
       render json: { ok: true, job_id: job_id }
     end
 
+    # GET /api/onclass/channels
+    # コミュニティのチャンネル一覧（設定画面の選択肢用）
+    def channels
+      client = OnclassApiClient.from_service_connection
+      client.sign_in!
+      render json: { channels: client.channels.map { |c| { id: c["id"], name: c["name"] } } }
+    rescue => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+
     # GET /api/onclass/students
     # DBから即返却（期限内のフロントコースのみ）
     def students
@@ -19,7 +26,7 @@ module Api
         students: existing.pluck(:name),
         fetchedAt: existing.first&.fetched_at&.iso8601,
         cached: true,
-        activeCount: existing.count,
+        activeCount: existing.count
       }
     end
 
@@ -31,7 +38,7 @@ module Api
         students: students.map { |s|
           { id: s.id, name: s.name, course: s.course, expiresAt: s.expires_at&.iso8601, fetchedAt: s.fetched_at&.iso8601 }
         },
-        total: students.count,
+        total: students.count
       }
     end
 
@@ -42,13 +49,13 @@ module Api
       student.destroy!
       render json: { ok: true }
     rescue ActiveRecord::RecordNotFound
-      render json: { error: '受講生が見つかりません' }, status: :not_found
+      render json: { error: "受講生が見つかりません" }, status: :not_found
     end
 
     # POST /api/onclass/sync_sidekiq
     # 外部HerokuアプリのSidekiq cronジョブを一括実行
     def sync_sidekiq
-      url = 'https://onclass-lme-jidouka-app-857ffde75fc4.herokuapp.com/sidekiq/cron/namespaces/default/all/enqueue'
+      url = "https://onclass-lme-jidouka-app-857ffde75fc4.herokuapp.com/sidekiq/cron/namespaces/default/all/enqueue"
       uri = URI.parse(url)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = true
@@ -56,7 +63,7 @@ module Api
       res = http.request(req)
 
       if res.code.to_i < 400
-        render json: { ok: true, message: 'Sidekiqジョブを一括エンキューしました' }
+        render json: { ok: true, message: "Sidekiqジョブを一括エンキューしました" }
       else
         render json: { ok: false, error: "Sidekiq応答: #{res.code}" }, status: :unprocessable_entity
       end
@@ -69,14 +76,14 @@ module Api
     def upload_image
       file = params[:image]
       unless file.is_a?(ActionDispatch::Http::UploadedFile)
-        render json: { error: '画像ファイルが必要です' }, status: :bad_request
+        render json: { error: "画像ファイルが必要です" }, status: :bad_request
         return
       end
 
-      ext = File.extname(file.original_filename).presence || '.png'
+      ext = File.extname(file.original_filename).presence || ".png"
       filename = "onclass_image_#{Time.now.to_i}#{ext}"
-      path = Rails.root.join('tmp', filename).to_s
-      File.open(path, 'wb') { |f| f.write(file.read) }
+      path = Rails.root.join("tmp", filename).to_s
+      File.open(path, "wb") { |f| f.write(file.read) }
 
       render json: { path: path, filename: filename }
     end

@@ -9,9 +9,10 @@ module Api
     end
 
     def create
+      name_value = item_params[:name].to_s.strip.presence || default_name_for_type(params[:type], item_params[:content])
       item = current_user.items.new(
         item_type:      params[:type],
-        name:           item_params[:name],
+        name:           name_value,
         content:        item_params[:content],
         folder:         item_params[:folder] || '',
         event_date:     item_params[:eventDate],
@@ -35,7 +36,7 @@ module Api
       return render json: { error: 'Not found' }, status: :not_found unless item
 
       item.assign_attributes(
-        name:    item_params[:name]    || item.name,
+        name:    item_params[:name].to_s.strip.presence || item.name,
         content: item_params[:content] || item.content,
       )
       item.folder = item_params[:folder] if item_params.key?(:folder)
@@ -94,6 +95,17 @@ module Api
     def item_params
       params.permit(:name, :content, :folder, :eventDate, :eventTime, :eventEndTime,
                     :zoomUrl, :youtubeUrl, :studentPostType, onclassMentions: [], onclassChannels: [])
+    end
+
+    def default_name_for_type(type, content)
+      head = content.to_s.strip.split("\n").first.to_s[0, 30]
+      return head if head.present?
+
+      if type == 'student'
+        "受講生告知 #{Time.current.strftime('%m/%d %H:%M')}"
+      else
+        "イベント #{Time.current.strftime('%m/%d')}"
+      end
     end
 
     def format_item(item)

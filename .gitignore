@@ -1,4 +1,26 @@
+# 依存
 node_modules/
+
+# 認証情報・シークレット
 .env
+facebook.ini
+
+# Rails 生成物（キャッシュ・ログ・ローカルDB）
+rails-backend/tmp/
+rails-backend/log/
+rails-backend/storage/*.sqlite3
+rails-backend/storage/*.sqlite3-*
+rails-backend/.docker_cache_bust
+
+# Claude 設定・資料（コミット対象外ルール）
+.claude/
+docs/
+
+# OS・エディタ
+.DS_Store
+.ruby-lsp/
+
+# デバッグ出力・作業ファイル
 kokuchpro-post-debug.json
-docs/database-info.md
+form-fields-dump.json
+スクリーンショット*.png
