@@ -26,6 +26,8 @@ const SITES = [
   // 街コン・婚活は客層が人脈づくり／講座の集客とズレるので、普段の検索を汚さないよう既定では外す。
   { key: 'machicon', label: '街コンジャパン', color: '#8d6e63', defaultOff: true, note: '恋活・婚活が中心。既定ではOFF' },
   { key: 'omicale', label: 'オミカレ', color: '#e91e63', defaultOff: true, note: '恋活・婚活が中心。既定ではOFF' },
+  { key: 'partyparty', label: 'PARTY☆PARTY', color: '#ad1457', defaultOff: true, note: 'IBJ運営の婚活パーティー。複数語はAND検索。既定ではOFF' },
+  { key: 'pia_machicon', label: 'ピア街コン', color: '#ff7043', defaultOff: true, note: '街コン・婚活パーティーのポータル。既定ではOFF' },
 ];
 
 // 初期状態で検索するサイト（defaultOff は明示的に選んだときだけ検索する）
@@ -41,6 +43,8 @@ const DEFAULT_SITE_KEYS = SITES.filter((site) => !site.defaultOff).map((site) =>
 //   - 「ノーコード 勉強会」14件 … そもそも開催数が少ない
 //   - 「ビジネス交流会」「名刺交換会」 … 「異業種交流会」とヒットがほぼ重複する
 // 「SES」は 2026-09-04 に追加（脱SES・SES企業の勉強会/交流会を拾う。SESエンジニアは講座の見込み客）。
+// 「出会い・街コン」の「スポーツコン」「趣味コン」は 2026-10-07 に街コンジャパン・PARTY☆PARTY・ピア街コンへ
+// 実際に投げて、件数と中身を見て追加したもの。
 const PRESET_KEYWORD_GROUPS = [
   {
     label: '人脈づくり',
@@ -71,7 +75,7 @@ const PRESET_KEYWORD_GROUPS = [
   },
   {
     label: '出会い・街コン',
-    keywords: ['街コン', '恋活', '婚活パーティー', '友達作り'],
+    keywords: ['街コン', '恋活', '婚活パーティー', 'スポーツコン', '趣味コン', '友達作り'],
   },
 ];
 

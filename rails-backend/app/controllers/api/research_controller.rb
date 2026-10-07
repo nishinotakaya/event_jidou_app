@@ -25,7 +25,9 @@ module Api
       "tunagate" => Research::TunagateService,
       "meetup" => Research::MeetupService,
       "machicon" => Research::MachiconService,
-      "omicale" => Research::OmicaleService
+      "omicale" => Research::OmicaleService,
+      "partyparty" => Research::PartypartyService,
+      "pia_machicon" => Research::PiaMachiconService
     }.freeze
 
     # ブラウザからサイトのAPIを直接叩くときに付けるヘッダ（Peatix は X-Requested-With が無いと HTML を返す）
