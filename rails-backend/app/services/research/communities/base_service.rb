@@ -36,13 +36,6 @@ module Research
         }
       end
 
-      # 日本語を含む URL（Meetup のグループ名 URL など）は実在するので、非 ASCII を % エンコードしてから判定する
-      def http_url?(value)
-        URI.parse(URI::DEFAULT_PARSER.escape(value.to_s.strip)).is_a?(URI::HTTP)
-      rescue URI::InvalidURIError
-        false
-      end
-
       # サイト側に地域絞り込みがないサービス向けの後段フィルタ。
       # 名前・活動エリア・説明のいずれかに、選択された場所のエイリアスが含まれれば残す。
       def filter_communities_by_location(community_results, locations)

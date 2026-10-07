@@ -135,6 +135,14 @@ module Research
       end
     end
 
+    # 日本語を含む URL（Meetup のグループ名 URL など）は実在するので、非 ASCII を % エンコードしてから判定する。
+    # 外部 HTML / JSON-LD 由来の値を url・画像に使う前に通し、javascript: 等を結果に流さない
+    def http_url?(value)
+      URI.parse(URI::DEFAULT_PARSER.escape(value.to_s.strip)).is_a?(URI::HTTP)
+    rescue URI::InvalidURIError
+      false
+    end
+
     def parse_html(html)
       Nokogiri::HTML(html)
     end
