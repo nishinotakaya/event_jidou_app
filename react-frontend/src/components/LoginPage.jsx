@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { APP_NAME, APP_SUBTITLE } from '../brand';
 
 export default function LoginPage({ onLogin }) {
   const [email, setEmail] = useState('');
@@ -52,9 +53,8 @@ export default function LoginPage({ onLogin }) {
         {/* Logo / Title */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <img src="/logo.svg" alt="" width={64} height={64} style={{ borderRadius: '16px', marginBottom: '10px', display: 'block', marginLeft: 'auto', marginRight: 'auto' }} />
-          <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#1e293b', margin: 0 }}>
-            イベント自動告知
-          </h1>
+          <h1 className="brand-wordmark" style={{ fontSize: 28, margin: 0 }}>{APP_NAME}</h1>
+          <p style={{ fontSize: '13px', color: '#8b7fb3', margin: '4px 0 0' }}>{APP_SUBTITLE}</p>
           <p style={{ fontSize: '13px', color: '#64748b', marginTop: '6px' }}>
             ログインしてサービスに接続
           </p>

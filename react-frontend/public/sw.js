@@ -1,7 +1,7 @@
 // PWA用 Service Worker
 // ビルド不要のプレーンJS（Workboxなし）
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `event-kokuchi-cache-${CACHE_VERSION}`;
 
 const NEVER_CACHE_PATH_PREFIXES = ['/api/', '/users/', '/auth/', '/cable', '/uploads/'];

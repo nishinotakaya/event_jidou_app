@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchCalendarEvents, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent, fetchPostingHistory } from '../api.js';
+import { APP_NAME, APP_SUBTITLE, APP_DESCRIPTION } from '../brand';
 import { getEventStatus } from '../eventStatus.js';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -260,12 +261,16 @@ export default function CalendarView({
 
   return (
     <div className="calendar-view">
-      {/* アプリ説明 */}
-      <div className="calendar-app-desc">
-        <h2 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#1e3a5f', display: 'flex', alignItems: 'center', gap: '8px' }}><img src="/logo.svg" alt="" width={22} height={22} style={{ borderRadius: '6px' }} />イベント自動告知アプリ</h2>
-        <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.5 }}>
-          イベントを作成し、connpass・Peatix・TechPlay・こくチーズ・Doorkeeper・つなゲートへ一括投稿。AI文章生成・Googleカレンダー連携・Zoom作成にも対応。
-        </p>
+      {/* ヒーローバナー */}
+      <div className="calendar-hero">
+        <img src="/logo.svg" alt="" width={44} height={44} className="calendar-hero-logo" />
+        <div className="calendar-hero-body">
+          <div className="calendar-hero-heading">
+            <h1 className="brand-wordmark" style={{ color: '#fff', background: 'none', WebkitTextFillColor: '#fff', fontSize: 34, margin: 0 }}>{APP_NAME}</h1>
+            <span className="calendar-hero-subtitle">{APP_SUBTITLE}</span>
+          </div>
+          <p className="calendar-hero-desc">{APP_DESCRIPTION}</p>
+        </div>
       </div>
 
       {/* ヘッダー */}

@@ -1,6 +1,6 @@
 {
-  "name": "イベント自動告知アプリ",
-  "short_name": "イベント告知",
+  "name": "Event Fanfare - イベント一括告知・交流会リサーチ",
+  "short_name": "Event Fanfare",
   "lang": "ja",
   "start_url": "/",
   "scope": "/",
@@ -8,7 +8,7 @@
   "orientation": "portrait",
   "background_color": "#f5f3fa",
   "theme_color": "#6d28d9",
-  "description": "イベントを作成し、各ポータルサイト・SNSに一括自動投稿",
+  "description": "イベントを作成し、20以上のサイトへ一括投稿。AI文章生成・Googleカレンダー連携・Zoom作成・交流会リサーチに対応。",
   "icons": [
     {
       "src": "/icons/icon-192.png",

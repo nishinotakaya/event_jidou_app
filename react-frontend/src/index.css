@@ -54,13 +54,22 @@ body {
   justify-content: space-between;
 }
 
-.sidebar-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #6d28d9;
+.sidebar-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin: 0 0 10px;
-  letter-spacing: -0.2px;
+  cursor: pointer;
+  min-width: 0;
 }
+
+.sidebar-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-wordmark { font-family: 'Outfit', 'Inter', system-ui, sans-serif; font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(90deg, #7c3aed, #4338ca); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
 /* PC ではハンバーガー/閉じるボタン/背景オーバーレイを表示しない */
 .sidebar-toggle {
@@ -1579,15 +1588,6 @@ body {
   .calendar-view {
     padding: 0 8px 16px;
   }
-  .calendar-app-desc {
-    padding: 10px 12px;
-  }
-  .calendar-app-desc h2 {
-    font-size: 13px !important;
-  }
-  .calendar-app-desc p {
-    font-size: 11px !important;
-  }
   .calendar-header {
     margin-bottom: 10px;
     flex-wrap: wrap;
@@ -2031,12 +2031,61 @@ summary.event-fields-title {
   box-sizing: border-box;
 }
 
-.calendar-app-desc {
-  padding: 12px 16px;
+.calendar-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   margin-bottom: 12px;
-  background: linear-gradient(135deg, #f0f9ff 0%, #f0fdf4 100%);
-  border: 1px solid #e0f2fe;
-  border-radius: 10px;
+  padding: 22px 26px;
+  min-height: 120px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  color: #fff;
+  background: url('/hero.svg') center/cover no-repeat, linear-gradient(135deg, #7c3aed, #4338ca);
+}
+
+.calendar-hero-logo {
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+
+.calendar-hero-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.calendar-hero-subtitle {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.calendar-hero-desc {
+  max-width: 640px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+@media (max-width: 768px) {
+  .calendar-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 16px;
+    min-height: 0;
+  }
+  .calendar-hero h1 {
+    font-size: 26px !important;
+  }
+  .calendar-hero-subtitle {
+    font-size: 12px;
+  }
+  .calendar-hero-desc {
+    font-size: 11px;
+  }
 }
 
 .calendar-legend {
