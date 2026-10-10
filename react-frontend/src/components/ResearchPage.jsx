@@ -28,6 +28,9 @@ const SITES = [
   { key: 'omicale', label: 'オミカレ', color: '#e91e63', defaultOff: true, note: '恋活・婚活が中心。既定ではOFF' },
   { key: 'partyparty', label: 'PARTY☆PARTY', color: '#ad1457', defaultOff: true, note: 'IBJ運営の婚活パーティー。複数語はAND検索。既定ではOFF' },
   { key: 'pia_machicon', label: 'ピア街コン', color: '#ff7043', defaultOff: true, note: '街コン・婚活パーティーのポータル。既定ではOFF' },
+  { key: 'ash_circle', label: '社会人サークルアッシュ', color: '#2fb0be', defaultOff: true, note: '社会人サークルの飲み会・食事会（2026-10 時点では 40〜70 代向けが中心）。千葉・船橋・柏の掲載あり。地域を選ぶとそのエリア全件、未選択なら全国の直近分。キーワードはタイトル絞り込み。既定ではOFF' },
+  { key: 'fiore', label: 'フィオーレパーティー', color: '#e91e63', defaultOff: true, note: '個室婚活パーティー。サイト側にキーワード検索が無く、地域ページの件名・説明文で絞り込み。地域未選択なら全国の直近 54 件（18件×3ページ）から絞り込み。既定ではOFF' },
+  { key: 'event_j', label: 'Event-J', color: '#5c6bc0', defaultOff: true, note: '北関東〜千葉（柏・成田）の婚活パーティー。地域は市名での一致のみ（柏・成田など）。既定ではOFF' },
 ];
 
 // 初期状態で検索するサイト（defaultOff は明示的に選んだときだけ検索する）

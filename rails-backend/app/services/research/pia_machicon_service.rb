@@ -30,7 +30,7 @@ module Research
     end
 
     def build_event_result(card_node)
-      url = absolute_url(card_node.at_css("a.recommendEvent__cont--link")&.[]("href"))
+      url = absolute_http_url(SEARCH_URL, card_node.at_css("a.recommendEvent__cont--link")&.[]("href"))
       return nil unless url
 
       date_node = card_node.at_css("p.recommendEvent__cont--date")
@@ -57,22 +57,7 @@ module Research
     end
 
     def absolute_image_url(card_node)
-      absolute_url(card_node.at_css("img.recommendEvent__cont--mainImg")&.[]("src"))
-    end
-
-    # 外部 HTML 由来の 1 件の不正な値（空白入りで結合できない href など）でサイト全体の検索を落とさないよう、
-    # 結合できなければ nil にする。javascript: 等を <a href> に流さないよう http(s) 以外も nil。
-    # 呼び出し側は url が nil ならカードごと捨て、画像が nil なら画像だけ空にする
-    def absolute_url(path_or_url)
-      # 空文字を URI.join に渡すと SEARCH_URL 自身になってしまうので、先に落とす
-      return nil if path_or_url.to_s.strip.empty?
-
-      # escape の既定は % も変換して %E3 → %25E3 に壊すため、対象を非 ASCII・空白・制御文字だけに限定する
-      escaped_url = URI::DEFAULT_PARSER.escape(path_or_url.to_s.strip, /[^\x21-\x7E]/)
-      joined_url = URI.join(SEARCH_URL, escaped_url).to_s
-      http_url?(joined_url) ? joined_url : nil
-    rescue URI::InvalidURIError
-      nil
+      absolute_http_url(SEARCH_URL, card_node.at_css("img.recommendEvent__cont--mainImg")&.[]("src"))
     end
   end
 end
