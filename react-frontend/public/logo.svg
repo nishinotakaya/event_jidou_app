@@ -1,32 +1,54 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="イベント自動告知アプリ">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Event Fanfare">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#7c3aed"/>
       <stop offset="1" stop-color="#4338ca"/>
     </linearGradient>
-    <linearGradient id="horn" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#e9e0ff"/>
+    <linearGradient id="brass" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="1" stop-color="#ffffff"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <circle cx="150" cy="140" r="150" fill="#ffffff" opacity="0.07"/>
-  <!-- megaphone -->
-  <g transform="translate(76 120)">
-    <path d="M0 84 Q0 60 24 60 H72 L196 6 Q220 -6 220 22 V190 Q220 218 196 206 L72 152 H24 Q0 152 0 128 Z" fill="url(#horn)"/>
-    <rect x="18" y="76" width="30" height="60" rx="10" fill="#c4b5fd"/>
-    <path d="M44 152 H96 L118 224 Q122 240 106 240 H76 Q64 240 60 228 Z" fill="#ddd2ff"/>
+  <circle cx="150" cy="130" r="150" fill="#ffffff" opacity="0.07"/>
+  <!-- trumpet: rotated -35deg, mouthpiece at lower-left, bell at upper-right -->
+  <g transform="translate(236 290) rotate(-35)">
+    <!-- mouthpiece -->
+    <rect x="-190" y="-12" width="26" height="24" rx="8" fill="#ddd2ff"/>
+    <!-- tube -->
+    <rect x="-168" y="-9" width="170" height="18" rx="9" fill="url(#brass)"/>
+    <!-- bell -->
+    <path d="M-10 -12 L110 -78 Q132 -88 132 -62 V62 Q132 88 110 78 L-10 12 Z" fill="url(#brass)"/>
+    <ellipse cx="124" cy="0" rx="18" ry="70" fill="#c4b5fd"/>
+    <!-- pistons -->
+    <g fill="#ddd2ff">
+      <rect x="-128" y="-40" width="14" height="34" rx="5"/>
+      <rect x="-96" y="-40" width="14" height="34" rx="5"/>
+      <rect x="-64" y="-40" width="14" height="34" rx="5"/>
+    </g>
+    <g fill="#fbbf24">
+      <circle cx="-121" cy="-46" r="9"/>
+      <circle cx="-89" cy="-46" r="9"/>
+      <circle cx="-57" cy="-46" r="9"/>
+    </g>
   </g>
   <!-- sound waves -->
-  <g fill="none" stroke="#67e8f9" stroke-width="26" stroke-linecap="round">
-    <path d="M334 170 Q356 226 334 282"/>
-    <path d="M386 136 Q424 226 386 316" opacity="0.7"/>
+  <g fill="none" stroke="#67e8f9" stroke-width="16" stroke-linecap="round">
+    <path d="M338 128 Q372 118 392 150" opacity="0.95"/>
+    <path d="M326 92 Q388 70 424 128" opacity="0.75"/>
+    <path d="M314 56 Q404 24 456 108" opacity="0.5"/>
   </g>
+  <!-- sparkles -->
+  <path d="M440 190 l8 18 18 8 -18 8 -8 18 -8 -18 -18 -8 18 -8z" fill="#ffffff"/>
+  <path d="M256 60 l6 14 14 6 -14 6 -6 14 -6 -14 -14 -6 14 -6z" fill="#fbbf24"/>
+  <circle cx="470" cy="170" r="7" fill="#fbbf24"/>
+  <circle cx="396" cy="52" r="6" fill="#ffffff"/>
+  <rect x="300" y="30" width="12" height="12" rx="2" fill="#fbbf24" transform="rotate(25 306 36)"/>
   <!-- calendar check badge -->
-  <g transform="translate(308 308)">
-    <rect x="-8" y="-8" width="152" height="152" rx="42" fill="#4c1d95"/>
-    <rect width="136" height="136" rx="36" fill="#f8fafc"/>
-    <path d="M0 36 Q0 0 36 0 H100 Q136 0 136 36 V44 H0 Z" fill="#7c3aed"/>
-    <path d="M40 84 L62 106 L100 60" fill="none" stroke="#7c3aed" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(340 340)">
+    <rect x="-8" y="-8" width="128" height="128" rx="38" fill="#4c1d95"/>
+    <rect width="112" height="112" rx="30" fill="#f8fafc"/>
+    <path d="M0 30 Q0 0 30 0 H82 Q112 0 112 30 V36 H0 Z" fill="#7c3aed"/>
+    <path d="M32 70 L50 88 L82 50" fill="none" stroke="#7c3aed" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>

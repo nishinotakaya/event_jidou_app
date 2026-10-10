@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import FolderList from './FolderList.jsx';
+import { APP_NAME, APP_SUBTITLE } from '../brand';
 import { createFolder } from '../api.js';
 
 export default function Sidebar({
@@ -47,11 +48,25 @@ export default function Sidebar({
     }
   }, [activeType, newFolderName, newFolderParent, onFolderChange, showToast]);
 
+  const goHome = () => { onSelectFolder(null); onTypeChange('event'); onNavigate?.('main'); };
+
   return (
     <aside className={`sidebar ${isOpen ? 'sidebar--open' : ''}`}>
       <div className="sidebar-header">
         <div className="sidebar-header-row">
-          <p className="sidebar-title" onClick={() => { onSelectFolder(null); onTypeChange('event'); onNavigate?.('main'); }} style={{ cursor: 'pointer' }}>イベント管理</p>
+          <div
+            className="sidebar-brand"
+            role="button"
+            tabIndex={0}
+            onClick={goHome}
+            onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); goHome(); } }}
+          >
+            <span className="sidebar-brand-row">
+              <img src="/logo.svg" width={28} height={28} alt="" style={{ borderRadius: 8 }} />
+              <span className="brand-wordmark" style={{ fontSize: 22 }}>{APP_NAME}</span>
+            </span>
+            <span style={{ fontSize: 11, color: '#8b7fb3', letterSpacing: '0.04em' }}>{APP_SUBTITLE}</span>
+          </div>
           <button type="button" className="sidebar-close" aria-label="メニューを閉じる" onClick={onClose}>×</button>
         </div>
         <div className="type-tabs">
