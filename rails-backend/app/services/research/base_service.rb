@@ -36,7 +36,7 @@ module Research
       "online" => %w[オンライン online Online ONLINE Zoom zoom ウェビナー リモート Web開催 web開催],
       "東京" => %w[東京 新宿 渋谷 銀座 池袋 品川 秋葉原 六本木 恵比寿 新橋 神田 上野 日本橋 丸の内 浜松町 五反田 中野 吉祥寺 立川 町田 八王子 有楽町 赤坂 虎ノ門 神谷町 日比谷 大手町],
       "神奈川" => %w[神奈川 横浜 川崎 藤沢 鎌倉 相模原 武蔵小杉],
-      "千葉" => %w[千葉 船橋 柏 松戸 津田沼 幕張 市川 浦安],
+      "千葉" => %w[千葉 船橋 柏 松戸 津田沼 幕張 市川 浦安 成田],
       "埼玉" => %w[埼玉 大宮 浦和 川口 所沢 越谷],
       "大阪" => %w[大阪 梅田 難波 なんば 心斎橋 淀屋橋 本町 天王寺 新大阪],
       "京都" => %w[京都 烏丸 河原町],
@@ -141,6 +141,21 @@ module Research
       URI.parse(URI::DEFAULT_PARSER.escape(value.to_s.strip)).is_a?(URI::HTTP)
     rescue URI::InvalidURIError
       false
+    end
+
+    # 相対 URL を base_url 基準で絶対化し、http(s) でなければ nil にする。
+    # 外部 HTML 由来の 1 件の不正な値（空白入りで結合できない href など）でサイト全体の検索を落とさず、
+    # javascript: 等も結果に流さない。呼び出し側は url が nil ならカードごと捨て、画像が nil なら画像だけ空にする
+    def absolute_http_url(base_url, path_or_url)
+      # 空文字を URI.join に渡すと base_url 自身になってしまうので、先に落とす
+      return nil if path_or_url.to_s.strip.empty?
+
+      # escape の既定は % も変換して %E3 → %25E3 に壊すため、対象を非 ASCII・空白・制御文字だけに限定する
+      escaped_url = URI::DEFAULT_PARSER.escape(path_or_url.to_s.strip, /[^\x21-\x7E]/)
+      joined_url = URI.join(base_url, escaped_url).to_s
+      http_url?(joined_url) ? joined_url : nil
+    rescue URI::InvalidURIError
+      nil
     end
 
     def parse_html(html)

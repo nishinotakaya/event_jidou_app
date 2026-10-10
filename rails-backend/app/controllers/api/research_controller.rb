@@ -27,7 +27,10 @@ module Api
       "machicon" => Research::MachiconService,
       "omicale" => Research::OmicaleService,
       "partyparty" => Research::PartypartyService,
-      "pia_machicon" => Research::PiaMachiconService
+      "pia_machicon" => Research::PiaMachiconService,
+      "ash_circle" => Research::AshCircleService,
+      "fiore" => Research::FioreService,
+      "event_j" => Research::EventJService
     }.freeze
 
     # ブラウザからサイトのAPIを直接叩くときに付けるヘッダ（Peatix は X-Requested-With が無いと HTML を返す）
