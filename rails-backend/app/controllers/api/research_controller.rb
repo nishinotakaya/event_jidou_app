@@ -30,7 +30,8 @@ module Api
       "pia_machicon" => Research::PiaMachiconService,
       "ash_circle" => Research::AshCircleService,
       "fiore" => Research::FioreService,
-      "event_j" => Research::EventJService
+      "event_j" => Research::EventJService,
+      "event_contact" => Research::EventContactService
     }.freeze
 
     # ブラウザからサイトのAPIを直接叩くときに付けるヘッダ（Peatix は X-Requested-With が無いと HTML を返す）
