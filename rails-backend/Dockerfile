@@ -3,6 +3,11 @@ FROM ruby:$RUBY_VERSION-slim
 
 WORKDIR /rails
 
+# ruby:3.1.2-slim は Debian 11 (bullseye)。2026-08 に LTS が終わり deb.debian.org の
+# bullseye-security からパッケージ本体が消えた（索引は残るので apt-get install が 404 で落ちる）。
+# Ruby を上げるまでの間、apt の取得先を archive.debian.org に向ける
+RUN sed -i 's|http://deb.debian.org/|http://archive.debian.org/|g' /etc/apt/sources.list
+
 # System packages (Ruby build + MySQL + SQLite + Chromium deps)
 RUN apt-get update -qq && apt-get install --no-install-recommends -y \
     build-essential \
@@ -28,8 +33,10 @@ COPY Gemfile Gemfile.lock ./
 RUN bundle install --jobs 4 --retry 3
 
 # Playwright npm package (playwright-ruby-client needs it as a server)
-COPY package.json ./
-RUN npm install
+# package-lock.json で版を固定する。package.json の ^ だけで npm install すると最新版に上がり、
+# Debian 11 非対応の Playwright（1.64 系）を引いて chromium の install で落ちる
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Install Chromium browser via Playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/rails/.cache/ms-playwright
